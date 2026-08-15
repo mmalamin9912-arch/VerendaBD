@@ -360,18 +360,18 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         email: cleanEmail,
         options: {
           shouldCreateUser: true,
-          shouldSendOtp: true,
-          emailRedirectTo: 'https://zidbdsaas.netlify.app/dashboard',
-        } as any
+          emailRedirectTo: undefined, // লিংকে রিডাইরেক্ট হওয়া বন্ধ করবে
+        },
       });
 
       if (error) {
-        setErrorMsg(error.message || 'ভেরিফিকেশন কোড পাঠাতে ব্যর্থ হয়েছে।');
+        console.error('OTP Error:', error.message);
+        setErrorMsg('সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
         return { success: false };
       }
 
-      setInfoNotice('ভেরিফিকেশন লিংক বা কোডটি আপনার ইমেলে পাঠানো হয়েছে। অনুগ্রহ করে আপনার ইনবক্স চেক করুন।');
-      setToastMsg('OTP verification email sent!');
+      setInfoNotice('ভেরিফিকেশন কোড আপনার ইমেইলে পাঠানো হয়েছে।');
+      setToastMsg("OTP sent successfully");
       return { success: true };
     } catch (err: any) {
       console.error('Supabase OTP send exception:', err);
