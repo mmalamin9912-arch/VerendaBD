@@ -339,36 +339,40 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
   // MODE 2: NEW USER REGISTRATION (SIGN UP WITH OTP)
   // ==========================================
 
-  // Step 1: Dispatch Email OTP via Backend API
+  // Step 1: Dispatch Email OTP via Backend API / Supabase Auth SDK
   const sendEmailOtp = async (targetEmail: string): Promise<{ success: boolean; isRateLimited?: boolean }> => {
     const cleanEmail = targetEmail.trim().toLowerCase();
 
+    if (!supabase) {
+      // Priority Architectural Fallback: If Supabase client is not available/configured,
+      // log to developer console and allow smooth simulated login with '123456' OTP
+      console.log(
+        `%c[ZID OTP Debug] Supabase client is offline. Using simulated OTP: 123456`,
+        'background: #1e293b; color: #D4AF37; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px;'
+      );
+      setInfoNotice(`ভেরিফিকেশন কোড (OTP) পাঠানো হয়েছে: 123456 (Supabase credentials missing, using offline preview)`);
+      setToastMsg(`Simulated OTP sent: 123456`);
+      return { success: true };
+    }
+
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (data.otp) {
-          setInfoNotice(`ভেরিফিকেশন কোড (OTP) পাঠানো হয়েছে: ${data.otp}`);
-          setToastMsg(`OTP sent successfully: ${data.otp}`);
-          console.log(
-            `%c[ZID OTP Debug] Verification Code for ${cleanEmail}: ${data.otp}`,
-            'background: #1e293b; color: #D4AF37; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px;'
-          );
-        } else {
-          setInfoNotice(data.infoMessage || data.message || 'ভেরিফিকেশন কোডটি পাঠানো হয়েছে।');
-          setToastMsg('Verification code sent to your email');
+      const { error } = await supabase.auth.signInWithOtp({
+        email: cleanEmail,
+        options: {
+          shouldCreateUser: true
         }
-        return { success: true };
-      } else {
-        setErrorMsg(data.message || 'ভেরিফিকেশন কোড পাঠাতে ব্যর্থ হয়েছে।');
+      });
+
+      if (error) {
+        setErrorMsg(error.message || 'ভেরিফিকেশন কোড পাঠাতে ব্যর্থ হয়েছে।');
         return { success: false };
       }
+
+      setInfoNotice('ভেরিফিকেশন লিংক বা কোডটি আপনার ইমেলে পাঠানো হয়েছে। অনুগ্রহ করে আপনার ইনবক্স চেক করুন।');
+      setToastMsg('OTP verification email sent!');
+      return { success: true };
     } catch (err: any) {
-      console.error('OTP send exception:', err);
+      console.error('Supabase OTP send exception:', err);
       setErrorMsg('সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
       return { success: false };
     }
@@ -411,7 +415,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     setIsLoading(false);
   };
 
-  // Step 2: Verify OTP Code via Backend API
+  // Step 2: Verify OTP Code via Supabase / Local Fallback
   const handleOtpVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -425,17 +429,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     }
 
     setIsLoading(true);
-    try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, otp: cleanOtp }),
-      });
-      
-      const data = await res.json();
-      setIsLoading(false);
 
-      if (data.success) {
+    if (!supabase) {
+      setIsLoading(false);
+      if (cleanOtp === '123456') {
         setToastMsg('ভেরিফিকেশন সফল হয়েছে!');
         
         // Check if already registered
@@ -459,7 +456,46 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
           setSignupStep('register');
         }
       } else {
-        setErrorMsg(data.message || 'ভেরিফিকেশন কোডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        setErrorMsg('ভেরিফিকেশন কোডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanOtp,
+        type: 'email',
+      });
+      
+      setIsLoading(false);
+
+      if (error) {
+        setErrorMsg(error.message || 'ভেরিফিকেশন কোডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        return;
+      }
+
+      setToastMsg('ভেরিফিকেশন সফল হয়েছে!');
+      
+      // Check if already registered
+      const registeredList = getRegisteredUsers();
+      const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (existingUser) {
+        const userProfile: MerchantProfile = {
+          ...defaultMerchant,
+          email: existingUser.email,
+          ownerName: data.user?.user_metadata?.full_name || existingUser.ownerName || 'Merchant Owner',
+          storeName: data.user?.user_metadata?.store_name || existingUser.storeName || 'My Store',
+          phone: existingUser.phone || '',
+          storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore',
+          logoUrl: existingUser.logoUrl || defaultMerchant.logoUrl,
+        };
+
+        finishLogin(userProfile);
+      } else {
+        // New User Setup
+        setSignupStep('register');
       }
     } catch (err: any) {
       setIsLoading(false);
