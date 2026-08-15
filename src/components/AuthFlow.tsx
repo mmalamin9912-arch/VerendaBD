@@ -418,37 +418,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
   };
 
   // Step 2: Verify OTP Code via Supabase / Local Fallback
-  // Step 2: Verify OTP Code via Supabase
   const handleOtpVerifySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setErrorMsg('');
 
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(), 
-        token: otp.trim(),   
-        type: 'email',
-      });
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otp.trim();
 
-      if (error) {
-        console.error('OTP Verification Error:', error.message);
-        setErrorMsg('ভেরিফিকেশন কোডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
-        return;
-      }
-
-      // ভেরিফিকেশন সফল হলে
-      setToastMsg('Login Successful!');
-      if (onLoginSuccess) {
-         onLoginSuccess(data.user as any);
-      }
-    } catch (err) {
-      setErrorMsg('কিছু একটা সমস্যা হয়েছে।');
-    } finally {
-      setIsLoading(false);
+    if (!cleanOtp || cleanOtp.length < 6) {
+      setErrorMsg('অনুগ্রহ করে ৬-ডিজিটের ভেরিফিকেশন কোডটি প্রদান করুন।');
+      return;
     }
-  };
-
 
     setIsLoading(true);
 
