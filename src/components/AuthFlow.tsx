@@ -360,7 +360,6 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         email: cleanEmail,
         options: {
           shouldCreateUser: true,
-          emailRedirectTo: undefined, // লিংকে রিডাইরেক্ট হওয়া বন্ধ করবে
         },
       });
 
@@ -881,78 +880,27 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
               </form>
             )}
 
-            {/* STEP 2: OTP VERIFICATION */}
+            {/* STEP 2: MAGIC LINK NOTIFICATION */}
             {signupStep === 'otp' && (
-              <form onSubmit={handleOtpVerifySubmit} className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-xs font-semibold text-slate-300">
-                      Enter 6-Digit Verification Code
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignupStep('email');
-                        setErrorMsg('');
-                        setInfoNotice(null);
-                      }}
-                      className="text-[11px] text-[#D4AF37] hover:underline font-medium cursor-pointer"
-                    >
-                      Change Email
-                    </button>
-                  </div>
-
-                  <div className="relative">
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      placeholder="••••••"
-                      className="w-full bg-[#161923] border border-[#3A435E] focus:border-[#D4AF37] rounded-xl pl-10 pr-3 py-2.5 text-center text-base font-mono font-bold tracking-widest text-white placeholder-slate-600 transition outline-none"
-                    />
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-500 text-center">
-                    আপনার ইমেইল চেক করুন এবং প্রাপ্ত ৬-ডিজিটের ভেরিফিকেশন কোডটি এখানে লিখুন।
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-800 rounded-xl border border-slate-700">
+                  <p className="text-xs text-slate-300 text-center">
+                    We sent a sign-in link to your email. Click the link in your email to log in.
                   </p>
                 </div>
-
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>Didn't receive code?</span>
-                  {canResend ? (
-                    <button
-                      type="button"
-                      onClick={handleResendOtp}
-                      className="text-[#D4AF37] font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Resend Code</span>
-                    </button>
-                  ) : (
-                    <span className="text-slate-500 font-mono">Resend in {resendTimer}s</span>
-                  )}
-                </div>
-
+                
                 <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 bg-[#D4AF37] hover:bg-[#FCF6BA] disabled:opacity-50 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-[#D4AF37]/20"
+                  type="button"
+                  onClick={() => {
+                    setSignupStep('email');
+                    setErrorMsg('');
+                    setInfoNotice(null);
+                  }}
+                  className="w-full text-xs text-[#D4AF37] hover:underline font-medium cursor-pointer text-center"
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying Code...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Verify Code & Continue to Profile</span>
-                      <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                    </>
-                  )}
+                  Change Email
                 </button>
-              </form>
+              </div>
             )}
 
             {/* STEP 3: PROFILE SETUP */}
