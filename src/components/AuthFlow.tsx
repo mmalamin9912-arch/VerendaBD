@@ -369,8 +369,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         return { success: false };
       }
 
-      setInfoNotice('ভেরিফিকেশন কোড আপনার ইমেইলে পাঠানো হয়েছে।');
-      setToastMsg("OTP sent successfully");
+      setInfoNotice('ম্যাজিক সাইন-ইন লিংক আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।');
+      setToastMsg("Magic Link sent to your email");
       return { success: true };
     } catch (err: any) {
       console.error('Supabase OTP send exception:', err);
@@ -652,7 +652,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             <div className="h-0.5 w-8 bg-[#2E3548]" />
             <div className={`flex items-center gap-1.5 font-bold ${signupStep === 'otp' ? 'text-[#D4AF37]' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${signupStep === 'otp' ? 'bg-[#D4AF37] text-slate-950 font-black' : 'bg-[#282E3F] text-slate-300'}`}>2</span>
-              <span>OTP Code</span>
+              <span>Check Email</span>
             </div>
             <div className="h-0.5 w-8 bg-[#2E3548]" />
             <div className={`flex items-center gap-1.5 font-bold ${signupStep === 'register' ? 'text-[#D4AF37]' : 'text-slate-400'}`}>
@@ -868,11 +868,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Dispatching Verification Code...</span>
+                      <span>Sending Magic Link...</span>
                     </>
                   ) : (
                     <>
-                      <span>Send 6-Digit Email OTP Code</span>
+                      <span>Send Magic Link</span>
                       <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                     </>
                   )}
@@ -883,23 +883,54 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             {/* STEP 2: MAGIC LINK NOTIFICATION */}
             {signupStep === 'otp' && (
               <div className="space-y-4">
-                <div className="p-4 bg-slate-800 rounded-xl border border-slate-700">
-                  <p className="text-xs text-slate-300 text-center">
-                    We sent a sign-in link to your email. Click the link in your email to log in.
-                  </p>
+                <div className="p-5 bg-[#161923] rounded-2xl border border-[#3A435E] text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] flex items-center justify-center mx-auto">
+                    <Mail className="w-6 h-6" />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-white">Check Your Inbox</h3>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      We sent a sign-in link to <span className="text-[#D4AF37] font-semibold">{email}</span>.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 text-left space-y-2">
+                    <div className="flex items-center gap-2 text-slate-200 font-semibold">
+                      <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span>How to log in:</span>
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 pl-1 text-slate-400">
+                      <li>Open your email inbox</li>
+                      <li>Click the <strong className="text-white">"Sign In"</strong> link inside the email</li>
+                      <li>You will be automatically verified and logged into your dashboard</li>
+                    </ol>
+                  </div>
                 </div>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSignupStep('email');
-                    setErrorMsg('');
-                    setInfoNotice(null);
-                  }}
-                  className="w-full text-xs text-[#D4AF37] hover:underline font-medium cursor-pointer text-center"
-                >
-                  Change Email
-                </button>
+
+                <div className="flex items-center justify-between text-xs px-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignupStep('email');
+                      setErrorMsg('');
+                      setInfoNotice(null);
+                    }}
+                    className="text-[#D4AF37] hover:underline font-medium cursor-pointer"
+                  >
+                    Change Email
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={!canResend || isLoading}
+                    className="text-slate-400 hover:text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span>{canResend ? 'Resend Magic Link' : `Resend in ${resendTimer}s`}</span>
+                  </button>
+                </div>
               </div>
             )}
 
