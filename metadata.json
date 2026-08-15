@@ -1,0 +1,6 @@
+{
+  "name": "Zid SaaS Merchant Dashboard",
+  "description": "Zid-style Bangladeshi e-commerce merchant dashboard with SaaS subscription plans, direct bank & mobile payments (bKash, Nagad), and courier logistics integrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
