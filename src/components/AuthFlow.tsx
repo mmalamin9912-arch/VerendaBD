@@ -336,11 +336,14 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
   };
 
   // ==========================================
-  // MODE 2: NEW USER REGISTRATION (SIGN UP WITH OTP)
+  // MODE 2: NEW USER REGISTRATION (SIGN UP WITH OTP / MAGIC LINK)
   // ==========================================
 
-  // Step 1: Dispatch Email OTP via Backend API / Supabase Auth SDK
-  const sendEmailOtp = async (targetEmail: string): Promise<{ success: boolean; isRateLimited?: boolean }> => {
+  // Step 1: Dispatch Email OTP / Magic Link via Backend API / Supabase Auth SDK
+  const sendEmailOtp = async (
+    targetEmail: string,
+    isSignUp: boolean = true
+  ): Promise<{ success: boolean; isRateLimited?: boolean }> => {
     const cleanEmail = targetEmail.trim().toLowerCase();
 
     if (!supabase) {
@@ -359,13 +362,50 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
-          shouldCreateUser: true,
+          shouldCreateUser: isSignUp,
         },
       });
 
       if (error) {
-        console.error('OTP Error:', error.message);
-        setErrorMsg('সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        console.error('OTP Error:', error.message, error);
+        const errMsg = error.message?.toLowerCase() || '';
+
+        // Handle 422: "Signups not allowed for this instance" or disabled signups
+        if (
+          errMsg.includes('signups not allowed') ||
+          (error as any).status === 422 ||
+          errMsg.includes('signup is disabled') ||
+          errMsg.includes('signups are disabled')
+        ) {
+          // If in signup mode, try fallback with shouldCreateUser: false in case user already exists in Supabase
+          if (isSignUp) {
+            const fallbackResult = await supabase.auth.signInWithOtp({
+              email: cleanEmail,
+              options: {
+                shouldCreateUser: false,
+              },
+            });
+            if (!fallbackResult.error) {
+              setInfoNotice('ম্যাজিক সাইন-ইন লিংক আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।');
+              setToastMsg("Magic Link sent to your email");
+              return { success: true };
+            }
+          }
+          setErrorMsg('This email is not registered. Please allow signups in Supabase or use an existing account.');
+          return { success: false };
+        }
+
+        if (
+          errMsg.includes('user not found') ||
+          errMsg.includes('not found') ||
+          errMsg.includes('invalid login credentials') ||
+          errMsg.includes('email not confirmed')
+        ) {
+          setErrorMsg('This email is not registered. Please allow signups in Supabase or use an existing account.');
+          return { success: false };
+        }
+
+        setErrorMsg(error.message || 'সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
         return { success: false };
       }
 
@@ -374,7 +414,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       return { success: true };
     } catch (err: any) {
       console.error('Supabase OTP send exception:', err);
-      setErrorMsg('সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      const errMsg = err?.message?.toLowerCase() || '';
+      if (
+        errMsg.includes('signups not allowed') ||
+        err?.status === 422 ||
+        errMsg.includes('signup is disabled') ||
+        errMsg.includes('signups are disabled')
+      ) {
+        setErrorMsg('This email is not registered. Please allow signups in Supabase or use an existing account.');
+      } else {
+        setErrorMsg(err?.message || 'সার্ভার সংযোগে ত্রুটি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+      }
       return { success: false };
     }
   };
@@ -394,7 +444,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
     setIsLoading(true);
 
-    const result = await sendEmailOtp(cleanedEmail);
+    const result = await sendEmailOtp(cleanedEmail, true);
 
     if (result.success) {
       setSignupStep('otp');
@@ -412,7 +462,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     setCanResend(false);
     setErrorMsg('');
     setIsLoading(true);
-    await sendEmailOtp(email);
+    await sendEmailOtp(email, mode === 'signup');
     setIsLoading(false);
   };
 
@@ -828,6 +878,29 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                         <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                       </>
                     )}
+                  </button>
+                </div>
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={async () => {
+                      setIsLoading(true);
+                      setErrorMsg('');
+                      setInfoNotice(null);
+                      const cleanEmail = email.trim().toLowerCase();
+                      const result = await sendEmailOtp(cleanEmail, false);
+                      if (result.success) {
+                        setMode('signup');
+                        setSignupStep('otp');
+                      }
+                      setIsLoading(false);
+                    }}
+                    className="text-xs text-slate-400 hover:text-[#D4AF37] font-medium transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>Or sign in with Magic Link (Passwordless)</span>
                   </button>
                 </div>
               </form>
