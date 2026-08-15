@@ -36,22 +36,6 @@ import {
   Layers
 } from 'lucide-react';
 
-const getOrderToken = (ord: any) => {
-  if (ord?.orderToken) return ord.orderToken;
-  
-  const rawId = ord?.orderNumber || ord?.id || '72200789';
-  const cleanId = String(rawId || '').replace(/[^a-zA-Z0-9]/g, '');
-  
-  if (!cleanId) return 'TRK-00000000';
-
-  let sum = 0;
-  for (let i = 0; i < cleanId.length; i++) {
-    sum += cleanId.charCodeAt(i);
-  }
-  const hex = (sum * 9973).toString(16).toUpperCase();
-  return 'TRK-${cleanId.slice(-4).toUpperCase()}${hex.slice(-4)}';
-};
-
 const generateQRCodeSVG = (text: string, size = 64) => {
   let rects = '';
   const modulesCount = 21;
