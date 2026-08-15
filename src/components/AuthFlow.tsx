@@ -359,8 +359,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       const { error } = await supabase.auth.signInWithOtp({
         email: cleanEmail,
         options: {
-          shouldCreateUser: true
-        }
+          shouldCreateUser: true,
+          shouldSendOtp: true,
+          emailRedirectTo: 'https://zidbdsaas.netlify.app/dashboard',
+        } as any
       });
 
       if (error) {
