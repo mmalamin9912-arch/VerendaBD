@@ -123,6 +123,43 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     return () => clearInterval(timer);
   }, [mode, signupStep, resendTimer]);
 
+  // Auth state listener for magic link / session
+  useEffect(() => {
+    if (!supabase) return;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        const cleanEmail = session.user.email?.toLowerCase() || '';
+        
+        // If in sign up mode, transition to profile setup instead of auto-logging in
+        if (mode === 'signup') {
+          setSignupStep('register');
+          setToastMsg('Email verified. Please complete your profile.');
+          return;
+        }
+
+        const registeredList = getRegisteredUsers();
+        const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
+
+        const userProfile: MerchantProfile = {
+          ...defaultMerchant,
+          email: cleanEmail,
+          ownerName: session.user.user_metadata?.full_name || existingUser?.ownerName || 'Merchant Owner',
+          storeName: session.user.user_metadata?.store_name || existingUser?.storeName || 'Zid BD Online Shop',
+          phone: existingUser?.phone || '+880 1700-000000',
+          storeSlug: existingUser?.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'zidshop',
+          logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl,
+        };
+
+        finishLogin(userProfile);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // Retrieve saved registered users from localStorage
   const getRegisteredUsers = (): RegisteredUser[] => {
     try {
