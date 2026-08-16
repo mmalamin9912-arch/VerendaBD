@@ -347,15 +347,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const cleanEmail = targetEmail.trim().toLowerCase();
 
     if (!supabase) {
-      // Priority Architectural Fallback: If Supabase client is not available/configured,
-      // log to developer console and allow smooth simulated login with '123456' OTP
-      console.log(
-        `%c[ZID OTP Debug] Supabase client is offline. Using simulated OTP: 123456`,
-        'background: #1e293b; color: #D4AF37; padding: 6px 12px; border-radius: 6px; font-weight: bold; font-size: 14px;'
-      );
-      setInfoNotice(`ভেরিফিকেশন কোড (OTP) পাঠানো হয়েছে: 123456 (Supabase credentials missing, using offline preview)`);
-      setToastMsg(`Simulated OTP sent: 123456`);
-      return { success: true };
+      setErrorMsg('Supabase is not configured. Please check your environment variables.');
+      return { success: false };
     }
 
     try {
@@ -482,33 +475,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     setIsLoading(true);
 
     if (!supabase) {
+      setErrorMsg('Supabase is not configured.');
       setIsLoading(false);
-      if (cleanOtp === '123456') {
-        setToastMsg('ভেরিফিকেশন সফল হয়েছে!');
-        
-        // Check if already registered
-        const registeredList = getRegisteredUsers();
-        const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
-
-        if (existingUser) {
-          const userProfile: MerchantProfile = {
-            ...defaultMerchant,
-            email: existingUser.email,
-            ownerName: existingUser.ownerName || 'Merchant Owner',
-            storeName: existingUser.storeName || 'My Store',
-            phone: existingUser.phone || '',
-            storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore',
-            logoUrl: existingUser.logoUrl || defaultMerchant.logoUrl,
-          };
-
-          finishLogin(userProfile);
-        } else {
-          // New User Setup
-          setSignupStep('register');
-        }
-      } else {
-        setErrorMsg('ভেরিফিকেশন কোডটি সঠিক নয়। অনুগ্রহ করে আবার চেষ্টা করুন।');
-      }
       return;
     }
 
