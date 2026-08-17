@@ -458,8 +458,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     }
   };
 
-  // Handle Email Submit in Sign Up
-  const handleSignupEmailSubmit = async (e: React.FormEvent) => {
+  // Handle Email Submit in Sign Up - Directly advance to Profile Setup
+  const handleSignupEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setInfoNotice(null);
@@ -471,18 +471,23 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       return;
     }
 
-    setIsLoading(true);
+    // Check if user already exists
+    const registeredList = getRegisteredUsers();
+    const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanedEmail);
 
-    const result = await sendEmailOtp(cleanedEmail, true);
-
-    if (result.success) {
-      setSignupStep('otp');
-      setOtp('');
-      setResendTimer(60);
-      setCanResend(false);
+    if (existingUser) {
+      // Auto pre-fill existing user info if available
+      const parts = (existingUser.ownerName || '').split(' ');
+      if (parts.length > 0) setFirstName(parts[0]);
+      if (parts.length > 1) setLastName(parts.slice(1).join(' '));
+      if (existingUser.storeName) setStoreName(existingUser.storeName);
+      if (existingUser.phone) setPhone(existingUser.phone.replace('+880', '').trim());
+      if (existingUser.logoUrl) setStoreLogo(existingUser.logoUrl);
     }
 
-    setIsLoading(false);
+    // Bypass verification completely and advance directly to Step 3 (Profile Setup)
+    setSignupStep('register');
+    setToastMsg('Email confirmed. Please complete your profile details.');
   };
 
   // Resend OTP Code
@@ -698,20 +703,15 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
         {/* SIGN UP TIMELINE BAR (Only shown during Sign Up) */}
         {mode === 'signup' && (
-          <div className="flex items-center justify-between px-2 text-xs">
+          <div className="flex items-center justify-between px-6 text-xs">
             <div className={`flex items-center gap-1.5 font-bold ${signupStep === 'email' ? 'text-[#D4AF37]' : 'text-slate-400'}`}>
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${signupStep === 'email' ? 'bg-[#D4AF37] text-slate-950 font-black' : 'bg-[#282E3F] text-slate-300'}`}>1</span>
               <span>Email</span>
             </div>
-            <div className="h-0.5 w-8 bg-[#2E3548]" />
-            <div className={`flex items-center gap-1.5 font-bold ${signupStep === 'otp' ? 'text-[#D4AF37]' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${signupStep === 'otp' ? 'bg-[#D4AF37] text-slate-950 font-black' : 'bg-[#282E3F] text-slate-300'}`}>2</span>
-              <span>Check Email</span>
-            </div>
-            <div className="h-0.5 w-8 bg-[#2E3548]" />
+            <div className="h-0.5 flex-1 mx-4 bg-[#2E3548]" />
             <div className={`flex items-center gap-1.5 font-bold ${signupStep === 'register' ? 'text-[#D4AF37]' : 'text-slate-400'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${signupStep === 'register' ? 'bg-[#D4AF37] text-slate-950 font-black' : 'bg-[#282E3F] text-slate-300'}`}>3</span>
-              <span>Profile</span>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${signupStep === 'register' ? 'bg-[#D4AF37] text-slate-950 font-black' : 'bg-[#282E3F] text-slate-300'}`}>2</span>
+              <span>Profile Setup</span>
             </div>
           </div>
         )}
@@ -889,22 +889,37 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                   <button
                     type="button"
                     disabled={isLoading}
-                    onClick={async () => {
-                      setIsLoading(true);
+                    onClick={() => {
                       setErrorMsg('');
                       setInfoNotice(null);
                       const cleanEmail = email.trim().toLowerCase();
-                      const result = await sendEmailOtp(cleanEmail, false);
-                      if (result.success) {
-                        setMode('signup');
-                        setSignupStep('otp');
+                      if (!cleanEmail || !cleanEmail.includes('@')) {
+                        setErrorMsg('Please enter your email address first.');
+                        setLoginStep('email');
+                        return;
                       }
-                      setIsLoading(false);
+                      const registeredList = getRegisteredUsers();
+                      const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
+                      if (existingUser) {
+                        const userProfile: MerchantProfile = {
+                          ...defaultMerchant,
+                          email: existingUser.email,
+                          ownerName: existingUser.ownerName || 'Merchant Owner',
+                          storeName: existingUser.storeName || 'My Store',
+                          phone: existingUser.phone || '',
+                          storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore',
+                          logoUrl: existingUser.logoUrl || defaultMerchant.logoUrl,
+                        };
+                        finishLogin(userProfile);
+                      } else {
+                        setMode('signup');
+                        setSignupStep('register');
+                      }
                     }}
                     className="text-xs text-slate-400 hover:text-[#D4AF37] font-medium transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Or sign in with OTP (Passwordless)</span>
+                    <span>Or direct sign in / profile setup</span>
                   </button>
                 </div>
               </form>
@@ -913,7 +928,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         )}
 
         {/* ========================================================
-            MODE 2: NEW USER REGISTRATION (SIGN UP WITH OTP)
+            MODE 2: NEW USER REGISTRATION (INSTANT PROFILE SETUP)
         ======================================================== */}
         {mode === 'signup' && (
           <>
@@ -942,22 +957,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                   disabled={isLoading}
                   className="w-full py-3 bg-[#D4AF37] hover:bg-[#FCF6BA] disabled:opacity-50 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-[#D4AF37]/20"
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending Code...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Send Verification Code</span>
-                      <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-                    </>
-                  )}
+                  <span>Continue</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                 </button>
               </form>
             )}
 
-            {/* STEP 2: ENTER OTP */}
+            {/* STEP 2: ENTER OTP (Bypassed by default) */}
             {signupStep === 'otp' && (
               <form onSubmit={handleOtpVerifySubmit} className="space-y-4">
                 <div className="p-5 bg-[#161923] rounded-2xl border border-[#3A435E] text-center space-y-4">
@@ -1038,6 +1044,23 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             {/* STEP 3: PROFILE SETUP */}
             {signupStep === 'register' && (
               <form onSubmit={handleRegisterProfileSubmit} className="space-y-3 text-xs">
+                {/* Email Banner with Change Option */}
+                <div className="flex items-center justify-between bg-[#161923] border border-[#2E3548] p-3 rounded-xl text-xs">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">Signing up with</span>
+                    <span className="text-white font-bold">{email}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignupStep('email');
+                      setErrorMsg('');
+                    }}
+                    className="text-[#D4AF37] font-bold hover:underline cursor-pointer text-xs"
+                  >
+                    Change
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-semibold text-slate-300 mb-1">First Name *</label>
