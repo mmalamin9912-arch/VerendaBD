@@ -415,8 +415,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
               },
             });
             if (!fallbackResult.error) {
-              setInfoNotice('ম্যাজিক সাইন-ইন লিংক আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।');
-              setToastMsg("Magic Link sent to your email");
+              setInfoNotice('ভেরিফিকেশন কোড আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।');
+              setToastMsg("Verification code sent to your email");
               return { success: true };
             }
           }
@@ -957,33 +957,57 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
               </form>
             )}
 
-            {/* STEP 2: MAGIC LINK NOTIFICATION */}
+            {/* STEP 2: ENTER OTP */}
             {signupStep === 'otp' && (
-              <div className="space-y-4">
-                <div className="p-5 bg-[#161923] rounded-2xl border border-[#3A435E] text-center space-y-3">
+              <form onSubmit={handleOtpVerifySubmit} className="space-y-4">
+                <div className="p-5 bg-[#161923] rounded-2xl border border-[#3A435E] text-center space-y-4">
                   <div className="w-12 h-12 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] flex items-center justify-center mx-auto">
-                    <Mail className="w-6 h-6" />
+                    <KeyRound className="w-6 h-6" />
                   </div>
                   
                   <div className="space-y-1">
-                    <h3 className="text-sm font-bold text-white">Check Your Inbox</h3>
+                    <h3 className="text-sm font-bold text-white">Enter 6-Digit Verification Code</h3>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      We sent a sign-in link to <span className="text-[#D4AF37] font-semibold">{email}</span>.
+                      We sent a 6-digit verification code to <span className="text-[#D4AF37] font-semibold">{email}</span>.
                     </p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-900/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 text-left space-y-2">
-                    <div className="flex items-center gap-2 text-slate-200 font-semibold">
-                      <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-                      <span>How to log in:</span>
-                    </div>
-                    <ol className="list-decimal list-inside space-y-1.5 pl-1 text-slate-400">
-                      <li>Open your email inbox</li>
-                      <li>Click the <strong className="text-white">"Sign In"</strong> link inside the email</li>
-                      <li>You will be automatically verified and logged into your dashboard</li>
-                    </ol>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-2">
+                      Enter Verification Code (OTP)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="• • • • • •"
+                      className="w-full text-center text-2xl font-mono font-bold tracking-[0.4em] bg-slate-900/90 border border-[#3A435E] focus:border-[#D4AF37] rounded-xl py-3 text-white outline-none transition placeholder:text-slate-600 placeholder:tracking-widest"
+                      required
+                      autoFocus
+                    />
                   </div>
                 </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || otp.trim().length < 6}
+                  className="w-full py-3 bg-[#D4AF37] hover:bg-[#FCF6BA] disabled:opacity-50 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-[#D4AF37]/20"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Verifying Code...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Verify OTP</span>
+                      <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+                    </>
+                  )}
+                </button>
 
                 <div className="flex items-center justify-between text-xs px-1">
                   <button
@@ -1005,10 +1029,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                     className="text-slate-400 hover:text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-                    <span>{canResend ? 'Resend Magic Link' : `Resend in ${resendTimer}s`}</span>
+                    <span>{canResend ? 'Resend Code' : `Resend in ${resendTimer}s`}</span>
                   </button>
                 </div>
-              </div>
+              </form>
             )}
 
             {/* STEP 3: PROFILE SETUP */}
