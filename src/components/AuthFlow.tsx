@@ -438,8 +438,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         return { success: false };
       }
 
-      setInfoNotice('ম্যাজিক সাইন-ইন লিংক আপনার ইমেইলে পাঠানো হয়েছে। আপনার ইনবক্স চেক করুন।');
-      setToastMsg("Magic Link sent to your email");
+      setInfoNotice('ভেরিফিকেশন কোড আপনার ইমেইলে পাঠানো হয়েছে। অনুগ্রহ করে চেক করুন।');
+      setToastMsg("OTP code sent to your email");
       return { success: true };
     } catch (err: any) {
       console.error('Supabase OTP send exception:', err);
@@ -904,7 +904,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                     className="text-xs text-slate-400 hover:text-[#D4AF37] font-medium transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Or sign in with Magic Link (Passwordless)</span>
+                    <span>Or sign in with OTP (Passwordless)</span>
                   </button>
                 </div>
               </form>
@@ -945,11 +945,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending Magic Link...</span>
+                      <span>Sending Code...</span>
                     </>
                   ) : (
                     <>
-                      <span>Send Magic Link</span>
+                      <span>Send Verification Code</span>
                       <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                     </>
                   )}
