@@ -1,5 +1,5 @@
 import React from 'react';
-import { MerchantProfile, InvoiceRecord } from '../../types';
+import { MerchantProfile, SubscriptionRequest, InvoiceRecord } from '../../types';
 import { subscriptionPlans, initialInvoices } from '../../data/initialData';
 import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../../utils/subscriptionUtils';
 import { 
@@ -12,20 +12,30 @@ import {
   Calendar, 
   ShieldCheck, 
   ArrowUpRight,
+  AlertCircle,
   X 
 } from 'lucide-react';
 
 interface BillingViewProps {
   merchant: MerchantProfile;
+  pendingRequests?: SubscriptionRequest[];
   onOpenSubscriptionModal: () => void;
   onBack: () => void;
 }
 
 export const BillingView: React.FC<BillingViewProps> = ({
   merchant,
+  pendingRequests = [],
   onOpenSubscriptionModal,
   onBack,
 }) => {
+  const pendingRequest = pendingRequests?.find(
+    r => r.status === 'pending' && (
+      (r.email && merchant?.email && r.email.toLowerCase() === merchant.email.toLowerCase()) ||
+      (r.storeName && merchant?.storeName && r.storeName.toLowerCase() === merchant.storeName.toLowerCase())
+    )
+  );
+
   const isPaid = isPaidSubscriptionActive(merchant);
   const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
   const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
@@ -46,6 +56,41 @@ export const BillingView: React.FC<BillingViewProps> = ({
         </button>
       </div>
       <div className="space-y-6">
+        {/* Pending Request Alert Notice */}
+        {pendingRequest && (
+          <div className="bg-gradient-to-r from-[#2A2213] via-[#382F1D] to-[#2A2213] border-2 border-amber-500/50 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
+                <Clock className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="bg-amber-500/20 text-amber-300 text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-500/40 uppercase flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    Status: PENDING_APPROVAL
+                  </span>
+                  <span className="text-xs text-amber-200/80 font-mono">
+                    TrxID: {pendingRequest.transactionId}
+                  </span>
+                </div>
+
+                <h2 className="text-xl font-bold text-white mt-1">Payment Verification Pending Admin Approval</h2>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  Your payment request for <strong className="text-amber-300">{pendingRequest.planName}</strong> (৳{pendingRequest.amountBDT?.toLocaleString()} BDT via {pendingRequest.paymentMethod}) was submitted on {pendingRequest.requestedAt}. Once approved by the Super Admin, your plan and relative expiration date will automatically activate.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenSubscriptionModal}
+              className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
+            >
+              <Sparkles className="w-4 h-4 fill-slate-950" />
+              <span>View Submitted Request</span>
+            </button>
+          </div>
+        )}
+
         {/* SaaS Status Banner */}
         <div className="bg-gradient-to-r from-[#1D2230] via-[#242A3C] to-[#1D2230] border border-[#2E3548] p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
           <div className="flex items-start gap-4">

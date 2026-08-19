@@ -64,12 +64,23 @@ export const calculateSubscriptionExpiry = (
 
 /**
  * Calculates remaining days from an expiry date string (YYYY-MM-DD or ISO string)
+ * Implements Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
  */
 export const calculateRemainingDays = (expiryDateStr?: string): number => {
   if (!expiryDateStr) return 0;
-  const expiryTime = new Date(expiryDateStr).getTime();
-  if (isNaN(expiryTime)) return 0;
+  // If date-only string, append time to ensure end-of-day or UTC matching
+  const dateObj = expiryDateStr.includes('T') 
+    ? new Date(expiryDateStr) 
+    : new Date(`${expiryDateStr}T23:59:59Z`);
+  const expiryTime = dateObj.getTime();
+  if (isNaN(expiryTime)) {
+    // Fallback to standard parse
+    const fallbackTime = new Date(expiryDateStr).getTime();
+    if (isNaN(fallbackTime)) return 0;
+    return Math.max(0, Math.ceil((fallbackTime - Date.now()) / (1000 * 60 * 60 * 24)));
+  }
   const now = Date.now();
+  if (expiryTime <= now) return 0;
   return Math.max(0, Math.ceil((expiryTime - now) / (1000 * 60 * 60 * 24)));
 };
 

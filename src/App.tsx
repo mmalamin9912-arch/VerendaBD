@@ -1267,6 +1267,7 @@ export default function App() {
             orders={orders}
             products={products}
             merchants={allMerchants}
+            pendingRequests={pendingRequests}
             isDarkMode={isDarkMode}
             onToggleTheme={handleToggleTheme}
             onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
@@ -1398,6 +1399,7 @@ export default function App() {
             {activeTab === 'billing' && (
               <BillingView
                 merchant={merchant}
+                pendingRequests={pendingRequests}
                 onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
                 onBack={() => setActiveTab('settings')}
               />
@@ -1411,6 +1413,7 @@ export default function App() {
         isOpen={isSubscriptionModalOpen}
         onClose={() => setIsSubscriptionModalOpen(false)}
         merchant={merchant}
+        pendingRequests={pendingRequests}
         onConfirmSubscription={handleConfirmSubscription}
         adminPaymentConfig={adminPaymentConfig}
         initialPlanId={localStorage.getItem('zid_intended_plan') || undefined}

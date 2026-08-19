@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MerchantProfile } from '../types';
+import { MerchantProfile, SubscriptionRequest } from '../types';
 import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { 
   Sparkles, 
@@ -32,6 +32,7 @@ interface HeaderProps {
   orders?: any[];
   products?: any[];
   merchants?: MerchantProfile[];
+  pendingRequests?: SubscriptionRequest[];
   isDarkMode: boolean;
   onToggleTheme: () => void;
   onOpenSubscriptionModal: () => void;
@@ -48,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   orders = [],
   products = [],
   merchants = [],
+  pendingRequests = [],
   isDarkMode,
   onToggleTheme,
   onOpenSubscriptionModal,
@@ -108,6 +110,13 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   // Dynamic Subscription & Trial Calculations
+  const pendingRequest = pendingRequests?.find(
+    r => r.status === 'pending' && (
+      (r.email && merchant?.email && r.email.toLowerCase() === merchant.email.toLowerCase()) ||
+      (r.storeName && merchant?.storeName && r.storeName.toLowerCase() === merchant.storeName.toLowerCase())
+    )
+  );
+
   const isPaid = isPaidSubscriptionActive(merchant);
   const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
   
@@ -147,7 +156,52 @@ export const Header: React.FC<HeaderProps> = ({
       isDarkMode ? 'bg-[#1D212E] border-[#2E3548] text-slate-100' : 'bg-white border-slate-200 text-slate-900'
     }`}>
       {/* Subscription / Trial Status Banner */}
-      {isPaid ? (
+      {pendingRequest ? (
+        // PENDING APPROVAL BANNER
+        <div className="bg-gradient-to-r from-[#241E14] via-[#332A1C] to-[#241E14] border border-amber-500/40 rounded-xl p-3 shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Clock className="w-4 h-4 animate-pulse text-amber-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/40 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                    Status: PENDING_APPROVAL
+                  </span>
+                  <span className="text-xs text-amber-200/90 font-medium">
+                    • Requested: {pendingRequest.planName} (TrxID: {pendingRequest.transactionId})
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 font-medium mt-0.5">
+                  Subscription Status: <span className="text-amber-300 font-bold">Awaiting Super Admin Verification</span>. Your plan duration will activate immediately once approved.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => alert(`Pending Subscription Request:\n• Plan: ${pendingRequest.planName}\n• Amount: ৳${pendingRequest.amountBDT?.toLocaleString()} BDT\n• Payment: ${pendingRequest.paymentMethod}\n• TrxID: ${pendingRequest.transactionId}\n• Status: Pending Super Admin Approval\n\nOur administration team is verifying your bKash payment.`)}
+                className="p-2 text-slate-300 hover:text-amber-300 bg-[#282117] hover:bg-[#342C1E] rounded-xl border border-amber-500/30 transition cursor-pointer text-xs flex items-center gap-1.5 px-3 py-1.5"
+                title="View Verification Status"
+              >
+                <HelpCircle className="w-4 h-4 text-amber-400" />
+                <span className="text-amber-200 text-xs font-semibold">Verification In Progress</span>
+              </button>
+
+              <button
+                onClick={onOpenSubscriptionModal}
+                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-slate-950" />
+                <span>Subscription Info</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : isPaid ? (
         // ACTIVE PAID SUBSCRIPTION BANNER
         <div className="bg-gradient-to-r from-[#142328] via-[#1A2E35] to-[#142328] border border-[#00D68F]/30 rounded-xl p-3 shadow-md">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">

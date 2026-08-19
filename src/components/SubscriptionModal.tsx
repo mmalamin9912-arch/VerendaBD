@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MerchantProfile, SubscriptionPlan, AdminPaymentGatewayConfig } from '../types';
+import { MerchantProfile, SubscriptionPlan, SubscriptionRequest, AdminPaymentGatewayConfig } from '../types';
 import { subscriptionPlans } from '../data/initialData';
 import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { 
@@ -13,7 +13,8 @@ import {
   Copy, 
   ArrowRight, 
   Download, 
-  Clock,
+  Clock, 
+  AlertCircle,
   QrCode
 } from 'lucide-react';
 
@@ -21,6 +22,7 @@ interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   merchant: MerchantProfile;
+  pendingRequests?: SubscriptionRequest[];
   onConfirmSubscription: (planId: string, paymentMethod: string, txId: string) => void;
   adminPaymentConfig: AdminPaymentGatewayConfig;
   initialPlanId?: string;
@@ -30,6 +32,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   isOpen,
   onClose,
   merchant,
+  pendingRequests = [],
   onConfirmSubscription,
   adminPaymentConfig,
   initialPlanId,
@@ -125,12 +128,37 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <div className="space-y-4">
               {/* Header Info */}
               {(() => {
+                const pendingRequest = pendingRequests?.find(
+                  r => r.status === 'pending' && (
+                    (r.email && merchant?.email && r.email.toLowerCase() === merchant.email.toLowerCase()) ||
+                    (r.storeName && merchant?.storeName && r.storeName.toLowerCase() === merchant.storeName.toLowerCase())
+                  )
+                );
                 const isPaid = isPaidSubscriptionActive(merchant);
                 const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
                 const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
                 const trialDaysRemaining = trialEndsAtDate 
                   ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
                   : (merchant?.trialDaysRemaining ?? 0);
+
+                if (pendingRequest) {
+                  return (
+                    <div className="bg-[#2B2314] border border-amber-500/40 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+                        <div>
+                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                            Status: PENDING_APPROVAL
+                          </span>
+                          <p className="text-xs font-bold text-white">
+                            Requested {pendingRequest.planName} (TrxID: {pendingRequest.transactionId}) — Awaiting Admin Approval
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div className="bg-[#202533] border border-[#2E3548] rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -512,10 +540,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                     className="bg-gradient-to-r from-[#D4AF37] to-[#00B377] hover:from-[#FCF6BA] disabled:opacity-50 text-slate-950 font-bold px-6 py-3 rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-[#D4AF37]/20 cursor-pointer"
                   >
                     {isSubmitting ? (
-                      <span>Verifying TxID...</span>
+                      <span>Submitting Request...</span>
                     ) : (
                       <>
-                        <span>Submit & Activate {currentPlan.durationDays} Days</span>
+                        <span>Submit bKash Payment for Verification ({currentPlan.durationDays} Days)</span>
                         <Check className="w-4 h-4 stroke-[3]" />
                       </>
                     )}
@@ -528,14 +556,17 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {/* STEP 3: Invoice Preview & Confirmation */}
           {step === 'invoice' && (
             <div className="space-y-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/50 text-[#D4AF37] flex items-center justify-center mx-auto">
+              <div className="w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-400 flex items-center justify-center mx-auto">
                 <Check className="w-8 h-8 stroke-[3]" />
               </div>
 
               <div>
-                <h3 className="text-xl font-extrabold text-white">Subscription Renewal Successful!</h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  Your store <span className="text-[#D4AF37] font-bold">{merchant?.storeName || 'your store'}</span> has been upgraded to the {currentPlan.name}.
+                <span className="bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full border border-amber-500/40 uppercase inline-block mb-2">
+                  Status: PENDING_APPROVAL
+                </span>
+                <h3 className="text-xl font-extrabold text-white">Payment Request Submitted!</h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-lg mx-auto">
+                  Your payment verification request for <strong className="text-[#D4AF37]">{currentPlan.name}</strong> has been submitted. It is awaiting Super Admin verification. The plan duration and expiry date will be activated once approved.
                 </p>
               </div>
 
@@ -543,12 +574,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <div id="invoice-to-print" className="printable-invoice-modal bg-[#181B26] border border-[#2E3548] rounded-2xl p-6 text-left max-w-lg mx-auto space-y-4">
                 <div className="flex justify-between items-start border-b border-[#2E3548] pb-3">
                   <div>
-                    <span className="text-xs font-bold text-[#D4AF37] uppercase">ZID SAAS OFFICIAL INVOICE</span>
-                    <div className="text-sm font-bold text-white font-mono">INV-BD-2026-9081</div>
+                    <span className="text-xs font-bold text-[#D4AF37] uppercase">ZID SAAS PAYMENT RECEIPT</span>
+                    <div className="text-sm font-bold text-white font-mono">REQ-BD-{Date.now().toString().slice(-6)}</div>
                   </div>
                   <div className="text-right text-xs text-slate-400">
-                    <div>Date: 2026-07-26</div>
-                    <div className="text-[#D4AF37] font-bold">Status: PAID</div>
+                    <div>Date: {new Date().toISOString().split('T')[0]}</div>
+                    <div className="text-amber-400 font-bold">Status: PENDING APPROVAL</div>
                   </div>
                 </div>
 
@@ -558,7 +589,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                     <span className="font-semibold text-white">{merchant?.storeName || ''}</span>
                   </div>
                   <div className="flex justify-between text-slate-300">
-                    <span>Plan Subscribed:</span>
+                    <span>Requested Plan:</span>
                     <span className="font-semibold text-white">{currentPlan.name} ({currentPlan.durationDays} Days)</span>
                   </div>
                   <div className="flex justify-between text-slate-300">
@@ -572,7 +603,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 </div>
 
                 <div className="pt-3 border-t border-[#2E3548] flex justify-between items-center text-sm font-extrabold text-white">
-                  <span>Total Amount Paid:</span>
+                  <span>Amount Submitted:</span>
                   <span className="text-[#D4AF37]">৳{currentPlan.price.toLocaleString()} BDT</span>
                 </div>
               </div>
@@ -583,7 +614,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                   className="w-full sm:w-auto bg-[#282E3F] hover:bg-[#32394E] text-slate-200 font-semibold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 border border-[#3A435E] cursor-pointer"
                 >
                   <Download className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Download PDF Receipt</span>
+                  <span>Download Request Receipt</span>
                 </button>
 
                 <button

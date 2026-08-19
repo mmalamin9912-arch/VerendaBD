@@ -38,7 +38,6 @@ export const initialMerchant: MerchantProfile = {
   trialDaysRemaining: 30,
   trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   subscriptionPlan: 'free_trial',
-  subscriptionExpiry: '2026-08-30',
   isLocked: false,
   onboardingProgress: 0,
   logoUrl: '',

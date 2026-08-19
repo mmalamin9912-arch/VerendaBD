@@ -620,7 +620,10 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     onUpdatePendingRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'approved' } : r));
 
     // If it's the current merchant, update their merchant profile subscription with dynamic expiry and deactivated trial
-    if (req?.storeName && req.storeName === currentMerchant?.storeName) {
+    const isCurrentMatch = (req?.email && currentMerchant?.email && req.email.toLowerCase() === currentMerchant.email.toLowerCase()) ||
+      (req?.storeName && currentMerchant?.storeName && req.storeName.toLowerCase() === currentMerchant.storeName.toLowerCase());
+
+    if (isCurrentMatch) {
       onUpdateMerchant({
         ...currentMerchant,
         subscriptionPlan: req.planId as SubscriptionPlanId,
@@ -632,14 +635,21 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     }
 
     // Also update in allMerchants with dynamic expiry and deactivated trial
-    onUpdateAllMerchants(prev => prev.map(m => m?.storeName === req?.storeName ? {
-      ...m,
-      subscriptionPlan: req.planId as SubscriptionPlanId,
-      trialDaysRemaining: 0,
-      trialEndsAt: undefined,
-      subscriptionExpiry: expiryDate,
-      isLocked: false
-    } : m));
+    onUpdateAllMerchants(prev => prev.map(m => {
+      const match = (req?.email && m?.email && req.email.toLowerCase() === m.email.toLowerCase()) ||
+        (req?.storeName && m?.storeName && req.storeName.toLowerCase() === m.storeName.toLowerCase());
+      if (match) {
+        return {
+          ...m,
+          subscriptionPlan: req.planId as SubscriptionPlanId,
+          trialDaysRemaining: 0,
+          trialEndsAt: undefined,
+          subscriptionExpiry: expiryDate,
+          isLocked: false
+        };
+      }
+      return m;
+    }));
 
     setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved! Active plan: ${planName} (${durationDays} Days, valid until ${expiryDate}).`);
     setTimeout(() => setSaveSuccess(null), 3500);
