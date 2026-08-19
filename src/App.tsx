@@ -133,12 +133,15 @@ export default function App() {
     return initialMerchant;
   });
 
-  // Trial Logic
+  // Trial & Subscription Logic
+  const isPaidPlan = !!merchant?.subscriptionPlan && merchant.subscriptionPlan !== 'free_trial' && merchant.subscriptionPlan !== 'trial';
   const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
   const now = new Date();
-  const trialDaysRemaining = trialEndsAtDate ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) : 0;
-  const isTrialExpired = merchant?.subscriptionPlan === 'free_trial' && trialDaysRemaining <= 0;
-  const isTrialActive = merchant?.subscriptionPlan === 'free_trial' && trialDaysRemaining > 0;
+  const trialDaysRemaining = trialEndsAtDate 
+    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) 
+    : (merchant?.trialDaysRemaining ?? 0);
+  const isTrialExpired = !isPaidPlan && trialDaysRemaining <= 0;
+  const isTrialActive = !isPaidPlan && trialDaysRemaining > 0;
 
   const prevSlugRef = React.useRef<string>(merchant?.storeSlug || '');
 

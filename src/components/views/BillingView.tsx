@@ -1,6 +1,7 @@
 import React from 'react';
 import { MerchantProfile, InvoiceRecord } from '../../types';
 import { subscriptionPlans, initialInvoices } from '../../data/initialData';
+import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../../utils/subscriptionUtils';
 import { 
   TrendingUp, 
   Sparkles, 
@@ -25,6 +26,13 @@ export const BillingView: React.FC<BillingViewProps> = ({
   onOpenSubscriptionModal,
   onBack,
 }) => {
+  const isPaid = isPaidSubscriptionActive(merchant);
+  const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
+  const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
+  const trialDaysRemaining = trialEndsAtDate 
+    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : (merchant?.trialDaysRemaining ?? 0);
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
@@ -45,18 +53,29 @@ export const BillingView: React.FC<BillingViewProps> = ({
               <Clock className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="bg-[#00D68F]/20 text-[#00D68F] text-xs font-bold px-2.5 py-0.5 rounded-full border border-[#00D68F]/30 uppercase">
-                  {merchant?.subscriptionPlan === 'free_trial' ? '30-Day Free Trial' : 'Subscribed Merchant'}
+                  {isPaid ? getPlanDisplayName(merchant?.subscriptionPlan) : '30-Day Free Trial'}
                 </span>
                 <span className="text-xs text-slate-400 font-mono">
                   Store ID: {merchant?.storeSlug || 'store'}-bd
                 </span>
               </div>
 
-              <h1 className="text-xl font-bold text-white mt-1">SaaS Plan Growth & Subscription Status</h1>
+              <h1 className="text-xl font-bold text-white mt-1">
+                {isPaid ? 'Active Merchant Subscription' : 'SaaS Plan Growth & Subscription Status'}
+              </h1>
               <p className="text-xs text-slate-300 mt-0.5">
-                Your free trial has <strong className="text-[#00D68F]">{merchant?.trialDaysRemaining ?? 0} Days</strong> remaining. Pure SaaS Model — 0% order fees.
+                {isPaid ? (
+                  <>
+                    Your subscription has <strong className="text-[#00D68F]">{paidDaysRemaining} Days</strong> remaining
+                    {merchant?.subscriptionExpiry && ` (Valid until ${merchant.subscriptionExpiry})`}. Pure SaaS Model — 0% order fees.
+                  </>
+                ) : (
+                  <>
+                    Your free trial has <strong className="text-[#00D68F]">{trialDaysRemaining} Days</strong> remaining. Pure SaaS Model — 0% order fees.
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -66,7 +85,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
             className="bg-gradient-to-r from-[#00D68F] to-[#00B377] hover:from-[#00E699] text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-[#00D68F]/20 shrink-0"
           >
             <Sparkles className="w-4 h-4 fill-slate-950" />
-            <span>Renew / Upgrade Subscription (3/6/12 Months)</span>
+            <span>{isPaid ? 'Extend / Upgrade Subscription' : 'Renew / Upgrade Subscription (3/6/12 Months)'}</span>
           </button>
         </div>
 

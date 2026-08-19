@@ -60,6 +60,7 @@ import {
   Image
 } from 'lucide-react';
 import { MerchantProfile, SubscriptionRequest, AdminPaymentGatewayConfig, AdminCustomGateway, ThemePurchaseRequest, SubscriptionPlanId, PlatformSettings, PlatformAnnouncement, SubscriptionPlan, PlatformTheme, SupportTicket, TicketMessage, PlatformAddon, AuditLog, PlatformSecuritySettings, BroadcastMessage, PlatformAutomationSettings, AdminTeamMember, AdminRolePermission } from '../types';
+import { calculateSubscriptionExpiry, getPlanDurationInDays, calculateRemainingDays, getPlanDisplayName } from '../utils/subscriptionUtils';
 
 interface SuperAdminPortalViewProps {
   currentMerchant: MerchantProfile;
@@ -611,30 +612,37 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const req = pendingRequests.find(r => r.id === reqId);
     if (!req) return;
 
+    // Calculate dynamic expiration date based on requested plan duration (+30d, +90d, +180d, +365d)
+    const { expiryDate, durationDays } = calculateSubscriptionExpiry(req.planId);
+    const planName = getPlanDisplayName(req.planId);
+
     // Update request status
     onUpdatePendingRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'approved' } : r));
 
-    // If it's the current merchant, update their merchant profile subscription as well
+    // If it's the current merchant, update their merchant profile subscription with dynamic expiry and deactivated trial
     if (req?.storeName && req.storeName === currentMerchant?.storeName) {
       onUpdateMerchant({
         ...currentMerchant,
         subscriptionPlan: req.planId as SubscriptionPlanId,
-        trialDaysRemaining: 30,
-        subscriptionExpiry: '2027-08-01',
+        trialDaysRemaining: 0,
+        trialEndsAt: undefined,
+        subscriptionExpiry: expiryDate,
         isLocked: false
       });
     }
 
-    // Also update in allMerchants
+    // Also update in allMerchants with dynamic expiry and deactivated trial
     onUpdateAllMerchants(prev => prev.map(m => m?.storeName === req?.storeName ? {
       ...m,
       subscriptionPlan: req.planId as SubscriptionPlanId,
-      subscriptionExpiry: '2027-08-01',
+      trialDaysRemaining: 0,
+      trialEndsAt: undefined,
+      subscriptionExpiry: expiryDate,
       isLocked: false
     } : m));
 
-    setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved!`);
-    setTimeout(() => setSaveSuccess(null), 3000);
+    setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved! Active plan: ${planName} (${durationDays} Days, valid until ${expiryDate}).`);
+    setTimeout(() => setSaveSuccess(null), 3500);
   };
 
   const handleRejectRequest = (reqId: string) => {
@@ -773,18 +781,30 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const nextIndex = (currentIndex + 1) % plans.length;
     const nextPlan = plans[nextIndex];
 
+    const isNowTrial = nextPlan === 'free_trial';
+    const { expiryDate } = calculateSubscriptionExpiry(nextPlan);
+    const newExpiry = isNowTrial ? undefined : expiryDate;
+    const newTrialEndsAt = isNowTrial ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined;
+    const newTrialDaysRemaining = isNowTrial ? 30 : 0;
+
     onUpdateAllMerchants(prev => prev.map(x => x?.storeName === storeName ? {
       ...x,
-      subscriptionPlan: nextPlan
+      subscriptionPlan: nextPlan,
+      subscriptionExpiry: newExpiry,
+      trialEndsAt: newTrialEndsAt,
+      trialDaysRemaining: newTrialDaysRemaining
     } : x));
 
     if (storeName === currentMerchant?.storeName) {
       onUpdateMerchant({
         ...currentMerchant,
-        subscriptionPlan: nextPlan
+        subscriptionPlan: nextPlan,
+        subscriptionExpiry: newExpiry,
+        trialEndsAt: newTrialEndsAt,
+        trialDaysRemaining: newTrialDaysRemaining
       });
     }
-    alert(`Changed plan for "${storeName}" to ${nextPlan.replace('_', ' ')}`);
+    alert(`Changed plan for "${storeName}" to ${getPlanDisplayName(nextPlan)}`);
   };
 
   const filteredMerchants = allMerchants.filter(m => {
@@ -1835,25 +1855,41 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
                         <div className="text-[11px] text-slate-400">{m?.phone || ''}</div>
                       </td>
                       <td className="p-3.5">
-                        <div className="font-bold text-white uppercase">{m?.subscriptionPlan || 'Basic'}</div>
-                        <div className="text-[11px] text-slate-400">Exp: {m?.subscriptionExpiry || ''}</div>
+                        <div className="font-bold text-white uppercase">{getPlanDisplayName(m?.subscriptionPlan)}</div>
+                        {m?.subscriptionExpiry && m.subscriptionPlan !== 'free_trial' && m.subscriptionPlan !== 'trial' ? (
+                          <div className="text-[11px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
+                            <span>Exp: {m.subscriptionExpiry}</span>
+                            <span className="text-slate-400 font-sans">({calculateRemainingDays(m.subscriptionExpiry)}d left)</span>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-400">
+                            {m?.subscriptionExpiry ? `Exp: ${m.subscriptionExpiry}` : '30-Day Free Trial'}
+                          </div>
+                        )}
                       </td>
                       <td className="p-3.5">
-                        {m.subscriptionPlan === 'trial' ? (
+                        {m.subscriptionPlan === 'trial' || m.subscriptionPlan === 'free_trial' ? (
                           <span className={`${
                             (() => {
-                              const endsAt = m.trialEndsAt ? new Date(m.trialEndsAt) : new Date();
-                              const rem = Math.max(0, Math.ceil((endsAt.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-                              return rem <= 5 ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400';
+                              const endsAt = m.trialEndsAt ? new Date(m.trialEndsAt) : null;
+                              const rem = endsAt 
+                                ? Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                                : (m.trialDaysRemaining ?? 0);
+                              return rem <= 5 ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
                             })()
-                          } px-2.5 py-1 rounded-full font-bold`}>
+                          } px-2.5 py-1 rounded-full font-bold text-[11px]`}>
                             {(() => {
-                              const endsAt = m.trialEndsAt ? new Date(m.trialEndsAt) : new Date();
-                              return Math.max(0, Math.ceil((endsAt.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+                              const endsAt = m.trialEndsAt ? new Date(m.trialEndsAt) : null;
+                              return endsAt 
+                                ? Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                                : (m.trialDaysRemaining ?? 0);
                             })()} Days Left
                           </span>
                         ) : (
-                          <span className="text-slate-500 italic">Subscribed</span>
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full font-bold text-[11px] inline-flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Active Subscribed
+                          </span>
                         )}
                       </td>
                       <td className="p-3.5">

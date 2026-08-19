@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MerchantProfile, SubscriptionPlan, AdminPaymentGatewayConfig } from '../types';
 import { subscriptionPlans } from '../data/initialData';
+import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { 
   X, 
   Check, 
@@ -123,19 +124,39 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           {step === 'select' && (
             <div className="space-y-4">
               {/* Header Info */}
-              <div className="bg-[#202533] border border-[#2E3548] rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                  <div>
-                    <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">
-                      Trial Status
-                    </span>
-                    <p className="text-xs font-bold text-white">
-                      {merchant?.trialDaysRemaining ?? 0} Days Left
-                    </p>
+              {(() => {
+                const isPaid = isPaidSubscriptionActive(merchant);
+                const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
+                const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
+                const trialDaysRemaining = trialEndsAtDate 
+                  ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+                  : (merchant?.trialDaysRemaining ?? 0);
+
+                return (
+                  <div className="bg-[#202533] border border-[#2E3548] rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className={`w-4 h-4 ${isPaid ? 'text-[#00D68F]' : 'text-amber-400'} shrink-0`} />
+                      <div>
+                        <span className={`text-[10px] font-semibold uppercase tracking-wider ${isPaid ? 'text-[#00D68F]' : 'text-amber-400'}`}>
+                          {isPaid ? 'Current Active Subscription' : 'Trial Status'}
+                        </span>
+                        <p className="text-xs font-bold text-white">
+                          {isPaid ? (
+                            <>
+                              {getPlanDisplayName(merchant?.subscriptionPlan)} — <span className="text-[#00D68F]">{paidDaysRemaining} Days Left</span>
+                              {merchant?.subscriptionExpiry && (
+                                <span className="text-slate-400 font-normal text-[11px] ml-1.5">(Exp: {merchant.subscriptionExpiry})</span>
+                              )}
+                            </>
+                          ) : (
+                            <>{trialDaysRemaining} Days Left (Free Trial)</>
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Plans Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MerchantProfile } from '../types';
+import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { 
   Sparkles, 
   ExternalLink, 
@@ -106,9 +107,16 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Dynamic Subscription & Trial Calculations
+  const isPaid = isPaidSubscriptionActive(merchant);
+  const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
+  
+  const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
+  const trialDaysRemaining = trialEndsAtDate 
+    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : (merchant?.trialDaysRemaining ?? 30);
   const trialDaysTotal = merchant?.trialDaysTotal ?? 30;
-  const trialDaysRemaining = merchant?.trialDaysRemaining ?? 30;
-  const trialPercentage = Math.round(((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100);
+  const trialPercentage = Math.min(100, Math.max(0, Math.round(((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100)));
 
   const notificationsList = [
     { id: 1, title: 'New bKash Order #ZID-9082', desc: 'Customer Paid ৳3,400 via bKash TrxID #8X92K1', time: '5m ago', unread: true },
@@ -138,62 +146,112 @@ export const Header: React.FC<HeaderProps> = ({
     <header className={`border-b sticky top-0 z-30 px-4 lg:px-6 py-3 space-y-3 transition-colors ${
       isDarkMode ? 'bg-[#1D212E] border-[#2E3548] text-slate-100' : 'bg-white border-slate-200 text-slate-900'
     }`}>
-      {/* Free Trial Banner / Progress Bar */}
-      <div className="bg-gradient-to-r from-[#202636] via-[#2A3146] to-[#202636] border border-[#3A435E] rounded-xl p-3 shadow-md">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#E6C587] shrink-0">
-              <Clock className="w-4 h-4 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#E6C587] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/20">
-                  Zid Merchant Portal
-                </span>
-                <span className="text-xs text-slate-400 font-medium hidden sm:inline">
-                  • 0% Platform Order Fees
-                </span>
+      {/* Subscription / Trial Status Banner */}
+      {isPaid ? (
+        // ACTIVE PAID SUBSCRIPTION BANNER
+        <div className="bg-gradient-to-r from-[#142328] via-[#1A2E35] to-[#142328] border border-[#00D68F]/30 rounded-xl p-3 shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-[#00D68F]/20 border border-[#00D68F]/40 flex items-center justify-center text-[#00D68F] shrink-0">
+                <Sparkles className="w-4 h-4 animate-pulse" />
               </div>
-              <p className="text-xs text-slate-200 font-medium mt-0.5">
-                Trial Status: <span className="text-[#E6C587] font-bold">{trialDaysRemaining} Days Remaining</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Trial Bar Visual */}
-            <div className="hidden xl:flex flex-col w-40">
-              <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                <span>Trial Progress</span>
-                <span className="font-semibold text-slate-200">{trialDaysTotal - trialDaysRemaining}/{trialDaysTotal} d</span>
-              </div>
-              <div className="w-full h-1.5 bg-[#161923] rounded-full overflow-hidden border border-[#2E3548]">
-                <div 
-                  className="h-full bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] rounded-full transition-all duration-500" 
-                  style={{ width: `${trialPercentage}%` }}
-                />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#00D68F] bg-[#00D68F]/10 px-2 py-0.5 rounded-full border border-[#00D68F]/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#00D68F] animate-pulse"></span>
+                    Active Plan: {getPlanDisplayName(merchant?.subscriptionPlan)}
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                    • Pure SaaS — 0% Order Fees
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 font-medium mt-0.5">
+                  Subscription Status: <span className="text-[#00D68F] font-bold">{paidDaysRemaining} Days Remaining</span>
+                  {merchant?.subscriptionExpiry && (
+                    <span className="text-slate-400 text-[11px] ml-1.5">(Valid until {merchant.subscriptionExpiry})</span>
+                  )}
+                </p>
               </div>
             </div>
 
-            <button
-              onClick={() => alert('Support Center: Opening Zid Merchant Help Desk...')}
-              className="p-2 text-slate-300 hover:text-[#E6C587] bg-[#252B3B] hover:bg-[#2E3548] rounded-xl border border-[#3A435E] transition cursor-pointer"
-              title="Help & Support"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => alert('Support Center: Opening Zid Merchant Help Desk...')}
+                className="p-2 text-slate-300 hover:text-[#00D68F] bg-[#202E34] hover:bg-[#283C44] rounded-xl border border-[#00D68F]/20 transition cursor-pointer"
+                title="Help & Support"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
 
-            <button
-              onClick={onOpenSubscriptionModal}
-              className="bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] hover:from-[#FCF6BA] hover:to-[#BF953F] text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#D4AF37]/20 cursor-pointer shrink-0"
-            >
-              <Sparkles className="w-3.5 h-3.5 fill-slate-950" />
-              <span>Upgrade / Renew</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+              <button
+                onClick={onOpenSubscriptionModal}
+                className="bg-gradient-to-r from-[#00D68F] to-[#00B377] hover:from-[#00E699] text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#00D68F]/20 cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-slate-950" />
+                <span>Extend / Upgrade Plan</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        // FREE TRIAL BANNER
+        <div className="bg-gradient-to-r from-[#202636] via-[#2A3146] to-[#202636] border border-[#3A435E] rounded-xl p-3 shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#E6C587] shrink-0">
+                <Clock className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#E6C587] bg-[#D4AF37]/10 px-2 py-0.5 rounded-full border border-[#D4AF37]/20">
+                    Zid Merchant Portal • Free Trial
+                  </span>
+                  <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                    • 0% Platform Order Fees
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 font-medium mt-0.5">
+                  Trial Status: <span className="text-[#E6C587] font-bold">{trialDaysRemaining} Days Remaining</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Trial Bar Visual */}
+              <div className="hidden xl:flex flex-col w-40">
+                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                  <span>Trial Progress</span>
+                  <span className="font-semibold text-slate-200">{trialDaysTotal - trialDaysRemaining}/{trialDaysTotal} d</span>
+                </div>
+                <div className="w-full h-1.5 bg-[#161923] rounded-full overflow-hidden border border-[#2E3548]">
+                  <div 
+                    className="h-full bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] rounded-full transition-all duration-500" 
+                    style={{ width: `${trialPercentage}%` }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={() => alert('Support Center: Opening Zid Merchant Help Desk...')}
+                className="p-2 text-slate-300 hover:text-[#E6C587] bg-[#252B3B] hover:bg-[#2E3548] rounded-xl border border-[#3A435E] transition cursor-pointer"
+                title="Help & Support"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={onOpenSubscriptionModal}
+                className="bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] hover:from-[#FCF6BA] hover:to-[#BF953F] text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-md shadow-[#D4AF37]/20 cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-slate-950" />
+                <span>Upgrade / Renew</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Top Header Controls with Search, Zid AI, Notifications, and Quick Add */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
