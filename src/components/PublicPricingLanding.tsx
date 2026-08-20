@@ -16,12 +16,12 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
   onGoToDashboard
 }) => {
   return (
-    <div className="min-h-screen bg-[#12151F] text-slate-100 font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col">
+    <div id="pricing-landing-container" className="min-h-screen bg-slate-950 text-white font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col overflow-hidden">
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-[#2E3548] bg-[#181B26]">
+      <nav id="pricing-navbar" className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] via-[#FCF6BA] to-[#B38728] shadow-md shadow-[#D4AF37]/20">
-            <div className="w-full h-full rounded-[10px] bg-[#141721] flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728]">
+            <div className="w-full h-full rounded-[10px] bg-slate-950 flex items-center justify-center">
               <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M10 12 H30 L16 28 H30"
@@ -45,20 +45,26 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
         <div className="flex items-center gap-4 text-sm font-semibold">
           {isAuthenticated && onGoToDashboard ? (
             <button 
+              id="pricing-dashboard-btn"
               onClick={onGoToDashboard} 
-              className="bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 px-4 py-2 rounded-xl shadow-lg shadow-[#D4AF37]/20 transition flex items-center gap-2 font-bold cursor-pointer"
+              className="bg-[#D4AF37] hover:bg-[#e4be42] text-slate-950 px-4 py-2 rounded-xl transition flex items-center gap-2 font-bold cursor-pointer"
             >
               <span>Go to Dashboard</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
             <>
-              <button onClick={onLoginClick} className="text-slate-300 hover:text-white transition cursor-pointer">
+              <button 
+                id="pricing-signin-btn"
+                onClick={onLoginClick} 
+                className="text-slate-300 hover:text-white transition cursor-pointer"
+              >
                 Sign In
               </button>
               <button 
+                id="pricing-start-trial-btn"
                 onClick={() => onSelectPlan('free_trial')}
-                className="bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 px-4 py-2 rounded-xl shadow-lg shadow-[#D4AF37]/20 transition flex items-center gap-2 cursor-pointer font-bold"
+                className="bg-[#D4AF37] hover:bg-[#e4be42] text-slate-950 px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer font-bold"
               >
                 <span>Start Free Trial</span>
                 <ArrowRight className="w-4 h-4" />
@@ -69,24 +75,24 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
       </nav>
 
       {/* Hero Section */}
-      <div className="flex-1 max-w-7xl mx-auto px-6 py-20 w-full flex flex-col items-center text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-6">
+      <div id="pricing-hero" className="flex-1 max-w-7xl mx-auto px-6 py-16 w-full flex flex-col items-center text-center">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-6">
           <Sparkles className="w-4 h-4" />
           <span>Launch Your Dream Store Today</span>
         </div>
-        <h1 className="text-4xl md:text-6xl font-black text-white leading-tight mb-6">
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight mb-6 max-w-4xl">
           Everything You Need to <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#FCF6BA]">Sell Online in Bangladesh</span>
+          <span className="text-[#D4AF37]">Sell Online in Bangladesh</span>
         </h1>
-        <p className="text-lg text-slate-400 max-w-2xl mb-12">
+        <p className="text-base md:text-lg text-slate-400 max-w-2xl mb-12">
           Create your professional online store in minutes. 0% Commission on sales. Local payment gateways built right in.
         </p>
 
         {/* Pricing Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full">
+        <div id="pricing-plans-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full">
           
           {/* Free Trial Card */}
-          <div className="bg-[#181B26] border border-[#2E3548] rounded-3xl p-6 flex flex-col text-left hover:border-[#D4AF37]/50 transition-colors relative">
+          <div id="plan-card-free-trial" className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col text-left hover:border-slate-700 transition-colors relative">
             <h3 className="text-xl font-bold text-white mb-2">Free Trial</h3>
             <p className="text-sm text-slate-400 mb-4 h-10">Experience the full platform risk-free for 30 days.</p>
             <div className="mb-6">
@@ -94,8 +100,9 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
               <span className="text-slate-500"> / 30 Days</span>
             </div>
             <button 
+              id="plan-btn-free-trial"
               onClick={() => onSelectPlan('free_trial')}
-              className="w-full bg-[#202533] hover:bg-[#282E3F] border border-[#3A435E] text-white font-bold py-3 rounded-xl mb-6 transition"
+              className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold py-3 rounded-xl mb-6 transition cursor-pointer"
             >
               Start Free Trial
             </button>
@@ -113,14 +120,15 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
           {subscriptionPlans.filter(p => p.isActive).map((plan) => (
             <div 
               key={plan.id} 
-              className={`bg-[#181B26] border rounded-3xl p-6 flex flex-col text-left transition-colors relative ${
+              id={`plan-card-${plan.id}`}
+              className={`bg-slate-900 border rounded-2xl p-6 flex flex-col text-left transition-colors relative ${
                 plan.isPopular 
-                  ? 'border-[#D4AF37] shadow-xl shadow-[#D4AF37]/10' 
-                  : 'border-[#2E3548] hover:border-[#D4AF37]/50'
+                  ? 'border-[#D4AF37]' 
+                  : 'border-slate-800 hover:border-slate-700'
               }`}
             >
               {plan.isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#D4AF37] text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#D4AF37] text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full whitespace-nowrap">
                   Most Popular
                 </div>
               )}
@@ -133,11 +141,12 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
                 <span className="text-slate-500"> / {plan.durationDays} Days</span>
               </div>
               <button 
+                id={`plan-btn-${plan.id}`}
                 onClick={() => onSelectPlan(plan.id)}
-                className={`w-full font-bold py-3 rounded-xl mb-6 transition ${
+                className={`w-full font-bold py-3 rounded-xl mb-6 transition cursor-pointer ${
                   plan.isPopular
-                    ? 'bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 shadow-lg shadow-[#D4AF37]/20'
-                    : 'bg-[#202533] hover:bg-[#282E3F] border border-[#3A435E] text-white'
+                    ? 'bg-[#D4AF37] hover:bg-[#e4be42] text-slate-950'
+                    : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white'
                 }`}
               >
                 Subscribe Now
@@ -158,3 +167,4 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
     </div>
   );
 };
+
