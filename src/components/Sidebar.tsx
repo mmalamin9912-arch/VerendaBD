@@ -59,6 +59,7 @@ interface SidebarProps {
   ordersBadgeCount?: number;
   onOpenAdminLogin?: () => void;
   isDarkMode?: boolean;
+  platformSettings?: any;
 }
 
 interface NavItem {
@@ -85,6 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ordersBadgeCount = 4,
   onOpenAdminLogin,
   isDarkMode = true,
+  platformSettings,
 }) => {
   const [isProductsExpanded, setIsProductsExpanded] = useState(true);
   const [isCustomersExpanded, setIsCustomersExpanded] = useState(true);
