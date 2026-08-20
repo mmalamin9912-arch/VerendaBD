@@ -522,13 +522,17 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
   const handleCreateMerchant = (e: React.FormEvent) => {
     e.preventDefault();
     const slug = (newMerchantForm?.storeName || '').toLowerCase().replace(/\s+/g, '-');
+    const isPaid = newMerchantForm.plan !== 'free_trial';
+    const dynamicExpiry = new Date(Date.now() + (newMerchantForm.expiryDays || getPlanDurationInDays(newMerchantForm.plan)) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
     const newMerchant: MerchantProfile = {
       storeName: newMerchantForm?.storeName || 'New Store',
       storeSlug: slug || 'new-store',
       email: newMerchantForm.email,
       subscriptionPlan: newMerchantForm.plan,
-      trialEndsAt: new Date(Date.now() + newMerchantForm.expiryDays * 24 * 60 * 60 * 1000).toISOString(),
-      trialDaysRemaining: newMerchantForm.expiryDays,
+      subscriptionExpiry: isPaid ? dynamicExpiry : undefined,
+      trialEndsAt: isPaid ? undefined : new Date(Date.now() + newMerchantForm.expiryDays * 24 * 60 * 60 * 1000).toISOString(),
+      trialDaysRemaining: isPaid ? 0 : newMerchantForm.expiryDays,
       trialDaysTotal: newMerchantForm.expiryDays,
       isLocked: false,
       logoUrl: '',
