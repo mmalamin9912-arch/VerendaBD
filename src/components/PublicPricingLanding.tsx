@@ -1,7 +1,6 @@
 import React from 'react';
-import { ShieldCheck, CheckCircle2, ArrowRight, Sparkles, Building2, Smartphone, Zap } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
 import { subscriptionPlans } from '../data/initialData';
-import { BrandLogo } from './BrandLogo';
 
 interface PublicPricingLandingProps {
   onSelectPlan: (planId: string) => void;
@@ -20,7 +19,29 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
     <div className="min-h-screen bg-[#12151F] text-slate-100 font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col">
       {/* Navbar */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-[#2E3548] bg-[#181B26]">
-        <BrandLogo siteTitle="ZID SAAS BD" showText={true} size="md" isDarkMode={true} />
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] via-[#FCF6BA] to-[#B38728] shadow-md shadow-[#D4AF37]/20">
+            <div className="w-full h-full rounded-[10px] bg-[#141721] flex items-center justify-center">
+              <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M10 12 H30 L16 28 H30"
+                  stroke="#D4AF37"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <circle cx="30" cy="12" r="2" fill="#FCF6BA" />
+                <circle cx="10" cy="28" r="2" fill="#BF953F" />
+              </svg>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-black text-white tracking-tight text-base">ZID</span>
+            <span className="font-extrabold text-[#E6C587] uppercase text-xs px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/25">
+              SAAS BD
+            </span>
+          </div>
+        </div>
         <div className="flex items-center gap-4 text-sm font-semibold">
           {isAuthenticated && onGoToDashboard ? (
             <button 
