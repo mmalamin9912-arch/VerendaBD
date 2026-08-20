@@ -616,8 +616,8 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const req = pendingRequests.find(r => r.id === reqId);
     if (!req) return;
 
-    // Calculate dynamic expiration date based on requested plan duration (+30d, +90d, +180d, +365d)
-    const { expiryDate, durationDays } = calculateSubscriptionExpiry(req.planId);
+    // Calculate dynamic expiration date starting from TODAY based ONLY on the purchased plan duration (no leftover trial days added)
+    const { expiryDate, durationDays } = calculateSubscriptionExpiry(req.planId, new Date());
     const planName = getPlanDisplayName(req.planId);
 
     // Update request status
@@ -629,7 +629,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       console.error(e);
     }
 
-    // Update allMerchants list
+    // Update allMerchants list with purchased plan validity starting today, deactivating free trial
     const updatedMerchants = allMerchants.map(m => {
       const match = (req?.email && m?.email && req.email.toLowerCase() === m.email.toLowerCase()) ||
         (req?.storeName && m?.storeName && req.storeName.toLowerCase() === m.storeName.toLowerCase());
@@ -711,8 +711,8 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       }
     }
 
-    setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved! Active plan: ${planName} (${durationDays} Days, valid until ${expiryDate}).`);
-    setTimeout(() => setSaveSuccess(null), 3500);
+    setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved! Active plan: ${planName} (${durationDays} Days from today, valid until ${expiryDate}). Remaining free trial days cleared.`);
+    setTimeout(() => setSaveSuccess(null), 4000);
   };
 
   const handleRejectRequest = (reqId: string) => {
@@ -4358,6 +4358,24 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {selectedApprovalRequest.type === 'subscription' && (
+                <div className="bg-[#12151F] border border-[#2E3548] rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-bold">Purchased Plan:</span>
+                    <span className="text-amber-400 font-black">{getPlanDisplayName(selectedApprovalRequest.planId)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-bold">Validity from Today:</span>
+                    <span className="text-emerald-400 font-black">
+                      {getPlanDurationInDays(selectedApprovalRequest.planId)} Days (Valid until {calculateSubscriptionExpiry(selectedApprovalRequest.planId, new Date()).expiryDate})
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400/90 pt-1 border-t border-[#2E3548] leading-relaxed">
+                    💡 <strong className="text-slate-300">Policy:</strong> Upon approval, validity starts strictly today for {getPlanDurationInDays(selectedApprovalRequest.planId)} days. Remaining free trial days are cleared and not added.
+                  </div>
+                </div>
+              )}
 
               <div className="bg-[#202533] border border-[#2E3548] rounded-2xl p-5 shadow-inner">
                 <div className="flex items-center justify-between mb-4">
