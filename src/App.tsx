@@ -1225,6 +1225,8 @@ export default function App() {
     return (
       <PublicPricingLanding
         isAuthenticated={isAuthenticated}
+        plans={platformPlans}
+        platformSettings={platformSettings}
         onGoToDashboard={() => {
           setShowLanding(false);
           setActiveTab('dashboard');
