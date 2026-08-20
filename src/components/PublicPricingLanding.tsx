@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShieldCheck, CheckCircle2, ArrowRight, Sparkles, Building2, Smartphone, Zap } from 'lucide-react';
 import { subscriptionPlans } from '../data/initialData';
+import { BrandLogo } from './BrandLogo';
 
 interface PublicPricingLandingProps {
   onSelectPlan: (planId: string) => void;
@@ -19,12 +20,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
     <div className="min-h-screen bg-[#12151F] text-slate-100 font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col">
       {/* Navbar */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-[#2E3548] bg-[#181B26]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37]">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <span className="font-black text-lg text-white tracking-tight">Zid SAAS BD</span>
-        </div>
+        <BrandLogo siteTitle="ZID SAAS BD" showText={true} size="md" isDarkMode={true} />
         <div className="flex items-center gap-4 text-sm font-semibold">
           {isAuthenticated && onGoToDashboard ? (
             <button 

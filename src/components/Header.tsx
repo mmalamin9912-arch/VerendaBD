@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Trash2
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
   merchant: MerchantProfile;
@@ -33,6 +34,7 @@ interface HeaderProps {
   products?: any[];
   merchants?: MerchantProfile[];
   pendingRequests?: SubscriptionRequest[];
+  platformSettings?: any;
   isDarkMode: boolean;
   onToggleTheme: () => void;
   onOpenSubscriptionModal: () => void;
@@ -50,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   products = [],
   merchants = [],
   pendingRequests = [],
+  platformSettings,
   isDarkMode,
   onToggleTheme,
   onOpenSubscriptionModal,
@@ -322,13 +325,28 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#BF953F] via-[#FCF6BA] to-[#B38728] text-slate-950 font-black text-sm flex items-center justify-center shadow-md">
-              Z
-            </div>
+            <BrandLogo
+              logoUrl={platformSettings?.logoUrl}
+              siteTitle={platformSettings?.siteTitle || 'ZID SAAS'}
+              size="sm"
+              showText={false}
+              isDarkMode={isDarkMode}
+            />
             <div className="hidden sm:block">
-              <span className="text-sm font-extrabold text-white tracking-wide">
-                ZID <span className="text-[#E6C587] text-[10px] uppercase px-1 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20">SAAS</span>
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-sm font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-wide`}>
+                  {platformSettings?.siteTitle ? (
+                    platformSettings.siteTitle.split(' ')[0]
+                  ) : (
+                    'ZID'
+                  )}{' '}
+                  <span className="text-[#E6C587] text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20 shadow-xs">
+                    {platformSettings?.siteTitle && platformSettings.siteTitle.split(' ').length > 1
+                      ? platformSettings.siteTitle.split(' ').slice(1).join(' ')
+                      : 'SAAS'}
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
 
