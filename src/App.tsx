@@ -85,6 +85,10 @@ export default function App() {
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
+      const path = window.location.pathname;
+      if (path === '/' || path === '' || path === '/pricing' || path === '/landing') {
+        return false;
+      }
       const savedSession = localStorage.getItem('zid_auth_session');
       return !!savedSession;
     } catch (e) {
@@ -93,7 +97,14 @@ export default function App() {
   });
 
   // App Master States
-  const [showLanding, setShowLanding] = useState<boolean>(!isAuthenticated);
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    const path = window.location.pathname;
+    if (path === '/' || path === '' || path === '/pricing' || path === '/landing') {
+      return true;
+    }
+    const savedSession = localStorage.getItem('zid_auth_session');
+    return !savedSession;
+  });
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [preAuthCheckoutPlan, setPreAuthCheckoutPlan] = useState<string | null>(null);
 
@@ -108,7 +119,7 @@ export default function App() {
   }, []);
 
   React.useEffect(() => {
-    // Auth State Detection on Load & Automatic Dashboard Redirect
+    // Auth State Detection on Load & Strict Root Landing Page Routing
     const checkAuthAndRoute = () => {
       const path = window.location.pathname;
       if (path === '/admin' || path === '/super-admin' || path === '/admin-login' || path === '/super-admin-gateway') {
@@ -119,21 +130,37 @@ export default function App() {
         return;
       }
 
+      if (path.startsWith('/store/')) {
+        return;
+      }
+
       const session = localStorage.getItem('zid_auth_session');
-      if (session) {
-        setIsAuthenticated(true);
-        setShowLanding(false);
-        if (window.location.pathname === '/' || window.location.pathname === '/pricing') {
-          window.history.replaceState({}, '', '/dashboard');
-          setCurrentPath('/dashboard');
+
+      // Root path (/) must show the Landing Page first.
+      // Do NOT automatically redirect unauthenticated users or fresh visitors directly to /dashboard.
+      if (path === '/' || path === '' || path === '/pricing' || path === '/landing') {
+        setShowLanding(true);
+        if (!session) {
+          setIsAuthenticated(false);
         }
-      } else {
-        setIsAuthenticated(false);
-        if (window.location.pathname === '/dashboard') {
+      } else if (path === '/dashboard') {
+        if (session) {
+          setIsAuthenticated(true);
+          setShowLanding(false);
+          setActiveTab('dashboard');
+        } else {
+          // Unauthenticated user trying to access /dashboard directly
+          setIsAuthenticated(false);
+          setShowLanding(true);
           window.history.replaceState({}, '', '/');
           setCurrentPath('/');
-          setShowLanding(true);
         }
+      } else if (path === '/register' || path === '/signup') {
+        setShowLanding(false);
+        setAuthMode('signup');
+      } else if (path === '/login' || path === '/signin') {
+        setShowLanding(false);
+        setAuthMode('login');
       }
     };
     checkAuthAndRoute();
@@ -916,8 +943,9 @@ export default function App() {
     setIsAuthenticated(true);
     setShowLanding(false);
     
-    // Automatic Dashboard Redirect
+    // Explicit Dashboard Navigation
     window.history.pushState({}, '', '/dashboard');
+    setCurrentPath('/dashboard');
     setActiveTab('dashboard');
 
     const intendedPlan = localStorage.getItem('zid_intended_plan');
@@ -962,6 +990,7 @@ export default function App() {
     setIsAuthenticated(false);
     setShowLanding(true);
     window.history.pushState({}, '', '/');
+    setCurrentPath('/');
   };
 
   const handleToggleCurrency = () => {
@@ -1186,28 +1215,35 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated) {
-    if (showLanding) {
-      return (
-        <PublicPricingLanding
-          onSelectPlan={(planId) => {
-            if (planId === 'free_trial') {
-              localStorage.setItem('zid_intended_plan', planId);
-              setAuthMode('signup');
-              setShowLanding(false);
-            } else {
-              setPreAuthCheckoutPlan(planId);
-              setShowLanding(false);
-            }
-          }}
-          onLoginClick={() => {
-            setAuthMode('login');
+  if (showLanding) {
+    return (
+      <PublicPricingLanding
+        isAuthenticated={isAuthenticated}
+        onGoToDashboard={() => {
+          setShowLanding(false);
+          setActiveTab('dashboard');
+          window.history.pushState({}, '', '/dashboard');
+          setCurrentPath('/dashboard');
+        }}
+        onSelectPlan={(planId) => {
+          if (planId === 'free_trial') {
+            localStorage.setItem('zid_intended_plan', planId);
+            setAuthMode('signup');
             setShowLanding(false);
-          }}
-        />
-      );
-    }
+          } else {
+            setPreAuthCheckoutPlan(planId);
+            setShowLanding(false);
+          }
+        }}
+        onLoginClick={() => {
+          setAuthMode('login');
+          setShowLanding(false);
+        }}
+      />
+    );
+  }
 
+  if (!isAuthenticated) {
     if (preAuthCheckoutPlan) {
       return (
         <PublicCheckout

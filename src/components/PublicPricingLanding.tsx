@@ -5,9 +5,16 @@ import { subscriptionPlans } from '../data/initialData';
 interface PublicPricingLandingProps {
   onSelectPlan: (planId: string) => void;
   onLoginClick: () => void;
+  isAuthenticated?: boolean;
+  onGoToDashboard?: () => void;
 }
 
-export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({ onSelectPlan, onLoginClick }) => {
+export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({ 
+  onSelectPlan, 
+  onLoginClick,
+  isAuthenticated,
+  onGoToDashboard
+}) => {
   return (
     <div className="min-h-screen bg-[#12151F] text-slate-100 font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col">
       {/* Navbar */}
@@ -19,16 +26,28 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({ onSe
           <span className="font-black text-lg text-white tracking-tight">Zid SAAS BD</span>
         </div>
         <div className="flex items-center gap-4 text-sm font-semibold">
-          <button onClick={onLoginClick} className="text-slate-300 hover:text-white transition">
-            Sign In
-          </button>
-          <button 
-            onClick={() => onSelectPlan('free_trial')}
-            className="bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 px-4 py-2 rounded-xl shadow-lg shadow-[#D4AF37]/20 transition flex items-center gap-2"
-          >
-            <span>Start Free Trial</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {isAuthenticated && onGoToDashboard ? (
+            <button 
+              onClick={onGoToDashboard} 
+              className="bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 px-4 py-2 rounded-xl shadow-lg shadow-[#D4AF37]/20 transition flex items-center gap-2 font-bold cursor-pointer"
+            >
+              <span>Go to Dashboard</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <>
+              <button onClick={onLoginClick} className="text-slate-300 hover:text-white transition cursor-pointer">
+                Sign In
+              </button>
+              <button 
+                onClick={() => onSelectPlan('free_trial')}
+                className="bg-[#D4AF37] hover:bg-[#FCF6BA] text-slate-950 px-4 py-2 rounded-xl shadow-lg shadow-[#D4AF37]/20 transition flex items-center gap-2 cursor-pointer font-bold"
+              >
+                <span>Start Free Trial</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
