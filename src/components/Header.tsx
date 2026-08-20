@@ -340,7 +340,7 @@ export const Header: React.FC<HeaderProps> = ({
                   ) : (
                     'ZID'
                   )}{' '}
-                  <span className="text-[#E6C587] text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20 shadow-xs">
+                  <span className="text-[#E6C587] text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20 shadow-sm">
                     {platformSettings?.siteTitle && platformSettings.siteTitle.split(' ').length > 1
                       ? platformSettings.siteTitle.split(' ').slice(1).join(' ')
                       : 'SAAS'}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface BrandLogoProps {
   logoUrl?: string;
@@ -19,6 +19,8 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   isDarkMode = true,
   className = '',
 }) => {
+  const uniqueId = useId().replace(/:/g, '_');
+
   // Dimension mappings
   const sizeMap = {
     xs: { box: 'w-6 h-6', icon: 'w-3.5 h-3.5', text: 'text-xs', badge: 'text-[9px]' },
@@ -60,20 +62,16 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
               xmlns="http://www.w3.org/2000/svg"
             >
               <defs>
-                <linearGradient id="zidGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <linearGradient id={`zidGoldGrad_${uniqueId}`} x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#BF953F" />
                   <stop offset="50%" stopColor="#FCF6BA" />
                   <stop offset="100%" stopColor="#AA771C" />
-                </linearGradient>
-                <linearGradient id="zidSheen" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
                 </linearGradient>
               </defs>
               {/* Geometric 'Z' Monogram */}
               <path
                 d="M10 12 H30 L16 28 H30"
-                stroke="url(#zidGoldGrad)"
+                stroke={`url(#zidGoldGrad_${uniqueId})`}
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -99,7 +97,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
               {siteTitle.includes(' ') ? siteTitle.split(' ')[0] : siteTitle}
             </span>
             <span
-              className={`font-extrabold text-[#E6C587] uppercase px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/25 shadow-xs ${badge}`}
+              className={`font-extrabold text-[#E6C587] uppercase px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/25 shadow-sm ${badge}`}
             >
               {siteTitle.includes(' ')
                 ? siteTitle.split(' ').slice(1).join(' ')
