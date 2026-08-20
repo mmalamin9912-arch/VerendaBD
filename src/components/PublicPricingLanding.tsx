@@ -75,7 +75,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
       </nav>
 
       {/* Hero Section */}
-      <div id="pricing-hero" className="flex-1 max-w-7xl mx-auto px-6 py-16 w-full flex flex-col items-center text-center">
+      <div id="pricing-hero" className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-16 w-full flex flex-col items-center text-center">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-6">
           <Sparkles className="w-4 h-4" />
           <span>Launch Your Dream Store Today</span>

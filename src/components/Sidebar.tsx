@@ -235,25 +235,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Top Logo Header */}
         <div>
           <div className={`p-4 border-b ${isDarkMode ? 'border-[#2A3042]' : 'border-slate-200'} flex items-center justify-between`}>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#BF953F] via-[#FCF6BA] to-[#B38728] p-0.5 shadow-lg shadow-[#D4AF37]/20">
-                <div className={`w-full h-full ${isDarkMode ? 'bg-[#181B26]' : 'bg-white'} rounded-[10px] flex items-center justify-center font-black text-[#E6C587] text-lg`}>
-                  Z
+            <div className="flex items-center gap-2.5">
+              {platformSettings?.logoUrl ? (
+                <img
+                  src={platformSettings.logoUrl}
+                  alt={platformSettings?.siteTitle || 'Logo'}
+                  className="w-8 h-8 rounded-lg object-contain"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728] shrink-0">
+                  <div className={`w-full h-full rounded-[6px] ${isDarkMode ? 'bg-[#181B26]' : 'bg-white'} flex items-center justify-center`}>
+                    <svg viewBox="0 0 40 40" className="w-4 h-4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M10 12 H30 L16 28 H30"
+                        stroke="#D4AF37"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
-                <div className="flex items-center gap-1.5">
-                  <span className={`font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-wide text-base`}>
-                    ZID <span className="text-[#E6C587] text-xs uppercase px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20">SAAS</span>
+                <div className="flex items-center gap-1">
+                  <span className={`text-sm font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-tight`}>
+                    {platformSettings?.siteTitle || 'ZID SAAS'}
+                  </span>
+                  <span className="text-[#E6C587] text-[9px] uppercase font-bold px-1 py-0.2 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20">
+                    BD
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">Merchant Dashboard (BD)</p>
+                <div className="text-[10px] text-slate-400">
+                  Merchant Dashboard
+                </div>
               </div>
             </div>
 
             <button 
               onClick={onCloseMobile}
-              className="lg:hidden text-slate-400 hover:text-white p-1"
+              className="lg:hidden text-slate-400 hover:text-white p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

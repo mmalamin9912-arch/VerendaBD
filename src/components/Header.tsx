@@ -26,7 +26,6 @@ import {
   HelpCircle,
   Trash2
 } from 'lucide-react';
-import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
   merchant: MerchantProfile;
@@ -325,13 +324,27 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="flex items-center gap-2 shrink-0">
-            <BrandLogo
-              logoUrl={platformSettings?.logoUrl}
-              siteTitle={platformSettings?.siteTitle || 'ZID SAAS'}
-              size="sm"
-              showText={false}
-              isDarkMode={isDarkMode}
-            />
+            {platformSettings?.logoUrl ? (
+              <img
+                src={platformSettings.logoUrl}
+                alt={platformSettings?.siteTitle || 'Logo'}
+                className="w-8 h-8 rounded-lg object-contain"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728]">
+                <div className={`w-full h-full rounded-[6px] ${isDarkMode ? 'bg-[#181B26]' : 'bg-white'} flex items-center justify-center`}>
+                  <svg viewBox="0 0 40 40" className="w-4 h-4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M10 12 H30 L16 28 H30"
+                      stroke="#D4AF37"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              </div>
+            )}
             <div className="hidden sm:block">
               <div className="flex items-center gap-1.5">
                 <span className={`text-sm font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-wide`}>
