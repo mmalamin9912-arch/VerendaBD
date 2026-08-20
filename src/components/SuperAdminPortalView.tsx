@@ -621,29 +621,20 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const planName = getPlanDisplayName(req.planId);
 
     // Update request status
-    onUpdatePendingRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'approved' } : r));
-
-    // If it's the current merchant, update their merchant profile subscription with dynamic expiry and deactivated trial
-    const isCurrentMatch = (req?.email && currentMerchant?.email && req.email.toLowerCase() === currentMerchant.email.toLowerCase()) ||
-      (req?.storeName && currentMerchant?.storeName && req.storeName.toLowerCase() === currentMerchant.storeName.toLowerCase());
-
-    if (isCurrentMatch) {
-      onUpdateMerchant({
-        ...currentMerchant,
-        subscriptionPlan: req.planId as SubscriptionPlanId,
-        trialDaysRemaining: 0,
-        trialEndsAt: undefined,
-        subscriptionExpiry: expiryDate,
-        isLocked: false
-      });
+    const updatedPending = pendingRequests.map(r => r.id === reqId ? { ...r, status: 'approved' as const } : r);
+    onUpdatePendingRequests(updatedPending);
+    try {
+      localStorage.setItem('ZID_PENDING_REQUESTS', JSON.stringify(updatedPending));
+    } catch (e) {
+      console.error(e);
     }
 
-    // Also update in allMerchants with dynamic expiry and deactivated trial
-    onUpdateAllMerchants(prev => prev.map(m => {
+    // Update allMerchants list
+    const updatedMerchants = allMerchants.map(m => {
       const match = (req?.email && m?.email && req.email.toLowerCase() === m.email.toLowerCase()) ||
         (req?.storeName && m?.storeName && req.storeName.toLowerCase() === m.storeName.toLowerCase());
       if (match) {
-        return {
+        const updatedM: MerchantProfile = {
           ...m,
           subscriptionPlan: req.planId as SubscriptionPlanId,
           trialDaysRemaining: 0,
@@ -651,9 +642,74 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
           subscriptionExpiry: expiryDate,
           isLocked: false
         };
+        // Also update merchant store database if slug exists
+        if (m.storeSlug) {
+          try {
+            const key = `ZID_MERCHANT_STORE_DATA_${m.storeSlug}`;
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              parsed.merchant = updatedM;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch (err) {}
+        }
+        return updatedM;
       }
       return m;
-    }));
+    });
+
+    onUpdateAllMerchants(updatedMerchants);
+    try {
+      localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updatedMerchants));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Check if the current logged-in merchant matches
+    const isCurrentMatch = (req?.email && currentMerchant?.email && req.email.toLowerCase() === currentMerchant.email.toLowerCase()) ||
+      (req?.storeName && currentMerchant?.storeName && req.storeName.toLowerCase() === currentMerchant.storeName.toLowerCase());
+
+    if (isCurrentMatch) {
+      const updatedCurrent: MerchantProfile = {
+        ...currentMerchant,
+        subscriptionPlan: req.planId as SubscriptionPlanId,
+        trialDaysRemaining: 0,
+        trialEndsAt: undefined,
+        subscriptionExpiry: expiryDate,
+        isLocked: false
+      };
+      onUpdateMerchant(updatedCurrent);
+
+      try {
+        // Direct sync with main store and auth session in localStorage
+        const savedSession = localStorage.getItem('zid_auth_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          parsed.userProfile = updatedCurrent;
+          localStorage.setItem('zid_auth_session', JSON.stringify(parsed));
+        }
+
+        const savedStore = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+        if (savedStore) {
+          const parsed = JSON.parse(savedStore);
+          parsed.merchant = updatedCurrent;
+          localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(parsed));
+        }
+
+        if (updatedCurrent.storeSlug) {
+          const key = `ZID_MERCHANT_STORE_DATA_${updatedCurrent.storeSlug}`;
+          const existing = localStorage.getItem(key);
+          if (existing) {
+            const parsed = JSON.parse(existing);
+            parsed.merchant = updatedCurrent;
+            localStorage.setItem(key, JSON.stringify(parsed));
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
 
     setSaveSuccess(`Subscription for "${req?.storeName || 'Store'}" approved! Active plan: ${planName} (${durationDays} Days, valid until ${expiryDate}).`);
     setTimeout(() => setSaveSuccess(null), 3500);
@@ -718,51 +774,124 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
   };
 
   const handleExtendTrial = (storeName: string, days: number) => {
-    onUpdateAllMerchants(prev => prev.map(m => {
+    let updatedEndsAtIso = '';
+    let updatedRemaining = 0;
+    const updatedMerchants = allMerchants.map(m => {
       if (m?.storeName === storeName) {
         const currentEndsAt = m.trialEndsAt ? new Date(m.trialEndsAt) : new Date();
         const newEndsAt = new Date(currentEndsAt.getTime() + days * 24 * 60 * 60 * 1000);
-        return {
+        updatedEndsAtIso = newEndsAt.toISOString();
+        updatedRemaining = (m?.trialDaysRemaining ?? 30) + days;
+        const updatedM = {
           ...m,
-          trialDaysRemaining: (m?.trialDaysRemaining ?? 30) + days,
-          trialEndsAt: newEndsAt.toISOString()
+          trialDaysRemaining: updatedRemaining,
+          trialEndsAt: updatedEndsAtIso
         };
+        if (m.storeSlug) {
+          try {
+            const key = `ZID_MERCHANT_STORE_DATA_${m.storeSlug}`;
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              parsed.merchant = updatedM;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch (err) {}
+        }
+        return updatedM;
       }
       return m;
-    }));
+    });
+
+    onUpdateAllMerchants(updatedMerchants);
+    try {
+      localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updatedMerchants));
+    } catch (e) {}
 
     if (storeName === currentMerchant?.storeName) {
-      const currentEndsAt = currentMerchant.trialEndsAt ? new Date(currentMerchant.trialEndsAt) : new Date();
-      const newEndsAt = new Date(currentEndsAt.getTime() + days * 24 * 60 * 60 * 1000);
-      onUpdateMerchant({
+      const updatedCurrent = {
         ...currentMerchant,
-        trialDaysRemaining: (currentMerchant?.trialDaysRemaining ?? 30) + days,
-        trialEndsAt: newEndsAt.toISOString()
-      });
+        trialDaysRemaining: updatedRemaining,
+        trialEndsAt: updatedEndsAtIso
+      };
+      onUpdateMerchant(updatedCurrent);
+      try {
+        const savedSession = localStorage.getItem('zid_auth_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          parsed.userProfile = updatedCurrent;
+          localStorage.setItem('zid_auth_session', JSON.stringify(parsed));
+        }
+        const savedStore = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+        if (savedStore) {
+          const parsed = JSON.parse(savedStore);
+          parsed.merchant = updatedCurrent;
+          localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(parsed));
+        }
+      } catch (e) {}
     }
     alert(`Successfully extended trial for "${storeName}" by ${days} days.`);
   };
 
   const handleToggleLockMerchant = (storeName: string) => {
-    onUpdateAllMerchants(prev => prev.map(m => m?.storeName === storeName ? {
-      ...m,
-      isLocked: !m?.isLocked
-    } : m));
+    let nextLockedState = false;
+    const updatedMerchants = allMerchants.map(m => {
+      if (m?.storeName === storeName) {
+        nextLockedState = !m?.isLocked;
+        const updatedM = {
+          ...m,
+          isLocked: nextLockedState
+        };
+        if (m.storeSlug) {
+          try {
+            const key = `ZID_MERCHANT_STORE_DATA_${m.storeSlug}`;
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              parsed.merchant = updatedM;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch (err) {}
+        }
+        return updatedM;
+      }
+      return m;
+    });
+
+    onUpdateAllMerchants(updatedMerchants);
+    try {
+      localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updatedMerchants));
+    } catch (e) {}
 
     if (storeName === currentMerchant?.storeName) {
-      onUpdateMerchant({
+      const updatedCurrent = {
         ...currentMerchant,
-        isLocked: !currentMerchant?.isLocked
-      });
+        isLocked: nextLockedState
+      };
+      onUpdateMerchant(updatedCurrent);
+      try {
+        const savedSession = localStorage.getItem('zid_auth_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          parsed.userProfile = updatedCurrent;
+          localStorage.setItem('zid_auth_session', JSON.stringify(parsed));
+        }
+        const savedStore = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+        if (savedStore) {
+          const parsed = JSON.parse(savedStore);
+          parsed.merchant = updatedCurrent;
+          localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(parsed));
+        }
+      } catch (e) {}
     }
   };
 
   const handleDeleteMerchant = (storeSlug: string, storeName: string) => {
     if (window.confirm(`WARNING: Are you sure you want to permanently delete the merchant "${storeName}"? This action cannot be undone.`)) {
-      onUpdateAllMerchants(prev => prev.filter(m => m?.storeSlug !== storeSlug));
-      
-      // Also clean up local storage data associated with this store to ensure complete reset
+      const updatedMerchants = allMerchants.filter(m => m?.storeSlug !== storeSlug);
+      onUpdateAllMerchants(updatedMerchants);
       try {
+        localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updatedMerchants));
         localStorage.removeItem(`ZID_MERCHANT_STORE_DATA_${storeSlug}`);
       } catch (e) {
         console.error('Failed to remove store data', e);
@@ -801,22 +930,59 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const newTrialEndsAt = isNowTrial ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined;
     const newTrialDaysRemaining = isNowTrial ? 30 : 0;
 
-    onUpdateAllMerchants(prev => prev.map(x => x?.storeName === storeName ? {
-      ...x,
-      subscriptionPlan: nextPlan,
-      subscriptionExpiry: newExpiry,
-      trialEndsAt: newTrialEndsAt,
-      trialDaysRemaining: newTrialDaysRemaining
-    } : x));
+    const updatedMerchants = allMerchants.map(x => {
+      if (x?.storeName === storeName) {
+        const updatedM = {
+          ...x,
+          subscriptionPlan: nextPlan,
+          subscriptionExpiry: newExpiry,
+          trialEndsAt: newTrialEndsAt,
+          trialDaysRemaining: newTrialDaysRemaining
+        };
+        if (x.storeSlug) {
+          try {
+            const key = `ZID_MERCHANT_STORE_DATA_${x.storeSlug}`;
+            const existing = localStorage.getItem(key);
+            if (existing) {
+              const parsed = JSON.parse(existing);
+              parsed.merchant = updatedM;
+              localStorage.setItem(key, JSON.stringify(parsed));
+            }
+          } catch (err) {}
+        }
+        return updatedM;
+      }
+      return x;
+    });
+
+    onUpdateAllMerchants(updatedMerchants);
+    try {
+      localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updatedMerchants));
+    } catch (e) {}
 
     if (storeName === currentMerchant?.storeName) {
-      onUpdateMerchant({
+      const updatedCurrent = {
         ...currentMerchant,
         subscriptionPlan: nextPlan,
         subscriptionExpiry: newExpiry,
         trialEndsAt: newTrialEndsAt,
         trialDaysRemaining: newTrialDaysRemaining
-      });
+      };
+      onUpdateMerchant(updatedCurrent);
+      try {
+        const savedSession = localStorage.getItem('zid_auth_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          parsed.userProfile = updatedCurrent;
+          localStorage.setItem('zid_auth_session', JSON.stringify(parsed));
+        }
+        const savedStore = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+        if (savedStore) {
+          const parsed = JSON.parse(savedStore);
+          parsed.merchant = updatedCurrent;
+          localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(parsed));
+        }
+      } catch (e) {}
     }
     alert(`Changed plan for "${storeName}" to ${getPlanDisplayName(nextPlan)}`);
   };

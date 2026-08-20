@@ -97,20 +97,41 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [preAuthCheckoutPlan, setPreAuthCheckoutPlan] = useState<string | null>(null);
 
+  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname);
+
+  React.useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
   React.useEffect(() => {
     // Auth State Detection on Load & Automatic Dashboard Redirect
     const checkAuthAndRoute = () => {
+      const path = window.location.pathname;
+      if (path === '/admin' || path === '/super-admin' || path === '/admin-login' || path === '/super-admin-gateway') {
+        const adminSession = sessionStorage.getItem('zid_super_admin_auth');
+        if (adminSession === 'true') {
+          setIsAdminAuthenticated(true);
+        }
+        return;
+      }
+
       const session = localStorage.getItem('zid_auth_session');
       if (session) {
         setIsAuthenticated(true);
         setShowLanding(false);
         if (window.location.pathname === '/' || window.location.pathname === '/pricing') {
           window.history.replaceState({}, '', '/dashboard');
+          setCurrentPath('/dashboard');
         }
       } else {
         setIsAuthenticated(false);
         if (window.location.pathname === '/dashboard') {
           window.history.replaceState({}, '', '/');
+          setCurrentPath('/');
           setShowLanding(true);
         }
       }
@@ -120,12 +141,35 @@ export default function App() {
 
   const [merchant, setMerchant] = useState<MerchantProfile>(() => {
     try {
-      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
-      if (saved) return JSON.parse(saved).merchant || initialMerchant;
+      const allMerchantsRaw = localStorage.getItem('ZID_ALL_MERCHANTS');
+      const allMerchantsList: MerchantProfile[] = allMerchantsRaw ? JSON.parse(allMerchantsRaw) : [];
+
       const savedSession = localStorage.getItem('zid_auth_session');
       if (savedSession) {
         const parsed = JSON.parse(savedSession);
-        if (parsed?.userProfile) return parsed.userProfile;
+        if (parsed?.userProfile) {
+          const userEmail = parsed.userProfile.email?.toLowerCase();
+          const userStore = parsed.userProfile.storeName?.toLowerCase();
+          const matched = allMerchantsList.find(m => 
+            (m.email && userEmail && m.email.toLowerCase() === userEmail) ||
+            (m.storeName && userStore && m.storeName.toLowerCase() === userStore)
+          );
+          if (matched) {
+            return { ...parsed.userProfile, ...matched };
+          }
+          return parsed.userProfile;
+        }
+      }
+      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+      if (saved) {
+        const storeMerchant = JSON.parse(saved).merchant;
+        if (storeMerchant) {
+          const matched = allMerchantsList.find(m => 
+            (m.email && storeMerchant.email && m.email.toLowerCase() === storeMerchant.email.toLowerCase()) ||
+            (m.storeName && storeMerchant.storeName && m.storeName.toLowerCase() === storeMerchant.storeName.toLowerCase())
+          );
+          return matched ? { ...storeMerchant, ...matched } : storeMerchant;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -946,7 +990,6 @@ export default function App() {
     alert(`Subscription request submitted successfully! Your Transaction ID (${txId}) is pending Super Admin verification.`);
   };
 
-  const currentPath = window.location.pathname;
   if (currentPath.startsWith('/store/')) {
     const storeSlug = currentPath.replace('/store/', '').split('/')[0];
     
@@ -1008,7 +1051,14 @@ export default function App() {
     );
   }
 
-  if (currentPath === '/admin-login' || currentPath === '/super-admin-gateway' || activeTab === 'super_admin_portal') {
+  const isSuperAdminRoute = 
+    currentPath === '/admin' || 
+    currentPath === '/super-admin' || 
+    currentPath === '/admin-login' || 
+    currentPath === '/super-admin-gateway' || 
+    activeTab === 'super_admin_portal';
+
+  if (isSuperAdminRoute) {
     if (!isAdminAuthenticated) {
       return (
         <div className="min-h-screen bg-[#12151F] text-slate-100 flex items-center justify-center p-4 font-sans">
@@ -1027,6 +1077,7 @@ export default function App() {
               e.preventDefault();
               if (adminPasswordInput === '3565') {
                 setIsAdminAuthenticated(true);
+                sessionStorage.setItem('zid_super_admin_auth', 'true');
                 setAdminLoginError('');
               } else {
                 setAdminLoginError('Invalid Master Password.');
@@ -1058,7 +1109,8 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setActiveTab('dashboard');
-                    window.history.pushState({}, '', '/');
+                    window.history.pushState({}, '', '/dashboard');
+                    setCurrentPath('/dashboard');
                   }}
                   className="flex-1 bg-[#202533] hover:bg-[#282E3F] text-slate-300 font-bold py-3 rounded-xl text-sm transition border border-[#3A435E] cursor-pointer"
                 >
@@ -1091,13 +1143,20 @@ export default function App() {
         onUpdateAllMerchants={setAllMerchants}
         onSwitchToMerchantPortal={() => {
           setIsAdminAuthenticated(false);
+          sessionStorage.removeItem('zid_super_admin_auth');
           setActiveTab('dashboard');
-          window.history.pushState({}, '', '/');
+          window.history.pushState({}, '', '/dashboard');
+          setCurrentPath('/dashboard');
         }}
         onLoginAsMerchant={(m) => {
           setMerchant(m);
           setIsAdminAuthenticated(false);
+          sessionStorage.removeItem('zid_super_admin_auth');
+          setIsAuthenticated(true);
+          setShowLanding(false);
           setActiveTab('dashboard');
+          window.history.pushState({}, '', '/dashboard');
+          setCurrentPath('/dashboard');
         }}
         platformSettings={platformSettings}
         onUpdatePlatformSettings={setPlatformSettings}
