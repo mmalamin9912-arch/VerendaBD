@@ -467,8 +467,8 @@ async function executeGeminiWithFallback(options: {
     return null;
   }
 
-  // Model fallback chain: try flash models in priority order
-  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.7-flash"];
+  // Model fallback chain: try modern flash models in priority order
+  const candidateModels = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
   
   for (const modelName of candidateModels) {
     try {

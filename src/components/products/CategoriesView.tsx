@@ -46,11 +46,15 @@ export interface CategoryNode {
 
 interface CategoriesViewProps {
   products: Product[];
+  onUpdateProducts?: (products: Product[]) => void;
+  onSelectSubTab?: (tab: string) => void;
   onOpenSubscriptionModal?: () => void;
 }
 
 export const CategoriesView: React.FC<CategoriesViewProps> = ({ 
   products,
+  onUpdateProducts,
+  onSelectSubTab,
   onOpenSubscriptionModal 
 }) => {
   // Master Category List with Multi-Level Hierarchy & LocalStorage persistence
@@ -83,6 +87,69 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const [filterTab, setFilterTab] = useState<'all' | 'published' | 'hidden'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // Manage Products Modal State
+  const [managingCategory, setManagingCategory] = useState<CategoryNode | null>(null);
+  const [assignedProductIds, setAssignedProductIds] = useState<Record<string, boolean>>({});
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [isSavingProducts, setIsSavingProducts] = useState(false);
+
+  const handleOpenManageProducts = (cat: CategoryNode) => {
+    setActiveMenuId(null);
+    setManagingCategory(cat);
+    const initialAssigned: Record<string, boolean> = {};
+    products.forEach(p => {
+      if (p.category === cat.name || p.category === cat.slug || (p as any).categoryId === cat.id) {
+        initialAssigned[p.id] = true;
+      }
+    });
+    setAssignedProductIds(initialAssigned);
+    setProductSearchQuery('');
+  };
+
+  const handleSaveAssignedProducts = async () => {
+    if (!managingCategory) return;
+    setIsSavingProducts(true);
+    try {
+      const updatedProducts = products.map(p => {
+        const isAssigned = assignedProductIds[p.id];
+        const matchesCategory = p.category === managingCategory.name || p.category === managingCategory.slug || (p as any).categoryId === managingCategory.id;
+        
+        if (isAssigned && !matchesCategory) {
+          return { ...p, category: managingCategory.name, categoryId: managingCategory.id };
+        } else if (!isAssigned && matchesCategory) {
+          return { ...p, category: 'General', categoryId: undefined };
+        }
+        return p;
+      });
+
+      if (onUpdateProducts) {
+        onUpdateProducts(updatedProducts);
+      }
+
+      for (const p of updatedProducts) {
+        await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+        }).catch(err => console.warn('Sync product error:', err));
+      }
+
+      setCategories(prev => prev.map(c => {
+        if (c.id === managingCategory.id) {
+          const count = updatedProducts.filter(p => p.category === c.name || p.category === c.slug || (p as any).categoryId === c.id).length;
+          return { ...c, productCount: count };
+        }
+        return c;
+      }));
+
+      setManagingCategory(null);
+    } catch (e) {
+      console.error('Error saving assigned products:', e);
+    } finally {
+      setIsSavingProducts(false);
+    }
+  };
 
   // Form View State (List vs Create/Edit)
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
@@ -547,10 +614,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveMenuId(null);
-                      alert(`Managing products under category "${cat.name}"`);
-                    }}
+                    onClick={() => handleOpenManageProducts(cat)}
                     className="w-full px-3.5 py-2 hover:bg-[#282E3F] flex items-center gap-2 text-left cursor-pointer transition"
                   >
                     <Package className="w-4 h-4 text-purple-400" />
@@ -762,6 +826,149 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             </div>
           </div>
         )}
+
+      {/* Manage Products Modal */}
+      {managingCategory && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1D212E] border border-[#2E3548] rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-[#2E3548] flex items-center justify-between bg-[#202533]">
+              <div>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Package className="w-4 h-4 text-[#00D68F]" />
+                  <span>Manage Products for "{managingCategory.name}"</span>
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Check products to assign them to this category. Uncheck to remove.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManagingCategory(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#282E3F] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-4">
+              {products.length === 0 ? (
+                <div className="py-12 px-6 text-center bg-[#181B26] border border-[#2E3548] rounded-2xl">
+                  <div className="w-16 h-16 bg-[#202533] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#2E3548]">
+                    <Package className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white mb-1">No products available to assign</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto mb-6">
+                    You haven't added any products to your catalog yet. Create your first product to assign it to categories.
+                  </p>
+                  {onSelectSubTab && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManagingCategory(null);
+                        onSelectSubTab('all_products');
+                      }}
+                      className="bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs inline-flex items-center gap-2 transition cursor-pointer shadow-lg"
+                    >
+                      <Plus className="w-4 h-4 stroke-[3]" />
+                      <span>Go to Products & Add Product</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Search Bar */}
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search products by title or SKU..."
+                      value={productSearchQuery}
+                      onChange={(e) => setProductSearchQuery(e.target.value)}
+                      className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D68F]"
+                    />
+                  </div>
+
+                  {/* Products Checklist */}
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                    {products
+                      .filter(p => {
+                        if (!productSearchQuery.trim()) return true;
+                        const q = productSearchQuery.toLowerCase();
+                        return p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
+                      })
+                      .map(p => {
+                        const isAssigned = !!assignedProductIds[p.id];
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
+                              isAssigned
+                                ? 'bg-[#00D68F]/10 border-[#00D68F]/40'
+                                : 'bg-[#181B26] border-[#2E3548] hover:border-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isAssigned}
+                                onChange={(e) => {
+                                  setAssignedProductIds(prev => ({
+                                    ...prev,
+                                    [p.id]: e.target.checked
+                                  }));
+                                }}
+                                className="w-4 h-4 accent-[#00D68F] rounded cursor-pointer"
+                              />
+                              <img
+                                src={p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=100'}
+                                alt={p.title}
+                                className="w-10 h-10 rounded-lg object-cover border border-[#2E3548]"
+                              />
+                              <div>
+                                <p className="text-xs font-bold text-white">{p.title}</p>
+                                <p className="text-[10px] text-slate-400">SKU: {p.sku} | Price: ৳{p.priceBDT}</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
+                              isAssigned ? 'bg-[#00D68F]/20 text-[#00D68F]' : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {isAssigned ? 'Assigned' : 'Unassigned'}
+                            </span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-[#2E3548] bg-[#202533] flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setManagingCategory(null)}
+                className="px-4 py-2 bg-[#282E3F] hover:bg-[#32394E] text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              {products.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isSavingProducts}
+                  onClick={handleSaveAssignedProducts}
+                  className="px-5 py-2 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold rounded-xl text-xs transition cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isSavingProducts ? 'Saving...' : 'Save Changes'}
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       </div>
     );
