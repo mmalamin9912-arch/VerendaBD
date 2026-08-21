@@ -38,8 +38,10 @@ const supabaseAdmin = sbUrl && sbKey
 const inMemoryStore = {
   subscriptions: new Map<string, any>(),
   products: new Map<string, any[]>(),
+  categories: new Map<string, any[]>(),
   customers: new Map<string, any[]>(),
   orders: new Map<string, any[]>(),
+  merchants: new Map<string, any>(),
 };
 
 // Merchant API - database check before account creation
@@ -205,7 +207,111 @@ app.delete('/api/products/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// Customer API
+// Categories API
+app.get('/api/categories/:merchantId', async (req, res) => {
+  const { merchantId } = req.params;
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from('categories').select('*').eq('merchantId', merchantId);
+      if (!error && data && data.length > 0) return res.json(data);
+    } catch (e) {
+      // Fallback to in-memory
+    }
+  }
+  res.json(inMemoryStore.categories.get(merchantId) || []);
+});
+
+app.post('/api/categories', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const payload = req.body;
+  const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
+  
+  if (Array.isArray(payload)) {
+    inMemoryStore.categories.set(merchantId, payload);
+  } else {
+    const existing = inMemoryStore.categories.get(merchantId) || [];
+    const idx = existing.findIndex((c: any) => c.id === payload.id || c.name === payload.name);
+    if (idx >= 0) existing[idx] = payload;
+    else existing.push(payload);
+    inMemoryStore.categories.set(merchantId, existing);
+  }
+
+  if (supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('categories').upsert(payload);
+    } catch (e) {
+      // Ignored if table not migrated yet
+    }
+  }
+  res.json(payload);
+});
+
+// Merchant Settings & Profile Persistence API
+app.post('/api/merchants/update', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const merchantData = req.body;
+  const slug = merchantData.storeSlug || merchantData.store_slug || 'default';
+  
+  inMemoryStore.merchants.set(slug, merchantData);
+
+  if (supabaseAdmin) {
+    try {
+      const dbPayload = {
+        store_name: merchantData.storeName,
+        store_slug: merchantData.storeSlug,
+        owner_name: merchantData.ownerName,
+        email: merchantData.email,
+        phone: merchantData.phone,
+        currency: merchantData.currency,
+        language: merchantData.language,
+        logo_url: merchantData.logoUrl,
+        store_tagline: merchantData.storeTagline,
+        store_description: merchantData.storeDescription,
+        whatsapp_number: merchantData.whatsappNumber,
+        facebook_url: merchantData.facebookUrl,
+        instagram_url: merchantData.instagramUrl,
+        active_theme_id: merchantData.activeThemeId,
+        theme_config: merchantData.themeConfig,
+        shipping_config: merchantData.shippingConfig,
+        payment_methods: merchantData.paymentMethods,
+        tracking: merchantData.tracking,
+        updated_at: new Date().toISOString()
+      };
+      
+      await supabaseAdmin.from('merchants').upsert(dbPayload, { onConflict: 'store_slug' });
+    } catch (e) {
+      // Gracefully fall back to in-memory store if table is not provisioned yet
+    }
+  }
+  res.json({ success: true, data: merchantData });
+});
+
+app.get('/api/merchants/slug/:storeSlug', async (req, res) => {
+  const { storeSlug } = req.params;
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
+      if (!error && data) {
+        return res.json({
+          ...data,
+          storeName: data.store_name || data.storeName || 'My Store',
+          storeSlug: data.store_slug || data.storeSlug || storeSlug,
+          ownerName: data.owner_name || data.ownerName || '',
+          logoUrl: data.logo_url || data.logoUrl || '',
+          themeConfig: data.theme_config || data.themeConfig || {},
+          shippingConfig: data.shipping_config || data.shippingConfig,
+          paymentMethods: data.payment_methods || data.paymentMethods,
+          tracking: data.tracking || data.tracking,
+        });
+      }
+    } catch (e) {
+      // Fallback
+    }
+  }
+  const mem = inMemoryStore.merchants.get(storeSlug);
+  if (mem) return res.json(mem);
+  res.json(null);
+});
 app.get('/api/customers/:merchantId', async (req, res) => {
   const { merchantId } = req.params;
   if (supabaseAdmin) {

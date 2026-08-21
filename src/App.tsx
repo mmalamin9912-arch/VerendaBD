@@ -303,6 +303,32 @@ export default function App() {
         setProducts(data);
       }
     });
+
+    // Merchant Settings & Profile by storeSlug
+    if (merchant?.storeSlug) {
+      safeFetch(`/api/merchants/slug/${encodeURIComponent(merchant.storeSlug)}`).then(dbMerchant => {
+        if (isMounted && dbMerchant) {
+          setMerchant(prev => ({
+            ...prev,
+            ...dbMerchant,
+            themeConfig: dbMerchant.themeConfig || dbMerchant.theme_config || prev.themeConfig,
+          }));
+        }
+      });
+    }
+
+    // Categories
+    safeFetch(`/api/categories/${merchantId}`).then(data => {
+      if (isMounted && Array.isArray(data) && data.length > 0) {
+        setMerchant(prev => ({
+          ...prev,
+          themeConfig: {
+            ...(prev.themeConfig || {}),
+            categoriesList: data
+          }
+        }));
+      }
+    });
       
     // Customers
     safeFetch(`/api/customers/${merchantId}`).then(data => {
@@ -322,6 +348,19 @@ export default function App() {
       isMounted = false;
     };
   }, [merchant?.id, merchant?.storeSlug]);
+
+  // Auto-sync merchant settings and categories to Supabase on change
+  React.useEffect(() => {
+    if (!merchant || !merchant.storeSlug) return;
+    const timer = setTimeout(() => {
+      fetch('/api/merchants/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merchant)
+      }).catch(err => console.warn('Merchant auto-sync warning:', err));
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [merchant]);
 
   // Subscription Fetching
   React.useEffect(() => {
