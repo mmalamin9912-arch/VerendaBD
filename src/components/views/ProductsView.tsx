@@ -124,42 +124,48 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const handleSaveProduct = async (savedProduct: Product) => {
     try {
+      // Optimistic update locally immediately
+      const existingIdx = products.findIndex(p => p.id === savedProduct.id);
+      const updatedList = existingIdx >= 0
+        ? products.map(p => p.id === savedProduct.id ? savedProduct : p)
+        : [savedProduct, ...products];
+      onUpdateProducts(updatedList);
+      setIsFormViewActive(false);
+      setEditingProduct(null);
+
       const response = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(savedProduct),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save product');
+      if (response.ok) {
+        // Refresh products from server if available
+        try {
+          const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
+          if (updatedResponse.ok) {
+            const updatedProducts = await updatedResponse.json();
+            if (Array.isArray(updatedProducts) && updatedProducts.length > 0) {
+              onUpdateProducts(updatedProducts);
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Silent refresh products error:', fetchErr);
+        }
       }
-      
-      // Refresh products from server
-      const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
-      const updatedProducts = await updatedResponse.json();
-      onUpdateProducts(updatedProducts);
-      setIsFormViewActive(false);
-      setEditingProduct(null);
     } catch (e) {
-      console.error('Error saving product to DB:', e);
-      alert('Failed to save product. Please try again.');
+      console.warn('Network save product warning, retained locally:', e);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
     if (confirm('Are you sure you want to delete this product listing?')) {
+      const updatedList = products.filter(p => p.id !== id);
+      onUpdateProducts(updatedList);
       try {
-        const response = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-        if (!response.ok) throw new Error('Failed to delete product');
-        
-        // Refresh products from server
-        const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
-        const updatedProducts = await updatedResponse.json();
-        onUpdateProducts(updatedProducts);
+        await fetch(`/api/products/${id}`, { method: 'DELETE' });
       } catch (e) {
-        console.error('Error deleting product from DB:', e);
-        alert('Failed to delete product. Please try again.');
+        console.warn('Delete product sync warning:', e);
       }
     }
   };
