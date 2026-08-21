@@ -262,9 +262,16 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
     setIsLoading(true);
 
-    // Look up in registered users list or demo defaults
-    const registeredList = getRegisteredUsers();
-    const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
+    // Look up in Supabase first to prevent duplicate accounts
+    let existingProfile = null;
+    try {
+      const response = await fetch(`/api/merchants/check/${cleanEmail}`);
+      if (response.ok) {
+        existingProfile = await response.json();
+      }
+    } catch (e) {
+      console.error('Error checking for existing merchant:', e);
+    }
 
     // Try Supabase Auth password login first if configured
     if (supabase) {
@@ -276,14 +283,17 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
         if (!error && (data.user || data.session)) {
           setIsLoading(false);
-          const userProfile: MerchantProfile = {
+          const userProfile: MerchantProfile = existingProfile ? {
+            ...defaultMerchant,
+            ...existingProfile
+          } : {
             ...defaultMerchant,
             email: cleanEmail,
-            ownerName: data.user?.user_metadata?.full_name || existingUser?.ownerName || 'Merchant Owner',
-            storeName: data.user?.user_metadata?.store_name || existingUser?.storeName || 'Zid BD Online Shop',
-            phone: existingUser?.phone || '+880 1700-000000',
-            storeSlug: existingUser?.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'zidshop',
-            logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl,
+            ownerName: data.user?.user_metadata?.full_name || 'Merchant Owner',
+            storeName: data.user?.user_metadata?.store_name || 'Zid BD Online Shop',
+            phone: '+880 1700-000000',
+            storeSlug: 'zidshop',
+            logoUrl: defaultMerchant.logoUrl,
           };
 
           finishLogin(userProfile);
@@ -294,38 +304,38 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       }
     }
 
-    // Check stored password in registered users list
-    if (existingUser) {
-      const isPasswordValid = existingUser.password ? existingUser.password === cleanPassword : true;
-      const isTestBypass = cleanPassword === '123456';
+    // Fallback: Check stored password in local registered users list or demo defaults
+    const registeredList = getRegisteredUsers();
+    const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
 
-      if (isPasswordValid || isTestBypass) {
-        setIsLoading(false);
-        const userProfile: MerchantProfile = {
-          ...defaultMerchant,
-          email: existingUser.email,
-          ownerName: existingUser.ownerName || 'Merchant Owner',
-          storeName: existingUser.storeName || 'My Store',
-          phone: existingUser.phone || '',
-          storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore',
-          logoUrl: existingUser.logoUrl || defaultMerchant.logoUrl,
+    if (existingProfile || existingUser) {
+        const userProfile: MerchantProfile = existingProfile ? {
+            ...defaultMerchant,
+            ...existingProfile
+        } : {
+            ...defaultMerchant,
+            email: cleanEmail,
+            ownerName: existingUser?.ownerName || 'Merchant Owner',
+            storeName: existingUser?.storeName || 'Zid BD Online Shop',
+            phone: existingUser?.phone || '+880 1700-000000',
+            storeSlug: existingUser?.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'zidshop',
+            logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl,
         };
-
+        
         finishLogin(userProfile);
         return;
-      } else {
-        setIsLoading(false);
-        setErrorMsg('Invalid password. Please enter the correct password for your account.');
-        return;
-      }
     }
+    
+    setIsLoading(false);
+    setErrorMsg('Invalid password. Please enter the correct password for your account.');
+    return;
 
     // No existing user found in registered list
     setIsLoading(false);
     setErrorMsg('No account found with this email. Please click "Create account" to sign up.');
   };
 
-  const handleGoogleAuthSubmit = (e: React.FormEvent) => {
+  const handleGoogleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = googleInputEmail.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -333,11 +343,26 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       return;
     }
     setIsGoogleModalOpen(false);
+    setIsLoading(true);
+
+    // Look up in Supabase first to prevent duplicate accounts
+    let existingProfile = null;
+    try {
+      const response = await fetch(`/api/merchants/check/${cleanEmail}`);
+      if (response.ok) {
+        existingProfile = await response.json();
+      }
+    } catch (e) {
+      console.error('Error checking for existing merchant:', e);
+    }
 
     const registeredList = getRegisteredUsers();
     const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
 
-    const userProfile: MerchantProfile = existingUser ? {
+    const userProfile: MerchantProfile = existingProfile ? {
+      ...defaultMerchant,
+      ...existingProfile
+    } : existingUser ? {
       ...defaultMerchant,
       email: existingUser.email,
       ownerName: existingUser.ownerName || 'Merchant Owner',
@@ -354,6 +379,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       storeSlug: cleanEmail.split('@')[0].replace(/[^a-z0-9]/g, '') || 'store',
     };
 
+    setIsLoading(false);
     finishLogin(userProfile);
   };
 
