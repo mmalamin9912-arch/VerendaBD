@@ -133,13 +133,64 @@ app.get('/api/products/:merchantId', async (req, res) => {
   if (supabaseAdmin) {
     try {
       const { data, error } = await supabaseAdmin.from('products').select('*').eq('merchantId', merchantId);
-      if (!error && data) return res.json(data);
+      if (!error && data && data.length > 0) return res.json(data);
     } catch (e) {
       console.warn('Supabase get products error:', e);
     }
   }
   const products = inMemoryStore.products.get(merchantId) || [];
-  res.json(products);
+  if (products.length > 0) return res.json(products);
+  
+  // Also check if any inMemoryStore products exist
+  for (const [_, list] of inMemoryStore.products.entries()) {
+    if (list && list.length > 0) return res.json(list);
+  }
+
+  res.json([]);
+});
+
+app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
+  const { storeSlug } = req.params;
+  let merchantId = storeSlug;
+
+  if (supabaseAdmin) {
+    try {
+      const { data: mData } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
+      if (mData && mData.id) {
+        merchantId = mData.id;
+      }
+    } catch (e) {}
+  }
+
+  const memMerchant = inMemoryStore.merchants.get(storeSlug);
+  if (memMerchant && memMerchant.id) {
+    merchantId = memMerchant.id;
+  }
+
+  if (supabaseAdmin) {
+    try {
+      const { data: prodData, error } = await supabaseAdmin.from('products').select('*').or(`merchantId.eq.${merchantId},merchantId.eq.${storeSlug}`);
+      if (!error && prodData && prodData.length > 0) {
+        return res.json(prodData);
+      }
+      // If none found with specific merchantId, try fetching all products table records
+      const { data: allProds } = await supabaseAdmin.from('products').select('*');
+      if (allProds && allProds.length > 0) {
+        return res.json(allProds);
+      }
+    } catch (e) {}
+  }
+
+  const memProducts = inMemoryStore.products.get(merchantId) || inMemoryStore.products.get(storeSlug) || inMemoryStore.products.get('default') || [];
+  if (memProducts.length > 0) {
+    return res.json(memProducts);
+  }
+
+  for (const [_, list] of inMemoryStore.products.entries()) {
+    if (list && list.length > 0) return res.json(list);
+  }
+
+  res.json([]);
 });
 
 app.post('/api/products', async (req, res) => {

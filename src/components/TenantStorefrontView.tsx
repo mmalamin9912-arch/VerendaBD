@@ -63,50 +63,66 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     setLocalMerchant(merchant);
   }, [merchant]);
 
-  // Dynamically load products from the unified zid_merchant_products localStorage key on load and keep synchronized
+  // Dynamically load real products and merchant settings from Supabase database by storeSlug on mount and poll
   useEffect(() => {
-    const loadStoreData = () => {
+    const loadStoreData = async () => {
       try {
-        const savedProductsStr = localStorage.getItem('zid_merchant_products');
-        if (savedProductsStr) {
-          const parsed = JSON.parse(savedProductsStr);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setLocalProducts(parsed);
+        const res = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
+        if (res.ok) {
+          const dbProducts = await res.json();
+          if (Array.isArray(dbProducts) && dbProducts.length > 0) {
+            setLocalProducts(dbProducts);
           } else {
-            setLocalProducts(products || []);
+            const savedProductsStr = localStorage.getItem('zid_merchant_products');
+            if (savedProductsStr) {
+              const parsed = JSON.parse(savedProductsStr);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setLocalProducts(parsed);
+              } else {
+                setLocalProducts(products || []);
+              }
+            } else {
+              setLocalProducts(products || []);
+            }
           }
-        } else {
-          setLocalProducts(products || []);
+        }
+
+        const mRes = await fetch(`/api/merchants/slug/${encodeURIComponent(storeSlug)}`);
+        if (mRes.ok) {
+          const dbMerchant = await mRes.json();
+          if (dbMerchant) {
+            setLocalMerchant(prev => ({
+              ...prev,
+              ...dbMerchant,
+              themeConfig: dbMerchant.themeConfig || dbMerchant.theme_config || prev.themeConfig,
+            }));
+          }
         }
 
         const key = `ZID_MERCHANT_STORE_DATA_${storeSlug}`;
         const customStoreDataStr = localStorage.getItem(key);
         if (customStoreDataStr) {
           const parsed = JSON.parse(customStoreDataStr);
-          if (parsed.merchant) {
-            setLocalMerchant(parsed.merchant);
-          }
           if (parsed.orders) {
             setOrders(parsed.orders);
           }
         }
       } catch (e) {
-        console.error('Error loading store data:', e);
+        console.error('Error loading storefront data from database:', e);
+        setLocalProducts(products || []);
       }
     };
 
     loadStoreData();
 
-    // Listen to storage events to sync in real-time across tabs/iframes
+    // Listen to storage events and poll to synchronize in real-time across tabs/iframes
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'zid_merchant_products' || e.key === `ZID_MERCHANT_STORE_DATA_${storeSlug}`) {
         loadStoreData();
       }
     };
     window.addEventListener('storage', handleStorageChange);
-
-    // Also poll every 2 seconds to synchronize across local components or same-window iframes
-    const interval = setInterval(loadStoreData, 2000);
+    const interval = setInterval(loadStoreData, 2500);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
