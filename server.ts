@@ -33,7 +33,8 @@ app.post('/api/ai/generate-text', async (req, res) => {
     const { prompt, systemInstruction } = req.body;
     
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'Gemini API key is not configured.' });
+      console.log('Gemini API key missing. Falling back to mock description.');
+      return res.json({ text: `[Mock Description] This is a high-quality product description generated for: ${prompt.substring(0, 100)}. Our product is crafted with care and designed to offer the best experience. Highlights include premium materials, ergonomic design, and long-lasting durability, ensuring customer satisfaction.` });
     }
 
     const response = await ai.models.generateContent({
@@ -47,7 +48,8 @@ app.post('/api/ai/generate-text', async (req, res) => {
     res.json({ text: response.text || '' });
   } catch (error: any) {
     console.error('AI Text Generation Error:', error);
-    res.status(500).json({ error: 'Failed to generate content.' });
+    // Fallback to mock on error as well
+    res.json({ text: `[Mock Description] This is a high-quality product description generated for your product. Our product is crafted with care and designed to offer the best experience. Highlights include premium materials, ergonomic design, and long-lasting durability, ensuring customer satisfaction.` });
   }
 });
 

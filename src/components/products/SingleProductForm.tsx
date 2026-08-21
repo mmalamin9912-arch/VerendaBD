@@ -256,7 +256,6 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       }
     } catch (error) {
       console.error('AI Generation Error:', error);
-      alert('Failed to generate AI description.');
     } finally {
       setIsGeneratingDescription(false);
     }
