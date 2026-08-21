@@ -20,21 +20,6 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
       {/* Navbar */}
       <nav id="pricing-navbar" className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728]">
-            <div className="w-full h-full rounded-[10px] bg-slate-950 flex items-center justify-center">
-              <svg viewBox="0 0 40 40" className="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path
-                  d="M10 12 H30 L16 28 H30"
-                  stroke="#D4AF37"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx="30" cy="12" r="2" fill="#FCF6BA" />
-                <circle cx="10" cy="28" r="2" fill="#BF953F" />
-              </svg>
-            </div>
-          </div>
           <div className="flex items-center gap-1.5">
             <span className="font-black text-white tracking-tight text-base">ZID</span>
             <span className="font-extrabold text-[#E6C587] uppercase text-xs px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/25">
