@@ -216,9 +216,10 @@ export default function App() {
 
   const prevSlugRef = React.useRef<string>(merchant?.storeSlug || '');
 
-  // Fetch products from DB
+  // Fetch data from DB
   React.useEffect(() => {
     if (merchant?.id) {
+      // Products
       fetch(`/api/products/${merchant.id}`)
         .then(res => res.json())
         .then(data => {
@@ -227,6 +228,26 @@ export default function App() {
           }
         })
         .catch(err => console.error('Error fetching products:', err));
+        
+      // Customers
+      fetch(`/api/customers/${merchant.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setCustomers(data);
+          }
+        })
+        .catch(err => console.error('Error fetching customers:', err));
+        
+      // Orders
+      fetch(`/api/orders/${merchant.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setOrders(data);
+          }
+        })
+        .catch(err => console.error('Error fetching orders:', err));
     }
   }, [merchant?.id]);
 
@@ -325,19 +346,11 @@ export default function App() {
   });
 
   const [couriers, setCouriers] = useState<CourierService[]>(initialCouriers);
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
-      if (saved) return JSON.parse(saved).orders || initialOrders;
-    } catch (e) {
-      console.error(e);
-    }
-    return initialOrders;
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
   
   const [products, setProducts] = useState<Product[]>(initialProducts);
   
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   
   const [themes, setThemes] = useState<ThemeConfig[]>(() => {
     try {
@@ -1083,6 +1096,28 @@ export default function App() {
     alert(`Subscription request submitted successfully! Your Transaction ID (${txId}) is pending Super Admin verification.`);
   };
 
+  const handleUpdateCustomers = async (updatedCustomers: Customer[]) => {
+    setCustomers(updatedCustomers);
+    if (merchant?.id) {
+        await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedCustomers.map(c => ({...c, merchantId: merchant.id})))
+        }).catch(err => console.error('Error updating customers in DB:', err));
+    }
+  };
+
+  const handleUpdateOrders = async (updatedOrders: Order[]) => {
+    setOrders(updatedOrders);
+    if (merchant?.id) {
+        await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedOrders.map(o => ({...o, merchantId: merchant.id})))
+        }).catch(err => console.error('Error updating orders in DB:', err));
+    }
+  };
+
   if (currentPath.startsWith('/store/')) {
     const storeSlug = currentPath.replace('/store/', '').split('/')[0];
     
@@ -1455,7 +1490,7 @@ export default function App() {
             {activeTab === 'orders' && (
               <OrdersView
                 orders={orders}
-                onUpdateOrders={setOrders}
+                onUpdateOrders={handleUpdateOrders}
               />
             )}
 
@@ -1474,7 +1509,7 @@ export default function App() {
             {activeTab === 'customers' && (
               <CustomersView
                 customers={customers}
-                onUpdateCustomers={setCustomers}
+                onUpdateCustomers={handleUpdateCustomers}
                 activeSubTab={customerSubTab}
                 onSelectSubTab={setCustomerSubTab}
               />

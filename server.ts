@@ -64,6 +64,43 @@ app.delete('/api/products/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// Customer API
+app.get('/api/customers/:merchantId', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('customers').select('*').eq('merchantId', req.params.merchantId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/customers', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('customers').upsert(req.body);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/customers/:id', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { error } = await supabaseAdmin.from('customers').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Order API
+app.get('/api/orders/:merchantId', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('orders').select('*').eq('merchantId', req.params.merchantId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/orders', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('orders').upsert(req.body);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // Gemini AI Setup
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
