@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -16,6 +17,30 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = 3000;
+
+// Initialize Supabase Admin for server-side persistence
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : null;
+
+// Subscription API
+app.get('/api/subscription/by-store/:storeName', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('merchants').select('subscription_plan, subscription_expiry').eq('storeName', req.params.storeName).single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/subscription/update', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { storeName, planId, expiryDate } = req.body;
+  const { data, error } = await supabaseAdmin.from('merchants').update({
+    subscription_plan: planId,
+    subscription_expiry: expiryDate
+  }).eq('storeName', storeName);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
 
 // Gemini AI Setup
 const ai = new GoogleGenAI({

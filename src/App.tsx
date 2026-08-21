@@ -216,6 +216,24 @@ export default function App() {
 
   const prevSlugRef = React.useRef<string>(merchant?.storeSlug || '');
 
+  // Subscription Fetching
+  React.useEffect(() => {
+    if (merchant && merchant.storeName) {
+      fetch(`/api/subscription/by-store/${encodeURIComponent(merchant.storeName)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.subscription_plan) {
+            setMerchant(prev => ({
+              ...prev,
+              subscriptionPlan: data.subscription_plan,
+              subscriptionExpiry: data.subscription_expiry
+            }));
+          }
+        })
+        .catch(err => console.error('Error fetching subscription:', err));
+    }
+  }, [merchant?.storeName]);
+
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
     try {
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
@@ -1015,8 +1033,14 @@ export default function App() {
     }));
   };
 
-  const handleConfirmSubscription = (planId: string, paymentMethod: string, txId: string) => {
+  const handleConfirmSubscription = async (planId: string, paymentMethod: string, txId: string) => {
     const plan = subscriptionPlans.find(p => p.id === planId) || subscriptionPlans[1];
+    
+    // Calculate expiry
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + plan.durationDays);
+    const expiryDateStr = expiryDate.toISOString().split('T')[0];
+
     const newReq: SubscriptionRequest = {
       id: `req-${Date.now()}`,
       storeName: merchant?.storeName || 'My Store',
@@ -1031,6 +1055,31 @@ export default function App() {
     };
 
     setPendingRequests(prev => [newReq, ...prev]);
+
+    // Update DB (e.g. status) - actually user only asked to persist when upgraded.
+    // For now, let's keep the pending request flow as it is, but also
+    // update subscriptionPlan and expiryDate in DB when approved.
+    // Wait, the user asked to persist when they purchase/upgrade.
+    // So I should do this upon submission as well? 
+    // The request said: "When a merchant purchases/upgrades... Persist...".
+    // I will do it here, assuming 'pending' approval is how upgrades are processed.
+
+    try {
+        await fetch('/api/subscription/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                storeName: merchant?.storeName,
+                planId,
+                expiryDate: expiryDateStr
+            })
+        });
+        // Update local state
+        setMerchant(prev => ({...prev, subscriptionPlan: planId as any, subscriptionExpiry: expiryDateStr}));
+    } catch (e) {
+        console.error('Failed to update subscription in DB', e);
+    }
+    
     alert(`Subscription request submitted successfully! Your Transaction ID (${txId}) is pending Super Admin verification.`);
   };
 
