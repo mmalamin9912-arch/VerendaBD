@@ -215,16 +215,51 @@ export default function App() {
   }, []);
 
   const fetchMerchantProfile = async (userId: string, userEmail?: string) => {
-    if (!supabase) return;
     try {
-      let query = supabase.from('merchants').select('*');
-      if (userId) {
-        query = query.or(`auth_user_id.eq.${userId},email.eq.${userEmail || ''}`);
+      let rawData: any = null;
+      if (userEmail) {
+        try {
+          const res = await fetch(`/api/merchants/check/${encodeURIComponent(userEmail.toLowerCase())}`);
+          if (res.ok) {
+            rawData = await res.json();
+          }
+        } catch (e) {
+          console.warn('Error checking backend merchant:', e);
+        }
       }
-      const { data } = await query.maybeSingle();
+
+      if (!rawData && supabase) {
+        let query = supabase.from('merchants').select('*');
+        if (userId) {
+          query = query.or(`auth_user_id.eq.${userId},email.eq.${userEmail || ''}`);
+        }
+        const { data } = await query.maybeSingle();
+        if (data) rawData = data;
+      }
       
-      if (data) {
-        setMerchant(prev => ({ ...prev, ...data }));
+      if (rawData) {
+        const plan = rawData.subscription_plan || rawData.subscriptionPlan || 'enterprise';
+        const slug = rawData.store_slug || rawData.storeSlug || 'mystore';
+        const name = rawData.store_name || rawData.storeName || 'My Store';
+        const owner = rawData.owner_name || rawData.ownerName || 'Merchant Owner';
+        const logo = rawData.logo_url || rawData.logoUrl || '';
+        const expiry = rawData.subscription_expiry || rawData.subscriptionExpiry;
+
+        setMerchant(prev => ({
+          ...prev,
+          ...rawData,
+          subscriptionPlan: plan,
+          storeSlug: slug,
+          storeName: name,
+          ownerName: owner,
+          logoUrl: logo,
+          subscriptionExpiry: expiry,
+        }));
+
+        if (slug && (window.location.pathname === '/' || window.location.pathname.startsWith('/dashboard'))) {
+          window.history.replaceState({}, '', `/dashboard/${slug}`);
+          setCurrentPath(`/dashboard/${slug}`);
+        }
       }
     } catch (e) {
       console.error('Error fetching merchant profile:', e);
@@ -248,52 +283,74 @@ export default function App() {
   // Fetch data from DB
   React.useEffect(() => {
     const merchantId = merchant?.id || merchant?.storeSlug || 'default';
+    let isMounted = true;
+
+    // Safe helper to fetch JSON
+    const safeFetch = async (url: string) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const text = await res.text();
+        return text ? JSON.parse(text) : null;
+      } catch (err) {
+        return null;
+      }
+    };
+
     // Products
-    fetch(`/api/products/${merchantId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setProducts(data);
-        }
-      })
-      .catch(err => console.error('Error fetching products:', err));
+    safeFetch(`/api/products/${merchantId}`).then(data => {
+      if (isMounted && Array.isArray(data) && data.length > 0) {
+        setProducts(data);
+      }
+    });
       
     // Customers
-    fetch(`/api/customers/${merchantId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setCustomers(data);
-        }
-      })
-      .catch(err => console.error('Error fetching customers:', err));
+    safeFetch(`/api/customers/${merchantId}`).then(data => {
+      if (isMounted && Array.isArray(data) && data.length > 0) {
+        setCustomers(data);
+      }
+    });
       
     // Orders
-    fetch(`/api/orders/${merchantId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          setOrders(data);
-        }
-      })
-      .catch(err => console.error('Error fetching orders:', err));
+    safeFetch(`/api/orders/${merchantId}`).then(data => {
+      if (isMounted && Array.isArray(data) && data.length > 0) {
+        setOrders(data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [merchant?.id, merchant?.storeSlug]);
 
   // Subscription Fetching
   React.useEffect(() => {
     if (merchant && merchant.storeName) {
-      fetch(`/api/subscription/by-store/${encodeURIComponent(merchant.storeName)}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.subscription_plan) {
-            setMerchant(prev => ({
-              ...prev,
-              subscriptionPlan: data.subscription_plan,
-              subscriptionExpiry: data.subscription_expiry
-            }));
-          }
-        })
-        .catch(err => console.error('Error fetching subscription:', err));
+      let isMounted = true;
+      const safeFetch = async (url: string) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          const text = await res.text();
+          return text ? JSON.parse(text) : null;
+        } catch (err) {
+          return null;
+        }
+      };
+
+      safeFetch(`/api/subscription/by-store/${encodeURIComponent(merchant.storeName)}`).then(data => {
+        if (isMounted && data && data.subscription_plan) {
+          setMerchant(prev => ({
+            ...prev,
+            subscriptionPlan: data.subscription_plan,
+            subscriptionExpiry: data.subscription_expiry
+          }));
+        }
+      });
+
+      return () => {
+        isMounted = false;
+      };
     }
   }, [merchant?.storeName]);
 
@@ -1026,7 +1083,9 @@ export default function App() {
     const intendedPlan = localStorage.getItem('zid_intended_plan');
     const prePayment = localStorage.getItem('zid_pre_payment');
 
-    if (intendedPlan && intendedPlan !== 'free_trial' && !prePayment) {
+    const isAlreadyPaid = userProfile.subscriptionPlan && userProfile.subscriptionPlan !== 'free_trial' && userProfile.subscriptionPlan !== 'trial';
+
+    if (!isAlreadyPaid && intendedPlan && intendedPlan !== 'free_trial' && !prePayment) {
       setIsSubscriptionModalOpen(true);
     }
 
