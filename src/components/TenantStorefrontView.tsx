@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
 import { ShoppingBag, ShoppingCart, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, Video, Play, Loader2, User, History, Home, MoreVertical, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ZidCircularLogo } from './ZidCircularLogo';
 
 interface TenantStorefrontViewProps {
   storeSlug: string;
@@ -469,7 +468,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     productColumns = 4,
     showCountdown = true,
     countdownTitle = '⚡ Flash Sale Ends In:',
-    countdownEndDate = '2026-08-15T23:59',
+    countdownEndDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
     countdownBgImage = '',
     countdownOverlayOpacity = 60,
     countdownHours = 14,
@@ -552,7 +551,6 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               transition={{ delay: 0.1, duration: 0.5, type: 'spring' }}
               className="flex flex-col items-center gap-6"
             >
-              <ZidCircularLogo size={105} />
               
               <div className="flex flex-col items-center gap-2">
                 <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
