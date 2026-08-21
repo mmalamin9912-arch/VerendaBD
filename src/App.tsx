@@ -167,7 +167,23 @@ export default function App() {
     checkAuthAndRoute();
   }, []);
 
-  const [merchant, setMerchant] = useState<MerchantProfile | null>(null);
+  const [merchant, setMerchant] = useState<MerchantProfile>(() => {
+    try {
+      const savedSession = localStorage.getItem('zid_auth_session');
+      if (savedSession) {
+        const parsed = JSON.parse(savedSession);
+        if (parsed?.userProfile) return parsed.userProfile;
+      }
+      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+      if (saved) {
+        const storeMerchant = JSON.parse(saved).merchant;
+        if (storeMerchant) return storeMerchant;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return initialMerchant;
+  });
   const [authLoading, setAuthLoading] = useState(true);
 
   // Supabase Auth listener
@@ -179,7 +195,8 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        fetchMerchantProfile(session.user.id);
+        setIsAuthenticated(true);
+        fetchMerchantProfile(session.user.id, session.user.email);
       } else {
         setAuthLoading(false);
       }
@@ -187,9 +204,9 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        fetchMerchantProfile(session.user.id);
+        setIsAuthenticated(true);
+        fetchMerchantProfile(session.user.id, session.user.email);
       } else {
-        setMerchant(null);
         setAuthLoading(false);
       }
     });
@@ -197,17 +214,17 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchMerchantProfile = async (userId: string) => {
+  const fetchMerchantProfile = async (userId: string, userEmail?: string) => {
     if (!supabase) return;
     try {
-      const { data, error } = await supabase
-        .from('merchants')
-        .select('*')
-        .eq('auth_user_id', userId)
-        .single();
+      let query = supabase.from('merchants').select('*');
+      if (userId) {
+        query = query.or(`auth_user_id.eq.${userId},email.eq.${userEmail || ''}`);
+      }
+      const { data } = await query.maybeSingle();
       
       if (data) {
-        setMerchant(data);
+        setMerchant(prev => ({ ...prev, ...data }));
       }
     } catch (e) {
       console.error('Error fetching merchant profile:', e);
@@ -230,38 +247,37 @@ export default function App() {
 
   // Fetch data from DB
   React.useEffect(() => {
-    if (merchant?.id) {
-      // Products
-      fetch(`/api/products/${merchant.id}`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setProducts(data);
-          }
-        })
-        .catch(err => console.error('Error fetching products:', err));
-        
-      // Customers
-      fetch(`/api/customers/${merchant.id}`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setCustomers(data);
-          }
-        })
-        .catch(err => console.error('Error fetching customers:', err));
-        
-      // Orders
-      fetch(`/api/orders/${merchant.id}`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            setOrders(data);
-          }
-        })
-        .catch(err => console.error('Error fetching orders:', err));
-    }
-  }, [merchant?.id]);
+    const merchantId = merchant?.id || merchant?.storeSlug || 'default';
+    // Products
+    fetch(`/api/products/${merchantId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+        }
+      })
+      .catch(err => console.error('Error fetching products:', err));
+      
+    // Customers
+    fetch(`/api/customers/${merchantId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setCustomers(data);
+        }
+      })
+      .catch(err => console.error('Error fetching customers:', err));
+      
+    // Orders
+    fetch(`/api/orders/${merchantId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setOrders(data);
+        }
+      })
+      .catch(err => console.error('Error fetching orders:', err));
+  }, [merchant?.id, merchant?.storeSlug]);
 
   // Subscription Fetching
   React.useEffect(() => {
