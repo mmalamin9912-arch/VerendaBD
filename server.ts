@@ -430,10 +430,13 @@ app.get('/api/orders/:merchantId', async (req, res) => {
 app.post('/api/orders', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
-  const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
+  const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || payload.storeSlug || 'default');
   
   if (Array.isArray(payload)) {
     inMemoryStore.orders.set(merchantId, payload);
+  } else {
+    const existing = inMemoryStore.orders.get(merchantId) || [];
+    inMemoryStore.orders.set(merchantId, [payload, ...existing]);
   }
 
   if (supabaseAdmin) {
@@ -447,7 +450,7 @@ app.post('/api/orders', async (req, res) => {
   res.json(payload);
 });
 
-// Gemini AI Setup with Resilient Multi-Model Failover
+// Gemini AI Setup with Resilient Multi-Model Failover & Rate-Limit Shield
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
@@ -457,7 +460,11 @@ const ai = new GoogleGenAI({
   }
 });
 
-// Resilient Gemini Execution Helper with automatic model fallback for 503/429/404 errors
+// In-memory cache & cooldown tracking for Gemini API requests
+const geminiCache = new Map<string, { text: string; expiresAt: number }>();
+let rateLimitCooldownUntil = 0;
+
+// Resilient Gemini Execution Helper with automatic model fallback and rate limit protection
 async function executeGeminiWithFallback(options: {
   contents: string;
   systemInstruction?: string;
@@ -467,8 +474,21 @@ async function executeGeminiWithFallback(options: {
     return null;
   }
 
-  // Model fallback chain: try modern flash models in priority order
-  const candidateModels = ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
+  // If currently in rate-limit cooldown, immediately use contextual fallback
+  const now = Date.now();
+  if (now < rateLimitCooldownUntil) {
+    return null;
+  }
+
+  // Check cache first to save quota
+  const cacheKey = `${options.contents}_${options.systemInstruction || ''}_${options.responseMimeType || ''}`;
+  const cached = geminiCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.text;
+  }
+
+  // Valid Gemini model fallback chain according to SDK specification
+  const candidateModels = ["gemini-3.7-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
   
   for (const modelName of candidateModels) {
     try {
@@ -483,10 +503,19 @@ async function executeGeminiWithFallback(options: {
       });
 
       if (response && response.text) {
+        // Cache result for 15 minutes
+        geminiCache.set(cacheKey, { text: response.text, expiresAt: now + 15 * 60 * 1000 });
         return response.text;
       }
     } catch (err: any) {
-      console.warn(`[Gemini Failover] Model ${modelName} returned status ${err?.status || err?.code || 'error'}: ${err?.message || err}. Attempting next available model...`);
+      const statusCode = err?.status || err?.code;
+      const isRateLimit = statusCode === 429 || err?.message?.includes('429') || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota exceeded');
+      
+      if (isRateLimit) {
+        // Set cooldown for 40 seconds to let free tier quota reset smoothly
+        rateLimitCooldownUntil = Date.now() + 40000;
+        break; // Stop hammering the API when quota is exhausted
+      }
     }
   }
 

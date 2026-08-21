@@ -387,6 +387,8 @@ export interface Order {
   deliveryZone: 'Inside Dhaka' | 'Outside Dhaka' | 'Sub Dhaka';
   address: string;
   platform?: 'Mobile web' | 'iOS App' | 'Android App' | 'Desktop Web' | 'POS';
+  subtotalBDT?: number;
+  deliveryCharge?: number;
   totalBDT: number;
   paymentMethod: 'bKash' | 'Nagad' | 'Rocket' | 'Bank Transfer' | 'COD';
   paymentStatus: 'Paid' | 'Partially paid' | 'Unpaid' | 'Voided' | 'Pending Verification';
@@ -398,6 +400,8 @@ export interface Order {
   tags?: string[];
   createdAt: string;
   orderToken?: string;
+  merchantId?: string;
+  storeSlug?: string;
   items: OrderItem[];
 }
 

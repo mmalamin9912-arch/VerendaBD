@@ -1618,6 +1618,7 @@ export default function App() {
               <OrdersView
                 orders={orders}
                 onUpdateOrders={handleUpdateOrders}
+                merchantId={merchant?.id}
               />
             )}
 

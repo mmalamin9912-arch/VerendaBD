@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Order, OrderItem } from '../../types';
 import { 
   ShoppingBag, 
@@ -78,6 +78,7 @@ const generateQRCodeSVG = (text: string, size = 64) => {
 interface OrdersViewProps {
   orders: Order[];
   onUpdateOrders: (orders: Order[]) => void;
+  merchantId?: string;
 }
 
 export type OrderSubMenu = 'all' | 'manual' | 'abandoned';
@@ -110,7 +111,26 @@ const STATUS_TABS: StatusTab[] = [
 export const OrdersView: React.FC<OrdersViewProps> = ({
   orders,
   onUpdateOrders,
+  merchantId,
 }) => {
+  // Live polling effect for orders sync from Supabase
+  useEffect(() => {
+    if (!merchantId) return;
+    const fetchLiveOrders = async () => {
+      try {
+        const res = await fetch(`/api/orders/${merchantId}`);
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          onUpdateOrders(data);
+        }
+      } catch (err) {
+        console.warn('Error fetching live orders:', err);
+      }
+    };
+    fetchLiveOrders();
+    const timer = setInterval(fetchLiveOrders, 4000);
+    return () => clearInterval(timer);
+  }, [merchantId]);
   // Sub-menu state
   const [subMenu, setSubMenu] = useState<OrderSubMenu>('all');
   

@@ -303,7 +303,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     }).filter(Boolean) as any);
   };
 
-  const handleCheckoutSubmit = (e: React.FormEvent) => {
+  const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const orderNum = '#' + Math.floor(100000 + Math.random() * 900000);
     setConfirmedOrderNum(orderNum);
@@ -324,7 +324,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       image: selectedProduct.image,
     }] : [];
 
-    const total = cart.length > 0 ? cartTotal : (selectedProduct?.priceBDT || 0);
+    const subtotal = cart.length > 0 ? cartTotal : (selectedProduct?.priceBDT || 0);
 
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
@@ -336,7 +336,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       deliveryZone: selectedIsInside ? 'Inside Dhaka' : 'Outside Dhaka',
       address: custAddress,
       platform: 'Mobile web',
-      totalBDT: total + shippingFee,
+      subtotalBDT: subtotal,
+      deliveryCharge: shippingFee,
+      totalBDT: subtotal + shippingFee,
       paymentMethod: payMethod === 'bkash' ? 'bKash' : payMethod === 'nagad' ? 'Nagad' : payMethod === 'rocket' ? 'Rocket' : payMethod === 'bank' ? 'Bank Transfer' : 'COD',
       paymentStatus: payMethod === 'cod' ? 'Unpaid' : 'Pending Verification',
       transactionId: custTxId || undefined,
@@ -346,9 +348,22 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       trackingCode: 'SF-PENDING-' + Math.floor(1000 + Math.random() * 9000),
       createdAt: new Date().toLocaleString(),
       items,
+      merchantId: merchant?.id,
+      storeSlug: storeSlug,
     };
 
     onPlaceOrder(newOrder);
+
+    try {
+      await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOrder)
+      });
+    } catch (e) {
+      console.warn('Error saving order to Supabase:', e);
+    }
+
     setOrders(prev => [newOrder, ...prev]);
     setCheckoutStep('success');
     setCart([]);
