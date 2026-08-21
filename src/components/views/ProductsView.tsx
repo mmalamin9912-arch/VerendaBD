@@ -130,7 +130,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         body: JSON.stringify(savedProduct),
       });
 
-      if (!response.ok) throw new Error('Failed to save product');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save product');
+      }
       
       // Refresh products from server
       const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);

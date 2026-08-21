@@ -81,28 +81,50 @@ app.get('/api/products/:merchantId', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
   const payload = req.body;
-  const merchantId = payload.merchantId || 'default';
   
+  // Helper to sanitize a single product
+  const sanitizeProduct = (p: any) => ({
+    ...p,
+    id: p.id || crypto.randomUUID(),
+    merchantId: p.merchantId || 'default',
+    title: p.title || 'Untitled Product',
+    priceBDT: Number(p.priceBDT) || 0,
+    stock: Number(p.stock) || 0,
+    sku: p.sku || '',
+    category: p.category || '',
+    images: Array.isArray(p.images) ? p.images : [],
+    descriptionEn: p.descriptionEn || '',
+    descriptionBn: p.descriptionBn || ''
+  });
+
+  const sanitizedPayload = Array.isArray(payload) ? payload.map(sanitizeProduct) : sanitizeProduct(payload);
+  const merchantId = Array.isArray(sanitizedPayload) ? (sanitizedPayload[0].merchantId || 'default') : (sanitizedPayload.merchantId || 'default');
+
   // Update in-memory
   const existing = inMemoryStore.products.get(merchantId) || [];
-  if (Array.isArray(payload)) {
-    inMemoryStore.products.set(merchantId, payload);
+  if (Array.isArray(sanitizedPayload)) {
+    inMemoryStore.products.set(merchantId, sanitizedPayload);
   } else {
-    const idx = existing.findIndex(p => p.id === payload.id);
-    if (idx >= 0) existing[idx] = payload;
-    else existing.unshift(payload);
+    const idx = existing.findIndex(p => p.id === sanitizedPayload.id);
+    if (idx >= 0) existing[idx] = sanitizedPayload;
+    else existing.unshift(sanitizedPayload);
     inMemoryStore.products.set(merchantId, existing);
   }
 
   if (supabaseAdmin) {
     try {
-      const { data, error } = await supabaseAdmin.from('products').upsert(payload);
-      if (!error) return res.json(data || payload);
+      const { data, error } = await supabaseAdmin.from('products').upsert(sanitizedPayload);
+      if (error) {
+        console.error('Supabase save product error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data || sanitizedPayload);
     } catch (e) {
-      console.warn('Supabase save product error:', e);
+      console.error('Unexpected Supabase save product error:', e);
+      return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
-  res.json(payload);
+  res.json(sanitizedPayload);
 });
 
 app.delete('/api/products/:id', async (req, res) => {
