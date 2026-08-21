@@ -216,6 +216,20 @@ export default function App() {
 
   const prevSlugRef = React.useRef<string>(merchant?.storeSlug || '');
 
+  // Fetch products from DB
+  React.useEffect(() => {
+    if (merchant?.id) {
+      fetch(`/api/products/${merchant.id}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setProducts(data);
+          }
+        })
+        .catch(err => console.error('Error fetching products:', err));
+    }
+  }, [merchant?.id]);
+
   // Subscription Fetching
   React.useEffect(() => {
     if (merchant && merchant.storeName) {
@@ -321,21 +335,7 @@ export default function App() {
     return initialOrders;
   });
   
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const savedProducts = localStorage.getItem('zid_merchant_products');
-      if (savedProducts) return JSON.parse(savedProducts);
-
-      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.products) return parsed.products;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return initialProducts;
-  });
+  const [products, setProducts] = useState<Product[]>(initialProducts);
   
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   

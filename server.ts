@@ -42,6 +42,28 @@ app.post('/api/subscription/update', async (req, res) => {
   res.json(data);
 });
 
+// Product API
+app.get('/api/products/:merchantId', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('products').select('*').eq('merchantId', req.params.merchantId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/products', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { data, error } = await supabaseAdmin.from('products').upsert(req.body);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase admin not configured' });
+  const { error } = await supabaseAdmin.from('products').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 // Gemini AI Setup
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,

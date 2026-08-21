@@ -122,36 +122,43 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return b.id.localeCompare(a.id); // 'latest'
   });
 
-  const handleDeleteProduct = (id: string) => {
-    if (confirm('Are you sure you want to delete this product listing?')) {
-      const updated = products.filter(p => p.id !== id);
-      try {
-        localStorage.setItem('zid_merchant_products', JSON.stringify(updated));
-      } catch (e) {
-        console.error('Error saving to zid_merchant_products:', e);
-      }
-      onUpdateProducts(updated);
+  const handleSaveProduct = async (savedProduct: Product) => {
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savedProduct),
+      });
+
+      if (!response.ok) throw new Error('Failed to save product');
+      
+      // Refresh products from server
+      const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
+      const updatedProducts = await updatedResponse.json();
+      onUpdateProducts(updatedProducts);
+      setIsFormViewActive(false);
+      setEditingProduct(null);
+    } catch (e) {
+      console.error('Error saving product to DB:', e);
+      alert('Failed to save product. Please try again.');
     }
   };
 
-  const handleSaveProduct = (savedProduct: Product) => {
-    let updated: Product[];
-    const exists = products.some(p => p.id === savedProduct.id);
-    if (exists) {
-      updated = products.map(p => p.id === savedProduct.id ? savedProduct : p);
-    } else {
-      updated = [savedProduct, ...products];
+  const handleDeleteProduct = async (id: string) => {
+    if (confirm('Are you sure you want to delete this product listing?')) {
+      try {
+        const response = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to delete product');
+        
+        // Refresh products from server
+        const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
+        const updatedProducts = await updatedResponse.json();
+        onUpdateProducts(updatedProducts);
+      } catch (e) {
+        console.error('Error deleting product from DB:', e);
+        alert('Failed to delete product. Please try again.');
+      }
     }
-
-    try {
-      localStorage.setItem('zid_merchant_products', JSON.stringify(updated));
-    } catch (e) {
-      console.error('Error saving to zid_merchant_products:', e);
-    }
-
-    onUpdateProducts(updated);
-    setIsFormViewActive(false);
-    setEditingProduct(null);
   };
 
   const handleSelectProductTypeFromModal = (type: ProductType) => {
