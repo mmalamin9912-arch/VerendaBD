@@ -237,25 +237,33 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
     setIsGeneratingDescription(true);
     try {
-      const prompt = `Generate a catchy, SEO-friendly e-commerce product description for: ${title || titleBn}. Category: ${category}.`;
+      const productInfo = `Title: ${title || titleBn}. Category: ${category}. Short Description: ${shortDescEn || shortDescBn || 'N/A'}`;
+      const promptEn = `Generate a catchy, SEO-friendly, professional e-commerce product description for: ${productInfo}. Language: English. Focus on highlighting quality and benefits.`;
+      const promptBn = `Generate a catchy, SEO-friendly, professional e-commerce product description for: ${productInfo}. Language: Bengali. Focus on highlighting quality and benefits.`;
       
       const [responseEn, responseBn] = await Promise.all([
         fetch('/api/ai/generate-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: `${prompt} Language: English. Keep it professional and highlight quality.`,
-            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the description text, no extra commentary.`
+            prompt: promptEn,
+            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text, no extra commentary or filler.`
           }),
-        }).then(r => r.json()),
+        }).then(r => {
+          if (!r.ok) throw new Error('Failed to generate English description');
+          return r.json();
+        }),
         fetch('/api/ai/generate-text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: `${prompt} Language: Bengali. Keep it professional and highlight quality.`,
-            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the description text, no extra commentary.`
+            prompt: promptBn,
+            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text in Bengali, no extra commentary or filler.`
           }),
-        }).then(r => r.json())
+        }).then(r => {
+          if (!r.ok) throw new Error('Failed to generate Bengali description');
+          return r.json();
+        })
       ]);
 
       if (responseEn.text) setDescriptionEn(responseEn.text);
@@ -263,6 +271,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       
     } catch (error) {
       console.error('AI Generation Error:', error);
+      alert('Failed to generate AI description. Please try again.');
     } finally {
       setIsGeneratingDescription(false);
     }
