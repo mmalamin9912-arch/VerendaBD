@@ -144,7 +144,7 @@ export default function App() {
         if (!session) {
           setIsAuthenticated(false);
         }
-      } else if (path === '/dashboard') {
+      } else if (path === '/dashboard' || path.startsWith('/dashboard/')) {
         if (session) {
           setIsAuthenticated(true);
           setShowLanding(false);
@@ -1018,8 +1018,9 @@ export default function App() {
     setShowLanding(false);
     
     // Explicit Dashboard Navigation
-    window.history.pushState({}, '', '/dashboard');
-    setCurrentPath('/dashboard');
+    const slug = userProfile.storeSlug || 'my-store';
+    window.history.pushState({}, '', `/dashboard/${slug}`);
+    setCurrentPath(`/dashboard/${slug}`);
     setActiveTab('dashboard');
 
     const intendedPlan = localStorage.getItem('zid_intended_plan');

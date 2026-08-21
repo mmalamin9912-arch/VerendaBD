@@ -24,7 +24,8 @@ import {
   Menu,
   ShieldAlert,
   HelpCircle,
-  Trash2
+  Trash2,
+  Copy
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -645,7 +646,27 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div className="hidden xl:block text-left">
               <div className="text-xs font-bold text-white leading-tight">{merchant?.storeName || 'My Store'}</div>
-              <div className="text-[10px] text-[#E6C587] font-mono leading-tight">store.zid.sa/{merchant?.storeSlug || ''}</div>
+              <div className="flex items-center gap-2">
+                <a 
+                  href={`https://store.zid.sa/${merchant?.storeSlug || ''}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-[#E6C587] font-mono leading-tight hover:underline cursor-pointer"
+                >
+                  store.zid.sa/{merchant?.storeSlug || ''}
+                </a>
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigator.clipboard.writeText(`https://store.zid.sa/${merchant?.storeSlug || ''}`);
+                    alert('Store link copied to clipboard!');
+                  }}
+                  className="p-0.5 text-slate-500 hover:text-white transition-colors"
+                  title="Copy Store Link"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </div>
             </div>
 
             <button
