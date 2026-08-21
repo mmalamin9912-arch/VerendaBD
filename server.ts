@@ -47,6 +47,7 @@ app.get('/api/subscription/by-store/:storeName', async (req, res) => {
 });
 
 app.post('/api/subscription/update', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const { storeName, planId, expiryDate } = req.body;
   inMemoryStore.subscriptions.set(storeName, { subscription_plan: planId, subscription_expiry: expiryDate });
   
@@ -80,6 +81,7 @@ app.get('/api/products/:merchantId', async (req, res) => {
 });
 
 app.post('/api/products', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
   
   // Helper to sanitize a single product
@@ -159,6 +161,7 @@ app.get('/api/customers/:merchantId', async (req, res) => {
 });
 
 app.post('/api/customers', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
   const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
   
@@ -209,6 +212,7 @@ app.get('/api/orders/:merchantId', async (req, res) => {
 });
 
 app.post('/api/orders', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
   const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
   
@@ -239,6 +243,7 @@ const ai = new GoogleGenAI({
 
 // AI Endpoints
 app.post('/api/ai/generate-text', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
   try {
     const { prompt, systemInstruction } = req.body;
     
