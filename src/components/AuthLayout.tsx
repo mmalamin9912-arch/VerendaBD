@@ -49,7 +49,7 @@ const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </div>
 
       {/* Right Side: Carousel Banner */}
-      <div className="hidden lg:flex flex-1 items-center justify-center p-12 bg-slate-950">
+      <div className="flex flex-1 items-center justify-center p-12 bg-slate-950">
         <div className="relative w-full max-w-lg aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl bg-slate-900">
           <AnimatePresence mode="wait">
             <motion.div
