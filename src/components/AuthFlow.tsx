@@ -596,7 +596,19 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    const newUserProfile: MerchantProfile = {
+    // Check for existing merchant profile in Supabase first
+    let existingProfile = null;
+    try {
+        const response = await fetch(`/api/merchants/check/${cleanEmail}`);
+        existingProfile = await response.json();
+    } catch (e) {
+        console.error('Error checking for existing merchant:', e);
+    }
+
+    const newUserProfile: MerchantProfile = existingProfile ? {
+        ...defaultMerchant,
+        ...existingProfile
+    } : {
       ...defaultMerchant,
       ownerName: fullName,
       storeName: storeName.trim(),

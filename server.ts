@@ -31,6 +31,20 @@ const inMemoryStore = {
   orders: new Map<string, any[]>(),
 };
 
+// Merchant API
+app.get('/api/merchants/check/:email', async (req, res) => {
+  const { email } = req.params;
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from('merchants').select('*').eq('email', email).maybeSingle();
+      if (!error && data) return res.json(data);
+    } catch (e) {
+      console.warn('Supabase check merchant error:', e);
+    }
+  }
+  res.json(null);
+});
+
 // Subscription API
 app.get('/api/subscription/by-store/:storeName', async (req, res) => {
   const { storeName } = req.params;
