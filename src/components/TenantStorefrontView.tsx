@@ -106,6 +106,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           if (parsed.orders) {
             setOrders(parsed.orders);
           }
+          if (Array.isArray(parsed.products) && parsed.products.length > 0) {
+            setLocalProducts(parsed.products);
+          }
         }
       } catch (e) {
         console.error('Error loading storefront data from database:', e);
@@ -440,10 +443,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     { name: 'Gadgets & Tech', count: '6 Items', vectorType: 'gadget' }
   ];
 
-  // Dynamic Fallback Logic: Render demo items ONLY IF merchant has zero created items in the database
-  const displayProducts = hasMerchantProducts
-    ? localProducts.filter(p => p.status === 'Active' || p.status === 'Published')
-    : fallbackDemoProducts;
+  // Dynamic product inventory for storefront homepage
+  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : (products || []);
   const themeConfig = localMerchant.themeConfig || {};
   const { 
     headerBgColor = '#ffffff', 

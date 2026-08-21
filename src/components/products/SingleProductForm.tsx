@@ -879,12 +879,12 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                     <button
                       type="button"
                       onClick={suggestPricing}
-                      className="text-[10px] text-[#00D68F] font-black hover:underline flex items-center gap-1 cursor-pointer relative"
+                      className="text-[11px] text-[#00D68F] font-bold hover:bg-[#00D68F]/20 bg-[#00D68F]/10 px-2.5 py-1 rounded-lg border border-[#00D68F]/30 flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap"
                     >
                       {isFreeTier && (
-                        <span className="bg-slate-950 text-white text-[7px] px-1 rounded border border-[#00D68F]/30 uppercase tracking-tighter">PRO</span>
+                        <span className="bg-slate-900 text-[#00D68F] text-[9px] font-black px-1.5 py-0.5 rounded border border-[#00D68F]/40 uppercase tracking-wider">PRO</span>
                       )}
-                      <Sparkles className="w-3 h-3" />
+                      <Sparkles className="w-3.5 h-3.5" />
                       <span>AI Smart Pricing</span>
                     </button>
                   </div>
