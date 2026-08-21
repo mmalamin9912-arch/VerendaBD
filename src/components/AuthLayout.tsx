@@ -40,52 +40,60 @@ const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [slides.length]);
 
   return (
-    <div className="min-h-screen flex bg-[#141722] text-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-[#0D111A] text-slate-100 font-sans">
       {/* Left Side: Auth Form */}
-      <div className="flex-1 flex flex-col justify-center items-center p-8 bg-[#1D212E] shadow-2xl">
-        <div className="w-full max-w-sm">
+      <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-10 lg:p-12 bg-[#121824] shadow-2xl border-r border-[#1E2638] overflow-y-auto">
+        <div className="w-full max-w-md my-auto">
           {children}
         </div>
       </div>
 
       {/* Right Side: Carousel Banner */}
-      <div className="flex flex-1 items-center justify-center p-12 bg-slate-950">
-        <div className="relative w-full max-w-lg aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl bg-slate-900">
+      <div className="flex flex-1 items-center justify-center p-8 sm:p-12 lg:p-16 bg-[#0B0F17]">
+        <div className="relative w-full max-w-lg aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/10">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentSlide}
-              initial={{ opacity: 0, x: 50 }}
+              initial={{ opacity: 0, x: 40 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              transition={{ duration: 0.5 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.45, ease: "easeInOut" }}
               className="absolute inset-0 flex flex-col"
             >
               <div
-                className="absolute inset-0 bg-cover bg-center"
+                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 hover:scale-105"
                 style={{ backgroundImage: `url(${slides[currentSlide].imageUrl})` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/80 to-slate-900/30" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0B0F17] via-[#0B0F17]/75 to-transparent" />
               </div>
-              <div className="relative p-10 flex flex-col justify-end h-full">
-                <div className="mb-4 bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/20">
+              <div className="relative p-8 sm:p-10 flex flex-col justify-end h-full">
+                <div className="mb-4 bg-white/10 w-14 h-14 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-lg">
                   {(() => {
                     const Icon = slides[currentSlide].icon;
-                    return <Icon className="w-8 h-8 text-white" />;
+                    return <Icon className="w-7 h-7 text-[#D4AF37]" />;
                   })()}
                 </div>
-                <h2 className="text-3xl font-black text-white mb-3">{slides[currentSlide].title}</h2>
-                <p className="text-slate-200 text-lg leading-relaxed">{slides[currentSlide].description}</p>
+                <h2 className="text-2xl sm:text-3xl font-black text-white mb-2.5 tracking-tight">
+                  {slides[currentSlide].title}
+                </h2>
+                <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
+                  {slides[currentSlide].description}
+                </p>
               </div>
             </motion.div>
           </AnimatePresence>
 
           {/* Pagination Dots */}
-          <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2">
+          <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2 z-10">
             {slides.map((_, index) => (
               <button
                 key={index}
+                type="button"
                 onClick={() => setCurrentSlide(index)}
-                className={`w-3 h-3 rounded-full transition-all ${currentSlide === index ? 'bg-white w-8' : 'bg-white/50'}`}
+                aria-label={`Go to slide ${index + 1}`}
+                className={`h-2.5 rounded-full transition-all duration-300 cursor-pointer ${
+                  currentSlide === index ? 'bg-[#D4AF37] w-8' : 'bg-white/40 hover:bg-white/70 w-2.5'
+                }`}
               />
             ))}
           </div>
