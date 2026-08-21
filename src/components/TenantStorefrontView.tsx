@@ -537,26 +537,90 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   return (
     <div className={`relative min-h-screen pb-20 md:pb-0 font-sans selection:bg-[#D4AF37] selection:text-white ${rootBgClass} ${mobileContainerClass}`}>
-      {/* Branded Loading Splash Screen */}
+      {/* Branded Loading Splash Screen with Zid BD Logo & Merchant Identity */}
       <AnimatePresence>
         {showSplash && (
           <motion.div
             initial={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.4, ease: 'easeInOut' } }}
-            className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6"
+            exit={{ opacity: 0, scale: 1.05, transition: { duration: 0.5, ease: 'easeInOut' } }}
+            className="fixed inset-0 bg-[#12141C] text-white z-50 flex flex-col items-center justify-center p-6 overflow-hidden select-none"
           >
+            {/* Ambient Background Glows */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-[#D4AF37]/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
             <motion.div
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.1, duration: 0.5, type: 'spring' }}
-              className="flex flex-col items-center gap-6"
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              transition={{ delay: 0.1, duration: 0.6, type: 'spring', bounce: 0.3 }}
+              className="flex flex-col items-center gap-6 relative z-10 text-center"
             >
-              
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Loading Storefront
+              {/* Zid BD Primary Logo Emblem */}
+              <div className="relative">
+                <div className="w-20 h-20 rounded-2xl p-1 bg-gradient-to-tr from-[#BF953F] via-[#FCF6BA] to-[#B38728] shadow-2xl shadow-[#D4AF37]/30 flex items-center justify-center">
+                  <div className="w-full h-full rounded-[14px] bg-[#181B26] flex items-center justify-center relative overflow-hidden">
+                    {/* Golden Z Mark */}
+                    <svg viewBox="0 0 40 40" className="w-10 h-10 drop-shadow-md" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M10 11 H30 L15 29 H30"
+                        stroke="#D4AF37"
+                        strokeWidth="4.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Sparkling BD Badge */}
+                <span className="absolute -bottom-2 -right-2 bg-gradient-to-r from-[#BF953F] to-[#B38728] text-slate-950 font-black text-[10px] px-2 py-0.5 rounded-full shadow-lg border border-[#FCF6BA]/50">
+                  BD
                 </span>
+              </div>
+
+              {/* Brand Typography */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-center gap-2">
+                  <h1 className="text-2xl font-black tracking-wider text-white">
+                    ZID <span className="text-[#E6C587]">SAAS BD</span>
+                  </h1>
+                </div>
+                <p className="text-xs text-slate-400 font-medium tracking-wide">
+                  পাওয়ার্ড বাই জিৎ বিডি ক্লাউড ই-কমার্স
+                </p>
+              </div>
+
+              {/* Merchant Store Connection Node */}
+              {merchant?.storeName && (
+                <div className="mt-2 bg-[#1D2232] border border-[#2E3548] px-4 py-2 rounded-xl flex items-center gap-2.5 shadow-lg">
+                  {merchant.logoUrl ? (
+                    <img src={merchant.logoUrl} alt={merchant.storeName} className="w-5 h-5 rounded-full object-cover border border-[#D4AF37]/40" />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-[#D4AF37]/20 text-[#D4AF37] text-[10px] font-bold flex items-center justify-center">
+                      {merchant.storeName.charAt(0)}
+                    </div>
+                  )}
+                  <span className="text-xs font-bold text-slate-200">{merchant.storeName}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                </div>
+              )}
+
+              {/* Progress Indicator */}
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <div className="flex items-center gap-2 text-[#E6C587]">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-[11px] font-bold tracking-widest uppercase">
+                    Entering Customer Storefront...
+                  </span>
+                </div>
+                <div className="w-48 h-1 bg-[#252B3B] rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: '0%' }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 1.4, ease: 'easeInOut' }}
+                    className="h-full bg-gradient-to-r from-[#BF953F] to-[#FCF6BA]"
+                  />
+                </div>
               </div>
             </motion.div>
           </motion.div>

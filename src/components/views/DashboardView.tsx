@@ -94,59 +94,83 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="space-y-6 select-none bg-[#1C1814] p-4 sm:p-6 rounded-3xl border border-[#3E342B]/40 shadow-inner">
       
-      {/* Sharable Multi-Tenant Store URL Generator Card */}
-      <div className="bg-gradient-to-r from-[#221D19] to-[#1C1814] border border-[#3E342B] p-6 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-[#E6C587]" />
-            <span className="text-xs font-bold text-[#E6C587] uppercase tracking-wider">Multi-Tenant Store URL Generator</span>
+      {/* Distinct Merchant Admin vs Customer Storefront Links */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 1. Merchant Admin Dashboard Link */}
+        <div className="bg-gradient-to-r from-[#221D19] to-[#1C1814] border border-[#3E342B] p-5 rounded-2xl flex flex-col justify-between gap-3 shadow-xl">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 font-bold text-[10px] rounded uppercase tracking-widest border border-blue-500/30">Merchant Portal</span>
+              <span className="text-xs text-slate-400">দোকানদার অ্যাডমিন লিংক</span>
+            </div>
+            <h3 className="text-sm font-bold text-white">Your Admin Dashboard Link</h3>
+            <p className="text-[11px] text-slate-400">Private management portal for managing your products, orders, settings, and analytics.</p>
           </div>
-          <h3 className="text-base font-bold text-[#E6C587]">Your Sharable Public Store Link</h3>
-          <p className="text-xs text-slate-400">Share this unique store URL with your buyers on Facebook, Instagram, or WhatsApp. Every visitor will see your custom catalog and checkout.</p>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 bg-[#15110E] border border-[#3E342B] px-3 py-2 rounded-xl text-[11px] font-mono text-[#FCF6BA] overflow-hidden">
+              <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="truncate">{window.location.origin}/dashboard/{merchant?.storeSlug || ''}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/dashboard/${merchant?.storeSlug || ''}`);
+                  alert('Merchant Dashboard URL copied to clipboard!');
+                }}
+                className="flex-1 px-3 py-2 bg-[#2E241D] hover:bg-[#3D3027] text-blue-300 border border-[#4E3E33] font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Copy Admin Link</span>
+              </button>
+              <a
+                href={`/dashboard/${merchant?.storeSlug || ''}`}
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
+              >
+                <span>Open Dashboard</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full lg:flex-1 justify-end">
-          <div className="flex items-center gap-2 bg-[#15110E] border border-[#3E342B] px-3.5 py-2.5 rounded-xl text-[11px] font-mono text-[#FCF6BA] w-full sm:w-auto sm:min-w-[320px] max-w-full overflow-hidden">
-            <Globe className="w-3.5 h-3.5 text-[#E6C587] shrink-0" />
-            <span className="truncate">{window.location.origin}/store/{merchant?.storeSlug || ''}</span>
+        {/* 2. Customer Public Storefront Link */}
+        <div className="bg-gradient-to-r from-[#221D19] to-[#1C1814] border border-[#3E342B] p-5 rounded-2xl flex flex-col justify-between gap-3 shadow-xl">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 font-bold text-[10px] rounded uppercase tracking-widest border border-emerald-500/30">Customer Store</span>
+              <span className="text-xs text-slate-400">কাস্টমার শপিং লিংক</span>
+            </div>
+            <h3 className="text-sm font-bold text-[#E6C587]">Your Sharable Public Store Link</h3>
+            <p className="text-[11px] text-slate-400">Share this unique store URL with buyers on Facebook, WhatsApp, or Instagram for shopping.</p>
           </div>
-          
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/store/${merchant?.storeSlug || ''}`);
-                alert('Store URL copied to clipboard successfully!');
-              }}
-              className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#2E241D] hover:bg-[#3D3027] text-[#E6C587] border border-[#4E3E33] font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Copy URL</span>
-            </button>
 
-            <button
-              onClick={() => {
-                const link = document.createElement('a');
-                link.href = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.origin}/store/${merchant?.storeSlug || ''}`;
-                link.download = `store-qr-${merchant?.storeSlug || 'store'}.png`;
-                alert('Generating QR Code for your store... Please save the image from the next window.');
-                window.open(link.href, '_blank');
-              }}
-              className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#2E241D] hover:bg-[#3D3027] text-[#E6C587] border border-[#4E3E33] font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0"
-              title="Download QR Code"
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>Download QR</span>
-            </button>
-
-            <a
-              href={`/store/${merchant?.storeSlug || ''}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 sm:flex-none px-3.5 py-2.5 bg-gradient-to-r from-[#BF953F] to-[#B38728] hover:from-[#FCF6BA] hover:to-[#BF953F] text-slate-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0 shadow-md"
-            >
-              <span>Visit Store</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 bg-[#15110E] border border-[#3E342B] px-3 py-2 rounded-xl text-[11px] font-mono text-[#FCF6BA] overflow-hidden">
+              <Globe className="w-3.5 h-3.5 text-[#E6C587] shrink-0" />
+              <span className="truncate">{window.location.origin}/store/{merchant?.storeSlug || ''}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/store/${merchant?.storeSlug || ''}`);
+                  alert('Customer Store URL copied to clipboard!');
+                }}
+                className="flex-1 px-3 py-2 bg-[#2E241D] hover:bg-[#3D3027] text-[#E6C587] border border-[#4E3E33] font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Copy Customer Link</span>
+              </button>
+              <a
+                href={`/store/${merchant?.storeSlug || ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 bg-gradient-to-r from-[#BF953F] to-[#B38728] hover:from-[#FCF6BA] hover:to-[#BF953F] text-slate-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow"
+              >
+                <span>Visit Customer Store</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         </div>
       </div>
