@@ -290,7 +290,7 @@ app.post('/api/orders', async (req, res) => {
   res.json(payload);
 });
 
-// Gemini AI Setup
+// Gemini AI Setup with Resilient Multi-Model Failover
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
@@ -300,25 +300,63 @@ const ai = new GoogleGenAI({
   }
 });
 
+// Resilient Gemini Execution Helper with automatic model fallback for 503/429/404 errors
+async function executeGeminiWithFallback(options: {
+  contents: string;
+  systemInstruction?: string;
+  responseMimeType?: string;
+}): Promise<string | null> {
+  if (!process.env.GEMINI_API_KEY) {
+    return null;
+  }
+
+  // Model fallback chain: try flash models in priority order
+  const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.7-flash"];
+  
+  for (const modelName of candidateModels) {
+    try {
+      const config: any = {};
+      if (options.systemInstruction) config.systemInstruction = options.systemInstruction;
+      if (options.responseMimeType) config.responseMimeType = options.responseMimeType;
+
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: options.contents,
+        ...(Object.keys(config).length > 0 ? { config } : {})
+      });
+
+      if (response && response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Failover] Model ${modelName} returned status ${err?.status || err?.code || 'error'}: ${err?.message || err}. Attempting next available model...`);
+    }
+  }
+
+  return null;
+}
+
 // AI Endpoints
 app.post('/api/ai/generate-text', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   try {
     const { prompt, systemInstruction } = req.body;
-    
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ text: `Crafted with superior materials and tailored precision, this product delivers exceptional durability, contemporary style, and peak performance for daily use. Designed to exceed expectations with flawless craftsmanship.` });
-    }
+    const isBengali = /Bengali|Bangla|বাংলা|bengali|bangla/i.test(prompt || '');
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    const generatedText = await executeGeminiWithFallback({
       contents: prompt,
-      config: {
-        systemInstruction: systemInstruction || "You are a professional e-commerce copywriter. Provide concise, compelling product copy without generic filler.",
-      },
+      systemInstruction: systemInstruction || "You are a professional e-commerce copywriter. Provide concise, compelling product copy without generic filler.",
     });
 
-    res.json({ text: response.text || '' });
+    if (generatedText) {
+      return res.json({ text: generatedText });
+    }
+
+    // Contextual fallback if API is temporarily unavailable
+    if (isBengali) {
+      return res.json({ text: 'উন্নত মানের ফ্যাব্রিক ও আধুনিক ডিজাইনে তৈরি এই পণ্যটি আপনাকে দেবে অসাধারণ আরাম, আভিজাত্য এবং দীর্ঘস্থায়ী ব্যবহার অভিজ্ঞতা।' });
+    }
+    return res.json({ text: 'Crafted with premium materials and precision engineering, this product delivers exceptional durability, contemporary style, and peak performance for daily use.' });
   } catch (error: any) {
     console.error('AI Text Generation Error:', error);
     res.json({ text: `Crafted with premium materials, this high-grade item offers exceptional comfort, modern aesthetics, and lasting reliability.` });
@@ -330,33 +368,34 @@ app.post('/api/ai/suggest-pricing', async (req, res) => {
     const { productName, currentPrice, category } = req.body;
     const priceNum = Number(currentPrice) || 1000;
 
-    if (!process.env.GEMINI_API_KEY) {
-      const suggested = Math.round(priceNum * 0.9);
-      const discount = Math.round(((priceNum - suggested) / priceNum) * 100);
-      return res.json({
-        suggestedPrice: suggested,
-        discountPercentage: discount || 10,
-        reasoning: `Optimized for ${category || 'general merchandise'} market demand to boost checkout conversion rates.`
-      });
-    }
-
     const prompt = `Analyze pricing for e-commerce product: "${productName}", Category: "${category}", Current Price: ৳${priceNum} BDT. Suggest an optimal competitive price, calculated discount percentage, and 1-sentence reasoning based on consumer demand in Bangladesh.
     Return JSON only in this exact format:
     {"suggestedPrice": number, "discountPercentage": number, "reasoning": "string"}`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    const rawResult = await executeGeminiWithFallback({
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
+      responseMimeType: "application/json",
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    if (rawResult) {
+      try {
+        const parsed = JSON.parse(rawResult);
+        return res.json({
+          suggestedPrice: parsed.suggestedPrice || Math.round(priceNum * 0.9),
+          discountPercentage: parsed.discountPercentage || 10,
+          reasoning: parsed.reasoning || `Competitively positioned for high buyer conversion.`
+        });
+      } catch (parseErr) {
+        console.warn('Failed to parse pricing JSON:', parseErr);
+      }
+    }
+
+    const fallbackSuggested = Math.round(priceNum * 0.9);
+    const fallbackDiscount = Math.round(((priceNum - fallbackSuggested) / priceNum) * 100);
     res.json({
-      suggestedPrice: parsed.suggestedPrice || Math.round(priceNum * 0.9),
-      discountPercentage: parsed.discountPercentage || 10,
-      reasoning: parsed.reasoning || `Competitively positioned for high buyer conversion.`
+      suggestedPrice: fallbackSuggested,
+      discountPercentage: fallbackDiscount || 10,
+      reasoning: `Optimized benchmark pricing for ${category || 'general merchandise'} to boost checkout conversions.`
     });
   } catch (error) {
     console.error('AI Pricing Suggestion Error:', error);
@@ -373,13 +412,6 @@ app.post('/api/ai/generate-faq', async (req, res) => {
   try {
     const { policies, storeName } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({
-        faq: `### Frequently Asked Questions\n\n**Q: What is the delivery timeframe?**\nInside Dhaka 2-3 business days, outside Dhaka 3-5 days.\n\n**Q: How do returns work?**\nItems can be returned within 7 days in original condition.\n\n**Q: What payment options are supported?**\nbKash, Nagad, Cards, and Cash on Delivery (COD).`,
-        chatbotScript: `Hello! Welcome to ${storeName || 'our store'}. How can I assist you today? You can ask about delivery, payments, or returns.`
-      });
-    }
-
     const prompt = `Based on these store policies for ${storeName || 'our store'}:
     ${JSON.stringify(policies)}
     
@@ -387,18 +419,26 @@ app.post('/api/ai/generate-faq', async (req, res) => {
     2. Generate an automated chatbot welcome script and quick answers.
     Return JSON in format: {"faq": "markdown string", "chatbotScript": "string"}`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    const rawResult = await executeGeminiWithFallback({
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
+      responseMimeType: "application/json",
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    if (rawResult) {
+      try {
+        const parsed = JSON.parse(rawResult);
+        return res.json({
+          faq: parsed.faq || 'FAQ generated successfully.',
+          chatbotScript: parsed.chatbotScript || `Welcome to ${storeName || 'our store'}! How can I assist you today?`
+        });
+      } catch (e) {
+        console.warn('FAQ JSON parse issue:', e);
+      }
+    }
+
     res.json({
-      faq: parsed.faq || 'FAQ generated successfully.',
-      chatbotScript: parsed.chatbotScript || 'Welcome to our store! How can I assist you today?'
+      faq: `### Frequently Asked Questions\n\n**Q: What is the delivery timeframe?**\nInside Dhaka 2-3 business days, outside Dhaka 3-5 days.\n\n**Q: How do returns work?**\nItems can be returned within 7 days in original condition.\n\n**Q: What payment options are supported?**\nbKash, Nagad, Cards, and Cash on Delivery (COD).`,
+      chatbotScript: `Hello! Welcome to ${storeName || 'our store'}. How can I assist you today? You can ask about delivery, payments, or returns.`
     });
   } catch (error) {
     console.error('AI FAQ Error:', error);
@@ -412,16 +452,10 @@ app.post('/api/ai/generate-faq', async (req, res) => {
 app.post('/api/ai/analytics-summary', async (req, res) => {
   try {
     const { analyticsData } = req.body;
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ summary: "Platform performance is stable with healthy transaction volume across active merchant stores. Conversion rates remain steady." });
-    }
-
     const prompt = `Provide a concise 2-sentence executive summary for platform analytics: ${JSON.stringify(analyticsData)}`;
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-    });
-    res.json({ summary: response.text || 'Performance metrics are operating within normal parameters.' });
+    
+    const summary = await executeGeminiWithFallback({ contents: prompt });
+    res.json({ summary: summary || 'Performance metrics are operating within normal parameters with steady customer engagement.' });
   } catch (error) {
     res.json({ summary: "Platform activity and revenue metrics are trending positively." });
   }
@@ -430,24 +464,25 @@ app.post('/api/ai/analytics-summary', async (req, res) => {
 app.post('/api/ai/broadcast-email', async (req, res) => {
   try {
     const { topic, targetAudience } = req.body;
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({
-        subject: `Exciting Platform Updates & Announcements`,
-        message: `Dear Merchants,\n\nWe are pleased to announce new platform enhancements regarding ${topic}. Check your dashboard for more details.\n\nBest regards,\nPlatform Operations Team`
-      });
-    }
-
     const prompt = `Draft a professional broadcast email to ${targetAudience || 'merchants'} about topic: "${topic}".
     Return JSON format: {"subject": "string", "message": "string"}`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+    const raw = await executeGeminiWithFallback({
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      responseMimeType: "application/json"
     });
 
-    const parsed = JSON.parse(response.text || '{}');
-    res.json(parsed);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return res.json(parsed);
+      } catch (e) {}
+    }
+
+    res.json({
+      subject: `Platform Update: ${topic || 'New Features Announcement'}`,
+      message: `Dear Merchants,\n\nWe are pleased to announce new platform enhancements regarding ${topic || 'system updates'}. Check your dashboard for more details.\n\nBest regards,\nPlatform Operations Team`
+    });
   } catch (error) {
     res.json({
       subject: "Important Platform Announcement",
@@ -459,16 +494,10 @@ app.post('/api/ai/broadcast-email', async (req, res) => {
 app.post('/api/ai/support-reply', async (req, res) => {
   try {
     const { ticketContent, customerName } = req.body;
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ reply: `Hello ${customerName || 'there'},\n\nThank you for reaching out. We have reviewed your request regarding "${ticketContent}" and our support team is actively resolving this. We will update you shortly.\n\nBest regards,\nCustomer Support Team` });
-    }
-
     const prompt = `Write a polite, professional support resolution reply to ${customerName || 'customer'} regarding ticket: "${ticketContent}".`;
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-    });
-    res.json({ reply: response.text || 'Thank you for reaching out. We are resolving your issue promptly.' });
+    
+    const reply = await executeGeminiWithFallback({ contents: prompt });
+    res.json({ reply: reply || `Hello ${customerName || 'there'},\n\nThank you for reaching out. We have reviewed your request regarding "${ticketContent}" and our support team is actively resolving this. We will update you shortly.\n\nBest regards,\nCustomer Support Team` });
   } catch (error) {
     res.json({ reply: `Hello ${req.body?.customerName || 'there'}, thank you for contacting support. We are looking into your request.` });
   }
@@ -477,20 +506,21 @@ app.post('/api/ai/support-reply', async (req, res) => {
 app.post('/api/ai/copilot-support', async (req, res) => {
   try {
     const { query } = req.body;
+    const isBengali = /[\u0980-\u09FF]|kivabe|korbo|apnar|dhaka/i.test(query || '');
     const prompt = `You are Zid AI, a helpful Store Manager assistant for an e-commerce platform. 
     Auto-detect the language of the query. If the query is written in Bangla script or Banglish, you MUST reply entirely in natural Bangla script. If it is in English, reply in English.
     Knowledge base: We support custom domains (settings -> domains), payment gateways (settings -> payments), product uploads (products -> add), order management (orders tab), and shipping configuration (logistics tab).
     Query: ${query}`;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ answer: "Zid AI Copilot: You can configure products in the Products tab, payment gateways in Settings -> Payments, and delivery in Logistics." });
+    const answer = await executeGeminiWithFallback({ contents: prompt });
+    if (answer) {
+      return res.json({ answer });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-    });
-    res.json({ answer: response.text || "Zid AI Copilot: You can configure products in the Products tab, payment gateways in Settings -> Payments, and delivery in Logistics." });
+    if (isBengali) {
+      return res.json({ answer: "Zid AI Copilot: আপনি Products ট্যাবে নতুন পণ্য যুক্ত করতে পারেন, Settings -> Payments-এ bKash/Nagad গেটওয়ে সক্রিয় করতে পারেন এবং Logistics ট্যাবে ডেলিভারি চার্জ নির্ধারণ করতে পারেন।" });
+    }
+    res.json({ answer: "Zid AI Copilot: You can configure products in the Products tab, payment gateways in Settings -> Payments, and delivery in Logistics." });
   } catch (error) {
     console.error('AI Support Error:', error);
     res.json({ answer: "Zid AI Copilot: আপনি Products ট্যাবে পণ্য যোগ করতে পারেন, Settings -> Payments-এ পেমেন্ট গেটওয়ে এবং Logistics-এ ডেলিভারি কনফিগার করতে পারেন।" });
@@ -500,20 +530,21 @@ app.post('/api/ai/copilot-support', async (req, res) => {
 app.post('/api/ai/copilot-analytics', async (req, res) => {
   try {
     const { query, storeData } = req.body;
+    const isBengali = /[\u0980-\u09FF]|koto|bikri|kivabe/i.test(query || '');
     const prompt = `You are a store data analyst. Analyze this store data to answer the query.
     Auto-detect the language of the query. If the query is written in Bangla script or Banglish, you MUST reply entirely in natural Bangla script. If it is in English, reply in English.
     Store Data: ${JSON.stringify(storeData)}
     Query: ${query}`;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ answer: "Store analytics indicate consistent visitor engagement and sales conversion." });
+    const answer = await executeGeminiWithFallback({ contents: prompt });
+    if (answer) {
+      return res.json({ answer });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-    });
-    res.json({ answer: response.text || "Store analytics indicate consistent visitor engagement and sales conversion." });
+    if (isBengali) {
+      return res.json({ answer: "দোকানের অ্যানালিটিক্স অনুযায়ী ক্রেতাদের ভিজিট এবং অর্ডার কনভার্সন স্বাভাবিক ও ইতিবাচক রয়েছে। শীর্ষ বিক্রিত পণ্যের স্টক পর্যাপ্ত রাখুন।" });
+    }
+    res.json({ answer: "Store analytics indicate consistent visitor engagement and sales conversion. Recommend maintaining safety stock for high-demand items." });
   } catch (error) {
     console.error('AI Analytics Error:', error);
     res.json({ answer: "দোকানের অ্যানালিটিক্স অনুযায়ী ক্রেতাদের ভিজিট এবং অর্ডার কনভার্সন স্বাভাবিক ও ইতিবাচক রয়েছে।" });
@@ -525,15 +556,12 @@ app.post('/api/ai/copilot-template', async (req, res) => {
     const { scenario } = req.body || {};
     const prompt = `Generate a polite customer support template for this scenario: ${scenario}`;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.json({ template: `Dear customer, thank you for reaching out regarding ${scenario}. We are here to assist you.` });
+    const template = await executeGeminiWithFallback({ contents: prompt });
+    if (template) {
+      return res.json({ template });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
-      contents: prompt,
-    });
-    res.json({ template: response.text || `Dear customer, thank you for reaching out regarding ${scenario}. We are here to assist you.` });
+    res.json({ template: `Dear customer, thank you for reaching out regarding ${scenario || 'your order'}. We are reviewing your inquiry and will provide an update shortly.` });
   } catch (error) {
     console.error('AI Template Error:', error);
     res.json({ template: `প্রিয় গ্রাহক, ${req.body?.scenario || 'সহায়তা'} বিষয়ে যোগাযোগের জন্য ধন্যবাদ। আমরা দ্রুত আপনার সমস্যা সমাধানে কাজ করছি।` });
