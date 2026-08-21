@@ -77,7 +77,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
         <div id="pricing-plans-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full">
           
           {/* Free Trial Card */}
-          <div id="plan-card-free-trial" className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col text-left hover:border-slate-700 transition-colors relative">
+          <div id="plan-card-free-trial" className="bg-[#121824] border border-slate-800 rounded-2xl p-6 flex flex-col text-left hover:border-slate-700 transition-colors relative shadow-xl">
             <h3 className="text-xl font-bold text-white mb-2">Free Trial</h3>
             <p className="text-sm text-slate-400 mb-4 h-10">Experience the full platform risk-free for 30 days.</p>
             <div className="mb-6">
@@ -106,7 +106,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
             <div 
               key={plan.id} 
               id={`plan-card-${plan.id}`}
-              className={`bg-slate-900 border rounded-2xl p-6 flex flex-col text-left transition-colors relative ${
+              className={`bg-[#121824] border rounded-2xl p-6 flex flex-col text-left transition-colors relative shadow-xl ${
                 plan.isPopular 
                   ? 'border-[#D4AF37]' 
                   : 'border-slate-800 hover:border-slate-700'
