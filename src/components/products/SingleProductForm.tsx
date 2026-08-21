@@ -224,7 +224,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
   const isFreeTier = merchant?.subscriptionPlan === 'free_trial';
 
-  const generateAiDescription = async (lang: 'en' | 'bn') => {
+  const generateAiDescription = async () => {
     if (isFreeTier) {
       onOpenSubscriptionModal?.();
       return;
@@ -237,23 +237,30 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
     setIsGeneratingDescription(true);
     try {
-      const response = await fetch('/api/ai/generate-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `Generate a catchy, SEO-friendly e-commerce product description for: ${title || titleBn}. 
-          Category: ${category}. 
-          Language: ${lang === 'en' ? 'English' : 'Bengali'}.
-          Keep it professional and highlight quality.`,
-          systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the description text, no extra commentary.`
-        }),
-      });
+      const prompt = `Generate a catchy, SEO-friendly e-commerce product description for: ${title || titleBn}. Category: ${category}.`;
+      
+      const [responseEn, responseBn] = await Promise.all([
+        fetch('/api/ai/generate-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `${prompt} Language: English. Keep it professional and highlight quality.`,
+            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the description text, no extra commentary.`
+          }),
+        }).then(r => r.json()),
+        fetch('/api/ai/generate-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `${prompt} Language: Bengali. Keep it professional and highlight quality.`,
+            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the description text, no extra commentary.`
+          }),
+        }).then(r => r.json())
+      ]);
 
-      const data = await response.json();
-      if (data.text) {
-        if (lang === 'en') setDescriptionEn(data.text);
-        else setDescriptionBn(data.text);
-      }
+      if (responseEn.text) setDescriptionEn(responseEn.text);
+      if (responseBn.text) setDescriptionBn(responseBn.text);
+      
     } catch (error) {
       console.error('AI Generation Error:', error);
     } finally {
@@ -1329,7 +1336,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                       <button
                         type="button"
                         disabled={isGeneratingDescription}
-                        onClick={() => generateAiDescription('en')}
+                        onClick={() => generateAiDescription()}
                         className="text-[10px] bg-[#00D68F] text-slate-950 font-black px-2 py-1 rounded-lg flex items-center gap-1 hover:bg-[#00E699] transition disabled:opacity-50 cursor-pointer relative overflow-hidden"
                       >
                         {isFreeTier && (
@@ -1379,7 +1386,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                       <button
                         type="button"
                         disabled={isGeneratingDescription}
-                        onClick={() => generateAiDescription('bn')}
+                        onClick={() => generateAiDescription()}
                         className="text-[10px] bg-[#00D68F] text-slate-950 font-black px-2 py-1 rounded-lg flex items-center gap-1 hover:bg-[#00E699] transition disabled:opacity-50 cursor-pointer relative overflow-hidden"
                       >
                         {isFreeTier && (
