@@ -648,17 +648,17 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="text-xs font-bold text-white leading-tight">{merchant?.storeName || 'My Store'}</div>
               <div className="flex items-center gap-2">
                 <a 
-                  href={`https://store.zid.sa/${merchant?.storeSlug || ''}`} 
+                  href={`https://zidbdsaas2026.vercel.app/store/${merchant?.storeSlug || ''}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-[10px] text-[#E6C587] font-mono leading-tight hover:underline cursor-pointer"
                 >
-                  store.zid.sa/{merchant?.storeSlug || ''}
+                  zidbdsaas2026.vercel.app/store/{merchant?.storeSlug || ''}
                 </a>
                 <button 
                   onClick={(e) => {
                     e.preventDefault();
-                    navigator.clipboard.writeText(`https://store.zid.sa/${merchant?.storeSlug || ''}`);
+                    navigator.clipboard.writeText(`https://zidbdsaas2026.vercel.app/store/${merchant?.storeSlug || ''}`);
                     alert('Store link copied to clipboard!');
                   }}
                   className="p-0.5 text-slate-500 hover:text-white transition-colors"
