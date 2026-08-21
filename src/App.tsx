@@ -45,6 +45,7 @@ import { BillingView } from './components/views/BillingView';
 import { OrdersView } from './components/views/OrdersView';
 import { ProductsView } from './components/views/ProductsView';
 import { CustomersView } from './components/views/CustomersView';
+import { supabase } from './lib/supabase';
 import { MarketingView } from './components/views/MarketingView';
 import { AppsWhatsAppView } from './components/views/AppsWhatsAppView';
 import { OnlineStoreView } from './components/views/OnlineStoreView';
@@ -166,43 +167,54 @@ export default function App() {
     checkAuthAndRoute();
   }, []);
 
-  const [merchant, setMerchant] = useState<MerchantProfile>(() => {
-    try {
-      const allMerchantsRaw = localStorage.getItem('ZID_ALL_MERCHANTS');
-      const allMerchantsList: MerchantProfile[] = allMerchantsRaw ? JSON.parse(allMerchantsRaw) : [];
+  const [merchant, setMerchant] = useState<MerchantProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-      const savedSession = localStorage.getItem('zid_auth_session');
-      if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        if (parsed?.userProfile) {
-          const userEmail = parsed.userProfile.email?.toLowerCase();
-          const userStore = parsed.userProfile.storeName?.toLowerCase();
-          const matched = allMerchantsList.find(m => 
-            (m.email && userEmail && m.email.toLowerCase() === userEmail) ||
-            (m.storeName && userStore && m.storeName.toLowerCase() === userStore)
-          );
-          if (matched) {
-            return { ...parsed.userProfile, ...matched };
-          }
-          return parsed.userProfile;
-        }
+  // Supabase Auth listener
+  React.useEffect(() => {
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchMerchantProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
       }
-      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
-      if (saved) {
-        const storeMerchant = JSON.parse(saved).merchant;
-        if (storeMerchant) {
-          const matched = allMerchantsList.find(m => 
-            (m.email && storeMerchant.email && m.email.toLowerCase() === storeMerchant.email.toLowerCase()) ||
-            (m.storeName && storeMerchant.storeName && m.storeName.toLowerCase() === storeMerchant.storeName.toLowerCase())
-          );
-          return matched ? { ...storeMerchant, ...matched } : storeMerchant;
-        }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchMerchantProfile(session.user.id);
+      } else {
+        setMerchant(null);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchMerchantProfile = async (userId: string) => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('merchants')
+        .select('*')
+        .eq('auth_user_id', userId)
+        .single();
+      
+      if (data) {
+        setMerchant(data);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error fetching merchant profile:', e);
+    } finally {
+      setAuthLoading(false);
     }
-    return initialMerchant;
-  });
+  };
 
   // Trial & Subscription Logic
   const isPaidPlan = !!merchant?.subscriptionPlan && merchant.subscriptionPlan !== 'free_trial' && merchant.subscriptionPlan !== 'trial';
