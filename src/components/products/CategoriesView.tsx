@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Product } from '../../types';
+import { Product, MerchantProfile } from '../../types';
 import { 
   FolderTree, 
   Plus, 
@@ -46,6 +46,7 @@ export interface CategoryNode {
 
 interface CategoriesViewProps {
   products: Product[];
+  merchant?: MerchantProfile;
   onUpdateProducts?: (products: Product[]) => void;
   onSelectSubTab?: (tab: string) => void;
   onOpenSubscriptionModal?: () => void;
@@ -53,34 +54,67 @@ interface CategoriesViewProps {
 
 export const CategoriesView: React.FC<CategoriesViewProps> = ({ 
   products,
+  merchant,
   onUpdateProducts,
   onSelectSubTab,
   onOpenSubscriptionModal 
 }) => {
-  // Master Category List with Multi-Level Hierarchy & LocalStorage persistence
-  const [categories, setCategories] = useState<CategoryNode[]>(() => {
-    const saved = localStorage.getItem('zid_merchant_categories_v2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Filter out any stale mock categories to keep the list completely empty as requested
-          const filtered = parsed.filter(
-            (c: any) => c.id !== 'cat-home' && c.id !== 'cat-fashion' && c.id !== 'cat-womens-fashion'
-          );
-          return filtered;
-        }
-      } catch (e) {
-        // Fallback
-      }
-    }
-    return [];
-  });
+  // Master Category List from Cloud Database / API
+  const [categories, setCategories] = useState<CategoryNode[]>([]);
 
-  // Persist reordered categories sequence to localStorage
+  // Fetch live categories for this merchant from API/Database
   useEffect(() => {
-    localStorage.setItem('zid_merchant_categories_v2', JSON.stringify(categories));
-  }, [categories]);
+    let isMounted = true;
+    const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
+    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (isMounted && Array.isArray(data)) {
+          const mapped: CategoryNode[] = data.map((c: any, index: number) => ({
+            id: c.id || `cat-${index}`,
+            parentId: c.parentId || c.parent_id || null,
+            name: c.name || c.title || 'Category',
+            imageAltText: c.imageAltText || c.image_alt_text || '',
+            image: c.image || c.imageUrl || c.image_url || '',
+            coverImage: c.coverImage || c.cover_image || '',
+            description: c.description || '',
+            status: c.status === 'hidden' ? 'hidden' : 'published',
+            productCount: Number(c.productCount ?? c.product_count ?? 0),
+            slug: c.slug || (c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            metaTitle: c.metaTitle || c.meta_title,
+            metaDescription: c.metaDescription || c.meta_description,
+            keywords: c.keywords,
+            noIndex: !!c.noIndex,
+          }));
+          setCategories(mapped);
+        }
+      })
+      .catch(err => console.warn('Fetch categories error:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [merchant?.storeSlug, merchant?.id]);
+
+  // Helper to persist categories directly to Database API
+  const syncCategoriesToDb = async (cats: CategoryNode[]) => {
+    try {
+      const payload = cats.map(c => ({
+        ...c,
+        merchantId: merchant?.id || merchant?.storeSlug || 'default',
+        merchant_id: merchant?.id || merchant?.storeSlug || 'default',
+        store_slug: merchant?.storeSlug || '',
+        storeSlug: merchant?.storeSlug || '',
+      }));
+      await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.warn('Sync categories to DB notice:', e);
+    }
+  };
 
   // Tree View State & Navigation Controls
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -331,11 +365,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     if (!deletingCategory) return;
     const catId = deletingCategory.id;
     // Remove category and assign children to null parent
-    setCategories(prev => 
-      prev
-        .filter(c => c.id !== catId)
-        .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
-    );
+    const updated = categories
+      .filter(c => c.id !== catId)
+      .map(c => c.parentId === catId ? { ...c, parentId: null } : c);
+    setCategories(updated);
+    syncCategoriesToDb(updated);
     setDeletingCategory(null);
   };
 
@@ -372,9 +406,10 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     e.preventDefault();
     if (!formNameEn.trim()) return;
 
+    let updatedList: CategoryNode[] = [];
     if (editingCategory) {
       // Update
-      setCategories(prev => prev.map(cat => {
+      updatedList = categories.map(cat => {
         if (cat.id === editingCategory.id) {
           return {
             ...cat,
@@ -393,7 +428,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
           };
         }
         return cat;
-      }));
+      });
+      setCategories(updatedList);
     } else {
       // Create new
       const newCategory: CategoryNode = {
@@ -412,9 +448,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         keywords: formKeywords.trim(),
         noIndex: formNoIndex,
       };
-      setCategories(prev => [newCategory, ...prev]);
+      updatedList = [newCategory, ...categories];
+      setCategories(updatedList);
     }
 
+    syncCategoriesToDb(updatedList);
     setViewMode('list');
   };
 

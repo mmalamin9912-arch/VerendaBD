@@ -45,76 +45,9 @@ if (sbUrl && sbKey) {
 }
 
 // In-memory fallback stores for local resilience
-const SEED_PRODUCTS = [
-  {
-    id: 'prod-hydrating-cream',
-    title: 'Hydrating Face & Body Moisturizer Cream',
-    titleBn: 'হাইড্রেটিং ফেস ও বডি ময়েশ্চারাইজার ক্রিম',
-    sku: 'HYDRA-CRM-01',
-    category: 'Skincare & Beauty',
-    priceBDT: 750,
-    price: 750,
-    costPriceBDT: 450,
-    compareAtPriceBDT: 950,
-    compare_at_price: 950,
-    stock: 45,
-    status: 'Active',
-    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
-    images: ['https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80'],
-    variantsCount: 0,
-    salesCount: 18,
-    descriptionEn: 'Enriched deep hydrating face and body daily moisture care cream. Nourishes dry skin and provides 24-hour long-lasting smoothness and glow.',
-    descriptionBn: 'ত্বকের গভীর আর্দ্রতা ধরে রাখতে প্রিমিয়াম হাইড্রেটিং ফেস ও বডি ক্রিম। ২৪ ঘণ্টার মসৃণ ও কোমল ত্বক নিশ্চিত করে।'
-  },
-  {
-    id: 'prod-desk-dispenser',
-    title: 'Automatic Water Bottle Desk Dispenser',
-    titleBn: 'অটোমেটিক ওয়াটার বোতল ডেস্ক ডিসপেন্সার',
-    sku: 'AUTO-DISP-02',
-    category: 'Home & Kitchen',
-    priceBDT: 1250,
-    price: 1250,
-    costPriceBDT: 800,
-    compareAtPriceBDT: 1650,
-    compare_at_price: 1650,
-    stock: 28,
-    status: 'Active',
-    image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
-    images: ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'],
-    variantsCount: 0,
-    salesCount: 34,
-    descriptionEn: 'Rechargeable electric USB water pump dispenser for 5-gallon bottles and desktop hydration. Fast pumping with smart one-touch operation.',
-    descriptionBn: 'স্মার্ট ওয়ান-টাচ ইউএসবি রিচার্জেবল পানির পাম্প ও ডেস্ক ডিসপেন্সার। সহজে যেকোনো বোতল বা গ্যালনে ব্যবহারযোগ্য।'
-  },
-  {
-    id: 'prod-led-lamp',
-    title: 'Nordic Minimalist LED Desk Lamp',
-    titleBn: 'নরডিক মিনিমালিস্ট রিচার্জেবল LED ল্যাম্প',
-    sku: 'LED-LAMP-03',
-    category: 'Electronics & Lighting',
-    priceBDT: 1850,
-    price: 1850,
-    costPriceBDT: 1200,
-    compareAtPriceBDT: 2200,
-    compare_at_price: 2200,
-    stock: 32,
-    status: 'Active',
-    image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80',
-    images: ['https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80'],
-    variantsCount: 0,
-    salesCount: 42,
-    descriptionEn: 'Modern dimmable eye-protection reading table lamp with touch controls and warm/cool ambient LED lighting modes.',
-    descriptionBn: 'চোখের সুরক্ষায় টাচ কন্ট্রোল মাল্টি-মোড প্রিমিয়াম রিডিং টেবিল LED ল্যাম্প। ওয়ার্ম ও কুল লাইটিং সুবিধা।'
-  }
-];
-
 const inMemoryStore = {
   subscriptions: new Map<string, any>(),
-  products: new Map<string, any[]>([
-    ['aminfashionbd', [...SEED_PRODUCTS]],
-    ['default', [...SEED_PRODUCTS]],
-    ['my-store', [...SEED_PRODUCTS]]
-  ]),
+  products: new Map<string, any[]>(),
   categories: new Map<string, any[]>(),
   customers: new Map<string, any[]>(),
   orders: new Map<string, any[]>(),
@@ -161,22 +94,9 @@ app.get('/api/merchants/check/:email', async (req, res) => {
     }
   }
 
-  // Pre-configured / verified production merchants
-  if (email === 'mmalamin9912@gmail.com') {
-    return res.json({
-      storeName: 'Amin Fashion BD',
-      storeSlug: 'aminfashionbd',
-      ownerName: 'Al-Amin Hossain',
-      email: 'mmalamin9912@gmail.com',
-      phone: '+880 1812-345678',
-      subscription_plan: 'enterprise',
-      subscriptionPlan: 'enterprise',
-      subscription_expiry: '2027-12-31T23:59:59.000Z',
-      subscriptionExpiry: '2027-12-31T23:59:59.000Z',
-      trialEndsAt: null,
-      trialDaysRemaining: 365,
-      logoUrl: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=200&q=80',
-    });
+  const mem = Array.from(inMemoryStore.merchants.values()).find(m => m.email?.toLowerCase() === email);
+  if (mem) {
+    return res.json(mem);
   }
 
   res.json(null);
@@ -216,21 +136,23 @@ app.post('/api/subscription/update', async (req, res) => {
   res.json({ success: true, storeName, planId, expiryDate });
 });
 
-// Product API - Retrieve All or Filtered Products
+// Product API - Retrieve All or Filtered Products by merchantId or storeSlug
 const handleGetProducts = async (req: express.Request, res: express.Response) => {
   try {
     const merchantId = (req.params.merchantId || req.query.merchantId || req.query.storeSlug || '').toString().trim();
+    if (!merchantId) {
+      return res.status(200).json([]);
+    }
+
     const combined: any[] = [];
     const seenIds = new Set<string>();
 
     if (supabaseAdmin) {
       try {
-        let query = supabaseAdmin.from('products').select('*');
-        if (merchantId) {
-          query = query.or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
-        }
+        const query = supabaseAdmin.from('products').select('*')
+          .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
         const { data, error } = await query;
-        if (!error && Array.isArray(data) && data.length > 0) {
+        if (!error && Array.isArray(data)) {
           data.forEach(p => {
             const key = String(p.id || p.title).trim();
             if (!seenIds.has(key)) {
@@ -244,35 +166,15 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
       }
     }
 
-    // In-memory fallback
-    if (merchantId) {
-      const memProducts = [
-        ...(inMemoryStore.products.get(merchantId) || []),
-        ...(inMemoryStore.products.get('default') || [])
-      ];
-      memProducts.forEach(p => {
-        const key = String(p.id || p.title).trim();
-        if (!seenIds.has(key)) {
-          seenIds.add(key);
-          combined.push(p);
-        }
-      });
-    }
-
-    // If still empty or no merchantId specified, collect all from in-memory stores
-    if (combined.length === 0) {
-      for (const [_, list] of inMemoryStore.products.entries()) {
-        if (Array.isArray(list)) {
-          list.forEach(p => {
-            const key = String(p.id || p.title).trim();
-            if (!seenIds.has(key)) {
-              seenIds.add(key);
-              combined.push(p);
-            }
-          });
-        }
+    // In-memory lookup strictly for this merchant
+    const memProducts = inMemoryStore.products.get(merchantId) || [];
+    memProducts.forEach(p => {
+      const key = String(p.id || p.title).trim();
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        combined.push(p);
       }
-    }
+    });
 
     res.status(200).json(combined);
   } catch (error) {
@@ -284,25 +186,25 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
 app.get('/api/products', handleGetProducts);
 app.get('/api/products/:merchantId', handleGetProducts);
 
-// Products by Slug API
+// Products by Slug API - strictly filtered by store_slug
 const handleGetProductsBySlug = async (req: express.Request, res: express.Response) => {
   try {
-    const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
-    const storeSlug = rawSlug || 'aminfashionbd';
+    const storeSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
+    if (!storeSlug) {
+      return res.status(200).json([]);
+    }
+
     let merchantId = storeSlug;
 
     if (supabaseAdmin) {
       try {
-        const { data: mData, error: mErr } = await supabaseAdmin
+        const { data: mData } = await supabaseAdmin
           .from('merchants')
           .select('*')
           .or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`)
           .maybeSingle();
         if (mData && mData.id) {
           merchantId = mData.id;
-        }
-        if (mErr) {
-          console.warn('[API DB: /api/products-by-slug] Merchant lookup note:', mErr.message);
         }
       } catch (e) {
         console.error('[API DB: /api/products-by-slug] Merchant lookup error:', e);
@@ -324,7 +226,7 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
           .select('*')
           .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
         
-        if (!error && Array.isArray(prodData) && prodData.length > 0) {
+        if (!error && Array.isArray(prodData)) {
           prodData.forEach(p => {
             const key = String(p.id || p.title).trim();
             if (!seenIds.has(key)) {
@@ -333,20 +235,6 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
             }
           });
         }
-
-        // If specific lookup returned empty, also fetch general product records
-        if (combinedProducts.length === 0) {
-          const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
-          if (!allProdsErr && Array.isArray(allProds) && allProds.length > 0) {
-            allProds.forEach(p => {
-              const key = String(p.id || p.title).trim();
-              if (!seenIds.has(key)) {
-                seenIds.add(key);
-                combinedProducts.push(p);
-              }
-            });
-          }
-        }
       } catch (e) {
         console.error('[API DB: /api/products-by-slug] Supabase get products exception:', e);
       }
@@ -354,8 +242,7 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
 
     const memProducts = [
       ...(inMemoryStore.products.get(merchantId) || []),
-      ...(inMemoryStore.products.get(storeSlug) || []),
-      ...(inMemoryStore.products.get('default') || [])
+      ...(inMemoryStore.products.get(storeSlug) || [])
     ];
 
     memProducts.forEach(p => {
@@ -365,20 +252,6 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
         combinedProducts.push(p);
       }
     });
-
-    if (combinedProducts.length === 0) {
-      for (const [_, list] of inMemoryStore.products.entries()) {
-        if (Array.isArray(list) && list.length > 0) {
-          list.forEach(p => {
-            const key = String(p.id || p.title).trim();
-            if (!seenIds.has(key)) {
-              seenIds.add(key);
-              combinedProducts.push(p);
-            }
-          });
-        }
-      }
-    }
 
     res.status(200).json(combinedProducts);
   } catch (error) {
@@ -390,11 +263,14 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
 app.get('/api/products-by-slug', handleGetProductsBySlug);
 app.get('/api/products-by-slug/:storeSlug', handleGetProductsBySlug);
 
-// Categories by Slug API
+// Categories by Slug API - strictly filtered by store_slug
 const handleGetCategoriesBySlug = async (req: express.Request, res: express.Response) => {
   try {
-    const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
-    const storeSlug = rawSlug || 'aminfashionbd';
+    const storeSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
+    if (!storeSlug) {
+      return res.status(200).json([]);
+    }
+
     let merchantId = storeSlug;
 
     if (supabaseAdmin) {
@@ -419,28 +295,16 @@ const handleGetCategoriesBySlug = async (req: express.Request, res: express.Resp
           .from('categories')
           .select('*')
           .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
-        if (!error && Array.isArray(catData) && catData.length > 0) {
+        if (!error && Array.isArray(catData)) {
           return res.status(200).json(catData);
-        }
-        const { data: allCats, error: allCatsErr } = await supabaseAdmin.from('categories').select('*');
-        if (!allCatsErr && Array.isArray(allCats) && allCats.length > 0) {
-          return res.status(200).json(allCats);
         }
       } catch (e) {
         console.error('[API DB: /api/categories-by-slug] Supabase categories error:', e);
       }
     }
 
-    const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || inMemoryStore.categories.get('default') || [];
-    if (memCats.length > 0) {
-      return res.status(200).json(memCats);
-    }
-
-    for (const [_, list] of inMemoryStore.categories.entries()) {
-      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
-    }
-
-    res.status(200).json([]);
+    const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || [];
+    res.status(200).json(memCats);
   } catch (error) {
     console.error('[API Error in handleGetCategoriesBySlug]:', error);
     res.status(200).json([]);
@@ -454,21 +318,20 @@ app.get('/api/categories-by-slug/:storeSlug', handleGetCategoriesBySlug);
 const handleGetCategories = async (req: express.Request, res: express.Response) => {
   try {
     const merchantId = (req.params.merchantId || req.query.merchantId || '').toString().trim();
-    if (supabaseAdmin && merchantId) {
+    if (!merchantId) {
+      return res.status(200).json([]);
+    }
+
+    if (supabaseAdmin) {
       try {
-        const { data, error } = await supabaseAdmin.from('categories').select('*').eq('merchantId', merchantId);
-        if (!error && Array.isArray(data) && data.length > 0) return res.status(200).json(data);
+        const { data, error } = await supabaseAdmin.from('categories').select('*').or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId}`);
+        if (!error && Array.isArray(data)) return res.status(200).json(data);
       } catch (e) {
         console.error('[API DB: /api/categories] Supabase get categories error:', e);
       }
     }
-    const memCats = merchantId ? (inMemoryStore.categories.get(merchantId) || []) : [];
-    if (memCats.length > 0) return res.status(200).json(memCats);
-
-    for (const [_, list] of inMemoryStore.categories.entries()) {
-      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
-    }
-    res.status(200).json([]);
+    const memCats = inMemoryStore.categories.get(merchantId) || [];
+    res.status(200).json(memCats);
   } catch (error) {
     console.error('[API Error in handleGetCategories]:', error);
     res.status(200).json([]);
@@ -602,9 +465,6 @@ const handleMerchantUpdate = async (req: express.Request, res: express.Response)
   const slug = merchantData.storeSlug || merchantData.store_slug || 'default';
   
   inMemoryStore.merchants.set(slug, merchantData);
-  if (slug !== 'aminfashionbd' && merchantData.email === 'mmalamin9912@gmail.com') {
-    inMemoryStore.merchants.set('aminfashionbd', merchantData);
-  }
 
   if (supabaseAdmin) {
     try {
@@ -647,11 +507,14 @@ app.post('/api/merchants', handleMerchantUpdate);
 app.put('/api/merchants', handleMerchantUpdate);
 app.put('/api/merchants/:id', handleMerchantUpdate);
 
-// Merchant Lookup by Slug
+// Merchant Lookup by Slug - Fully Dynamic
 const handleGetMerchantBySlug = async (req: express.Request, res: express.Response) => {
   try {
     const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
-    const storeSlug = rawSlug || 'aminfashionbd';
+    if (!rawSlug) {
+      return res.status(200).json(null);
+    }
+    const storeSlug = rawSlug;
 
     if (supabaseAdmin) {
       try {
@@ -674,20 +537,11 @@ const handleGetMerchantBySlug = async (req: express.Request, res: express.Respon
       }
     }
 
-    const mem = inMemoryStore.merchants.get(storeSlug) || inMemoryStore.merchants.get('aminfashionbd');
+    const mem = inMemoryStore.merchants.get(storeSlug);
     if (mem) return res.status(200).json(mem);
 
-    // Fallback default merchant
-    res.status(200).json({
-      storeName: 'Amin Fashion BD',
-      storeSlug: 'aminfashionbd',
-      ownerName: 'Al-Amin Hossain',
-      email: 'mmalamin9912@gmail.com',
-      phone: '+880 1812-345678',
-      subscription_plan: 'enterprise',
-      subscriptionPlan: 'enterprise',
-      themeConfig: {},
-    });
+    // If not found in DB or memory, return empty null
+    return res.status(200).json(null);
   } catch (error) {
     console.error('[API Error in handleGetMerchantBySlug]:', error);
     res.status(200).json(null);

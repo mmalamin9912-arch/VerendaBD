@@ -10,7 +10,6 @@ import {
   initialPaymentGateway,
   initialCouriers, 
   initialOrders, 
-  initialProducts, 
   initialCustomers,
   subscriptionPlans,
   initialThemes,
@@ -471,15 +470,7 @@ export default function App() {
   });
 
   const [couriers, setCouriers] = useState<CourierService[]>(initialCouriers);
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
-      if (saved) return JSON.parse(saved).products || initialProducts;
-    } catch (e) {
-      console.error(e);
-    }
-    return initialProducts;
-  });
+  const [products, setProducts] = useState<Product[]>([]);
   
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
@@ -548,7 +539,6 @@ export default function App() {
       if (merchant?.storeSlug) {
         safeSetItem(`ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`, storeData);
       }
-      safeSetItem('zid_merchant_products', products);
 
       // Update the main merchants index (allMerchants) by email to prevent old profile/slug from persisting
       setAllMerchants(prev => {

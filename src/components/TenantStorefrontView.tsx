@@ -34,7 +34,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
-import { initialProducts } from '../data/initialData';
 import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 interface TenantStorefrontViewProps {
@@ -103,6 +102,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const [localProducts, setLocalProducts] = useState<Product[]>([]);
   const [localMerchant, setLocalMerchant] = useState<MerchantProfile>(merchant);
   const [localCategories, setLocalCategories] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Sync with browser navigation
   useEffect(() => {
@@ -448,19 +448,6 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         });
       }
 
-      // Always guarantee default seed products (Hydrating Cream, Desk Dispenser, LED Lamp) are present
-      if (Array.isArray(initialProducts)) {
-        initialProducts.forEach(p => {
-          const alreadyExists = productsFromDb.some(existing => 
-            (existing.id && existing.id === p.id) || 
-            (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-          );
-          if (!alreadyExists) {
-            productsFromDb.push(p);
-          }
-        });
-      }
-
       // 4. Map and Synchronize State
       if (!isMounted) return;
 
@@ -476,6 +463,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           productCount: Number(c.productCount ?? c.product_count ?? 0),
         }));
         setLocalCategories(mappedCategories);
+      } else {
+        setLocalCategories([]);
       }
 
       if (productsFromDb.length > 0) {
@@ -495,6 +484,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           merchantId: p.merchantId || p.merchant_id || merchantDbId || storeSlug,
         }));
         setLocalProducts(mappedProducts);
+      } else {
+        setLocalProducts([]);
       }
 
       console.log(`[TenantStorefrontView] 🏁 Data load complete for "${storeSlug}":`, {
@@ -800,14 +791,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
     if (localProducts && localProducts.length > 0) {
       localProducts.forEach(addProduct);
-    }
-
-    if (products && products.length > 0) {
+    } else if (products && products.length > 0) {
       products.forEach(addProduct);
-    }
-
-    if (initialProducts && initialProducts.length > 0) {
-      initialProducts.forEach(addProduct);
     }
 
     return combined;
@@ -1012,8 +997,20 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         );
       });
     }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      prods = prods.filter(p => 
+        (p.title && p.title.toLowerCase().includes(q)) ||
+        (p.titleBn && p.titleBn.toLowerCase().includes(q)) ||
+        (p.descriptionEn && p.descriptionEn.toLowerCase().includes(q)) ||
+        (p.descriptionBn && p.descriptionBn.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q))
+      );
+    }
+
     return prods;
-  }, [allMerchantProducts, selectedCategory]);
+  }, [allMerchantProducts, selectedCategory, searchQuery]);
 
   const validAnnouncements = useMemo(() => {
     if (announcementItems && announcementItems.some((i: string) => i.trim() !== '')) {
@@ -1241,6 +1238,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search products..."
                 className="w-48 lg:w-64 rounded-full pl-9 pr-4 py-2 text-sm bg-slate-100 border-transparent focus:bg-white focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition outline-none"
               />
@@ -1645,22 +1644,30 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
                     {displayProducts.length === 0 ? (
                       <div className={`py-16 text-center space-y-4 rounded-2xl border border-dashed ${isModernGold ? 'border-zinc-800 bg-zinc-950/50' : 'border-slate-200 bg-slate-50/50'}`}>
-                        <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 flex items-center justify-center text-[#D4AF37]">
+                        <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center text-[#D4AF37]">
                           <ShoppingBag className="w-8 h-8" />
                         </div>
-                        <div className="space-y-1">
-                          <h3 className={`text-base font-bold ${textClass}`}>No products found in this category</h3>
+                        <div className="space-y-1 max-w-md mx-auto px-4">
+                          <h3 className={`text-base font-bold ${textClass}`}>
+                            {selectedCategory ? 'No products found in this category' : searchQuery ? 'No products matching your search' : 'No products available (বর্তমানে কোনো পণ্য উপলব্ধ নেই)'}
+                          </h3>
                           <p className={`text-xs ${isModernGold ? 'text-zinc-400' : 'text-slate-500'}`}>
-                            There are currently no products listed under "{selectedCategory?.name}".
+                            {selectedCategory 
+                              ? `There are currently no products listed under "${selectedCategory?.name}".`
+                              : searchQuery 
+                              ? `No items found matching "${searchQuery}".`
+                              : 'This store has not published any products yet. Please check back soon!'}
                           </p>
                         </div>
-                        <button
-                          onClick={handleResetCategory}
-                          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-[#D4AF37] text-zinc-950 hover:bg-[#C5A059] transition cursor-pointer shadow-sm"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Show All Products (সব পণ্য দেখুন)</span>
-                        </button>
+                        {(selectedCategory || searchQuery) && (
+                          <button
+                            onClick={handleResetCategory}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-[#D4AF37] text-zinc-950 hover:bg-[#C5A059] transition cursor-pointer shadow-sm"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Show All Products (সব পণ্য দেখুন)</span>
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className={`grid grid-cols-2 ${productColumns === 3 ? 'lg:grid-cols-3' : productColumns === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 md:gap-6`}>

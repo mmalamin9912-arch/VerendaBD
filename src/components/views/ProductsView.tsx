@@ -139,20 +139,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       setIsFormViewActive(false);
       setEditingProduct(null);
 
-      // Persist to local storage caches
-      try {
-        localStorage.setItem('zid_merchant_products', JSON.stringify(updatedList));
-        if (merchant?.storeSlug) {
-          const storeKey = `ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`;
-          const existingStoreDataStr = localStorage.getItem(storeKey);
-          const existingData = existingStoreDataStr ? JSON.parse(existingStoreDataStr) : {};
-          existingData.products = updatedList;
-          localStorage.setItem(storeKey, JSON.stringify(existingData));
-        }
-      } catch (lsErr) {
-        console.warn('LocalStorage save product warning:', lsErr);
-      }
-
       const response = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,13 +146,13 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       });
 
       if (response.ok) {
-        // Refresh products from server if available
+        // Refresh products from database
         try {
           const targetId = merchant?.storeSlug || merchant?.id || 'default';
           const updatedResponse = await fetch(`/api/products-by-slug/${encodeURIComponent(targetId)}`);
           if (updatedResponse.ok) {
             const updatedProducts = await updatedResponse.json();
-            if (Array.isArray(updatedProducts) && updatedProducts.length > 0) {
+            if (Array.isArray(updatedProducts)) {
               onUpdateProducts(updatedProducts);
             }
           }
@@ -175,7 +161,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         }
       }
     } catch (e) {
-      console.warn('Network save product warning, retained locally:', e);
+      console.warn('Network save product warning:', e);
     }
   };
 
@@ -183,20 +169,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     if (confirm('Are you sure you want to delete this product listing?')) {
       const updatedList = products.filter(p => p.id !== id);
       onUpdateProducts(updatedList);
-      try {
-        localStorage.setItem('zid_merchant_products', JSON.stringify(updatedList));
-        if (merchant?.storeSlug) {
-          const storeKey = `ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`;
-          const existingStoreDataStr = localStorage.getItem(storeKey);
-          if (existingStoreDataStr) {
-            const existingData = JSON.parse(existingStoreDataStr);
-            existingData.products = updatedList;
-            localStorage.setItem(storeKey, JSON.stringify(existingData));
-          }
-        }
-      } catch (lsErr) {
-        console.warn('LocalStorage delete product warning:', lsErr);
-      }
       try {
         await fetch(`/api/products/${id}`, { method: 'DELETE' });
       } catch (e) {
@@ -263,7 +235,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       </div>
 
       {/* Render sub-views if sub-tab is not 'all_products' */}
-      {activeSubTab === 'categories' && <CategoriesView products={products} onUpdateProducts={onUpdateProducts} onSelectSubTab={onSelectSubTab} onOpenSubscriptionModal={onOpenSubscriptionModal} />}
+      {activeSubTab === 'categories' && <CategoriesView products={products} merchant={merchant} onUpdateProducts={onUpdateProducts} onSelectSubTab={onSelectSubTab} onOpenSubscriptionModal={onOpenSubscriptionModal} />}
       {activeSubTab === 'inventory' && <InventoryView products={products} onUpdateProducts={onUpdateProducts} />}
       {activeSubTab === 'preorder_campaigns' && <PreorderView products={products} />}
       {activeSubTab === 'stock_changes' && <StockChangesView />}
