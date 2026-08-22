@@ -280,9 +280,10 @@ export default function App() {
 
   const prevSlugRef = React.useRef<string>(merchant?.storeSlug || '');
 
-  // Fetch data from DB
+  // Fetch data from DB on mount, storeSlug change, or tab switch
   React.useEffect(() => {
     const merchantId = merchant?.id || merchant?.storeSlug || 'default';
+    const storeSlug = merchant?.storeSlug || merchant?.id || 'default';
     let isMounted = true;
 
     // Safe helper to fetch JSON
@@ -298,9 +299,11 @@ export default function App() {
     };
 
     // Products
-    safeFetch(`/api/products/${merchantId}`).then(data => {
-      if (isMounted && Array.isArray(data) && data.length > 0) {
-        setProducts(data);
+    safeFetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`).then(data => {
+      if (isMounted && Array.isArray(data)) {
+        if (data.length > 0 || products.length === 0) {
+          setProducts(data);
+        }
       }
     });
 
@@ -318,15 +321,17 @@ export default function App() {
     }
 
     // Categories
-    safeFetch(`/api/categories/${merchantId}`).then(data => {
-      if (isMounted && Array.isArray(data) && data.length > 0) {
-        setMerchant(prev => ({
-          ...prev,
-          themeConfig: {
-            ...(prev.themeConfig || {}),
-            categoriesList: data
-          }
-        }));
+    safeFetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`).then(data => {
+      if (isMounted && Array.isArray(data)) {
+        if (data.length > 0 || !(merchant?.themeConfig?.categoriesList?.length)) {
+          setMerchant(prev => ({
+            ...prev,
+            themeConfig: {
+              ...(prev.themeConfig || {}),
+              categoriesList: data
+            }
+          }));
+        }
       }
     });
       
@@ -347,7 +352,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [merchant?.id, merchant?.storeSlug]);
+  }, [merchant?.id, merchant?.storeSlug, activeTab]);
 
   // Auto-sync merchant settings and categories to Supabase on change
   React.useEffect(() => {

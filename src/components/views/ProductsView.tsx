@@ -127,17 +127,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       const fullSavedProduct: Product = {
         ...savedProduct,
         merchantId: savedProduct.merchantId || merchant?.id || merchant?.storeSlug || 'default',
+        storeSlug: merchant?.storeSlug || '',
         status: savedProduct.status || 'Active',
       };
-
-      // Optimistic update locally immediately
-      const existingIdx = products.findIndex(p => p.id === fullSavedProduct.id);
-      const updatedList = existingIdx >= 0
-        ? products.map(p => p.id === fullSavedProduct.id ? fullSavedProduct : p)
-        : [fullSavedProduct, ...products];
-      onUpdateProducts(updatedList);
-      setIsFormViewActive(false);
-      setEditingProduct(null);
 
       const response = await fetch('/api/products', {
         method: 'POST',
@@ -159,6 +151,11 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         } catch (fetchErr) {
           console.warn('Silent refresh products error:', fetchErr);
         }
+        setIsFormViewActive(false);
+        setEditingProduct(null);
+        alert('Product saved and persisted to database successfully!');
+      } else {
+        alert('Failed to save product to database.');
       }
     } catch (e) {
       console.warn('Network save product warning:', e);

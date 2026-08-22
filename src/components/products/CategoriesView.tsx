@@ -106,11 +106,16 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         store_slug: merchant?.storeSlug || '',
         storeSlug: merchant?.storeSlug || '',
       }));
-      await fetch('/api/categories', {
+      const res = await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (res.ok) {
+        alert('Category saved and persisted to database successfully!');
+      } else {
+        alert('Failed to save category to database.');
+      }
     } catch (e) {
       console.warn('Sync categories to DB notice:', e);
     }
