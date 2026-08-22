@@ -470,11 +470,35 @@ export default function App() {
   });
 
   const [couriers, setCouriers] = useState<CourierService[]>(initialCouriers);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+      if (saved) return JSON.parse(saved).products || initialProducts;
+    } catch (e) {
+      console.error(e);
+    }
+    return initialProducts;
+  });
   
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+      if (saved) return JSON.parse(saved).customers || [];
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
   
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
+      if (saved) return JSON.parse(saved).orders || [];
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
   
   const [themes, setThemes] = useState<ThemeConfig[]>(() => {
     try {
@@ -519,7 +543,8 @@ export default function App() {
         mobileBanking,
         codConfig,
         gatewayConfig,
-        orders
+        orders,
+        customers
       };
       localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(storeData));
       if (merchant?.storeSlug) {
@@ -561,7 +586,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-  }, [merchant, products, themes, bankAccounts, mobileBanking, codConfig, orders]);
+  }, [merchant, products, themes, bankAccounts, mobileBanking, codConfig, orders, customers]);
 
   // Super Admin States
   const [adminPaymentConfig, setAdminPaymentConfig] = useState<AdminPaymentGatewayConfig>(() => {
