@@ -1,12 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, MerchantProfile } from '../../types';
-import {
-  mapApiCategory,
-  buildCategoryDbPayload,
-  buildProductDbPayload,
-  newCatalogId,
-  postCatalogJson,
-} from '../../utils/catalogPayload';
 import { 
   FolderTree, 
   Plus, 
@@ -72,26 +65,75 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   // Fetch live categories for this merchant from API/Database
   useEffect(() => {
     let isMounted = true;
-    const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
-    const targetId = merchant?.id || merchant?.storeSlug || 'default';
-    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(async (data) => {
-        let rows = Array.isArray(data) ? data : [];
-        if (rows.length === 0 && targetId !== targetSlug) {
+    const storeSlug = merchant?.storeSlug || merchant?.id || 'default';
+
+    const fetchCategories = async () => {
+      try {
+        let rawData: any = null;
+
+        // Primary fetch: GET /api/categories?store_slug=${storeSlug}
+        try {
+          const res = await fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`);
+          if (res.ok) {
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              rawData = await res.json();
+            } else {
+              const text = await res.text();
+              if (text && text.trim().startsWith('[')) {
+                rawData = JSON.parse(text);
+              }
+            }
+          }
+        } catch (e1) {
+          console.warn('Primary /api/categories?store_slug fetch error:', e1);
+        }
+
+        // Secondary fallback: /api/categories-by-slug/:storeSlug
+        if (!Array.isArray(rawData) || rawData.length === 0) {
           try {
-            const res2 = await fetch(`/api/categories/${encodeURIComponent(targetId)}`);
-            const extra = res2.ok ? await res2.json() : [];
-            if (Array.isArray(extra)) rows = extra;
-          } catch {
-            /* ignore */
+            const res2 = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+            if (res2.ok) {
+              const contentType2 = res2.headers.get('content-type') || '';
+              if (contentType2.includes('application/json')) {
+                rawData = await res2.json();
+              } else {
+                const text2 = await res2.text();
+                if (text2 && text2.trim().startsWith('[')) {
+                  rawData = JSON.parse(text2);
+                }
+              }
+            }
+          } catch (e2) {
+            console.warn('Fallback /api/categories-by-slug fetch error:', e2);
           }
         }
-        if (isMounted) {
-          setCategories(rows.map((c: any, index: number) => mapApiCategory(c, index) as CategoryNode));
+
+        if (isMounted && Array.isArray(rawData)) {
+          const mapped: CategoryNode[] = rawData.map((c: any, index: number) => ({
+            id: c.id || `cat-${index}`,
+            parentId: c.parentId || c.parent_id || null,
+            name: c.name || c.title || 'Category',
+            imageAltText: c.imageAltText || c.image_alt_text || '',
+            image: c.image || c.imageUrl || c.image_url || '',
+            coverImage: c.coverImage || c.cover_image || '',
+            description: c.description || '',
+            status: c.status === 'hidden' ? 'hidden' : 'published',
+            productCount: Number(c.productCount ?? c.product_count ?? 0),
+            slug: c.slug || (c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            metaTitle: c.metaTitle || c.meta_title,
+            metaDescription: c.metaDescription || c.meta_description,
+            keywords: c.keywords,
+            noIndex: !!c.noIndex,
+          }));
+          setCategories(mapped);
         }
-      })
-      .catch(err => console.warn('Fetch categories error:', err));
+      } catch (err) {
+        console.warn('Fetch categories error:', err);
+      }
+    };
+
+    fetchCategories();
 
     return () => {
       isMounted = false;
@@ -101,15 +143,22 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   // Helper to persist categories directly to Database API
   const syncCategoriesToDb = async (cats: CategoryNode[]) => {
     try {
-      const payload = cats.map((c) => buildCategoryDbPayload(c, merchant));
-      const { ok, data } = await postCatalogJson('/api/categories', payload);
-      if (!ok || data?.success === false) {
-        console.warn('Category save did not confirm persistence:', data);
-        return;
-      }
-      const saved = Array.isArray(data?.data) ? data.data : payload;
-      if (Array.isArray(saved)) {
-        setCategories(saved.map((c: any, index: number) => mapApiCategory(c, index) as CategoryNode));
+      const payload = cats.map(c => ({
+        ...c,
+        merchantId: merchant?.id || merchant?.storeSlug || 'default',
+        merchant_id: merchant?.id || merchant?.storeSlug || 'default',
+        store_slug: merchant?.storeSlug || '',
+        storeSlug: merchant?.storeSlug || '',
+      }));
+      const res = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert('Category saved and persisted to database successfully!');
+      } else {
+        alert('Failed to save category to database.');
       }
     } catch (e) {
       console.warn('Sync categories to DB notice:', e);
@@ -162,9 +211,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
       }
 
       for (const p of updatedProducts) {
-        await postCatalogJson('/api/products', buildProductDbPayload(p, merchant)).catch(err =>
-          console.warn('Sync product error:', err)
-        );
+        await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+        }).catch(err => console.warn('Sync product error:', err));
       }
 
       setCategories(prev => prev.map(c => {
@@ -234,7 +285,6 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
       } else {
         copy.splice(newTargetIdx, 0, updatedMovedItem);
       }
-      void syncCategoriesToDb(copy);
       return copy;
     });
   };
@@ -318,11 +368,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   // Status Switch Toggle
   const handleToggleStatus = (id: string, currentStatus: 'published' | 'hidden') => {
     const nextStatus = currentStatus === 'published' ? 'hidden' : 'published';
-    setCategories(prev => {
-      const next = prev.map(cat => cat.id === id ? { ...cat, status: nextStatus } : cat);
-      void syncCategoriesToDb(next);
-      return next;
-    });
+    setCategories(prev => prev.map(cat => cat.id === id ? { ...cat, status: nextStatus } : cat));
   };
 
   // Open Create Form
@@ -436,7 +482,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     } else {
       // Create new
       const newCategory: CategoryNode = {
-        id: newCatalogId(),
+        id: `cat-${Date.now()}`,
         parentId: formParentId,
         name: formNameEn.trim(),
         imageAltText: formAltText.trim(),
