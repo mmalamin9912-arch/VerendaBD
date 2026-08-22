@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Product, MerchantProfile } from '../../types';
+import { Product } from '../../types';
+import { readZidStoreData, writeZidStoreData } from '../../lib/storeData';
 import { 
   FolderTree, 
   Plus, 
@@ -46,193 +47,174 @@ export interface CategoryNode {
 
 interface CategoriesViewProps {
   products: Product[];
-  merchant?: MerchantProfile;
-  onUpdateProducts?: (products: Product[]) => void;
-  onSelectSubTab?: (tab: string) => void;
   onOpenSubscriptionModal?: () => void;
 }
 
 export const CategoriesView: React.FC<CategoriesViewProps> = ({ 
   products,
-  merchant,
-  onUpdateProducts,
-  onSelectSubTab,
   onOpenSubscriptionModal 
 }) => {
-  // Master Category List from Cloud Database / API
-  const [categories, setCategories] = useState<CategoryNode[]>([]);
-
-  // Fetch live categories for this merchant from API/Database
-  useEffect(() => {
-    let isMounted = true;
-    const storeSlug = merchant?.storeSlug || merchant?.id || 'default';
-
-    const fetchCategories = async () => {
+  const storeSlug = readZidStoreData().merchant?.storeSlug || 'default-store';
+  // Master Category List with Multi-Level Hierarchy & LocalStorage persistence
+  const [categories, setCategories] = useState<CategoryNode[]>(() => {
+    const saved = localStorage.getItem('zid_store_categories_v2');
+    if (saved) {
       try {
-        let rawData: any = null;
-
-        // Primary fetch: GET /api/categories?store_slug=${storeSlug}
-        try {
-          const res = await fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`);
-          if (res.ok) {
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-              rawData = await res.json();
-            } else {
-              const text = await res.text();
-              if (text && text.trim().startsWith('[')) {
-                rawData = JSON.parse(text);
-              }
-            }
-          }
-        } catch (e1) {
-          console.warn('Primary /api/categories?store_slug fetch error:', e1);
-        }
-
-        // Secondary fallback: /api/categories-by-slug/:storeSlug
-        if (!Array.isArray(rawData) || rawData.length === 0) {
-          try {
-            const res2 = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
-            if (res2.ok) {
-              const contentType2 = res2.headers.get('content-type') || '';
-              if (contentType2.includes('application/json')) {
-                rawData = await res2.json();
-              } else {
-                const text2 = await res2.text();
-                if (text2 && text2.trim().startsWith('[')) {
-                  rawData = JSON.parse(text2);
-                }
-              }
-            }
-          } catch (e2) {
-            console.warn('Fallback /api/categories-by-slug fetch error:', e2);
-          }
-        }
-
-        if (isMounted && Array.isArray(rawData)) {
-          const mapped: CategoryNode[] = rawData.map((c: any, index: number) => ({
-            id: c.id || `cat-${index}`,
-            parentId: c.parentId || c.parent_id || null,
-            name: c.name || c.title || 'Category',
-            imageAltText: c.imageAltText || c.image_alt_text || '',
-            image: c.image || c.imageUrl || c.image_url || '',
-            coverImage: c.coverImage || c.cover_image || '',
-            description: c.description || '',
-            status: c.status === 'hidden' ? 'hidden' : 'published',
-            productCount: Number(c.productCount ?? c.product_count ?? 0),
-            slug: c.slug || (c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            metaTitle: c.metaTitle || c.meta_title,
-            metaDescription: c.metaDescription || c.meta_description,
-            keywords: c.keywords,
-            noIndex: !!c.noIndex,
-          }));
-          setCategories(mapped);
-        }
-      } catch (err) {
-        console.warn('Fetch categories error:', err);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {
+        // Fallback
       }
-    };
-
-    fetchCategories();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [merchant?.storeSlug, merchant?.id]);
-
-  // Helper to persist categories directly to Database API
-  const syncCategoriesToDb = async (cats: CategoryNode[]) => {
-    try {
-      const payload = cats.map(c => ({
-        ...c,
-        merchantId: merchant?.id || merchant?.storeSlug || 'default',
-        merchant_id: merchant?.id || merchant?.storeSlug || 'default',
-        store_slug: merchant?.storeSlug || '',
-        storeSlug: merchant?.storeSlug || '',
-      }));
-      const res = await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        alert('Category saved and persisted to database successfully!');
-      } else {
-        alert('Failed to save category to database.');
-      }
-    } catch (e) {
-      console.warn('Sync categories to DB notice:', e);
     }
-  };
+    return [];
+    return [
+      {
+        id: 'cat-home',
+        parentId: null,
+        name: 'Home Appliances',
+        imageAltText: 'Home Appliances Category Banner',
+        image: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=200&auto=format&fit=crop&q=80',
+        coverImage: 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=800&auto=format&fit=crop&q=80',
+        description: 'High-quality kitchen and living room appliances for everyday convenient living.',
+        status: 'published',
+        productCount: 24,
+        slug: 'home-appliances'
+      },
+      {
+        id: 'cat-juicers',
+        parentId: 'cat-home',
+        name: 'Juicers & Blenders',
+        imageAltText: 'Juicers and Blenders Subcategory',
+        image: 'https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Smoothie blenders, cold press juicers and food processors.',
+        status: 'published',
+        productCount: 8,
+        slug: 'juicers-blenders'
+      },
+      {
+        id: 'cat-microwaves',
+        parentId: 'cat-home',
+        name: 'Ovens & Microwaves',
+        imageAltText: 'Ovens and Microwaves',
+        image: 'https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Convection microwave ovens and baking grills.',
+        status: 'published',
+        productCount: 5,
+        slug: 'ovens-microwaves'
+      },
+      {
+        id: 'cat-fashion',
+        parentId: null,
+        name: 'Fashion & Apparel',
+        imageAltText: 'Fashion and Clothing Category',
+        image: 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?w=200&auto=format&fit=crop&q=80',
+        coverImage: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80',
+        description: 'Traditional and contemporary Bangladeshi heritage clothing.',
+        status: 'published',
+        productCount: 42,
+        slug: 'fashion-apparel'
+      },
+      {
+        id: 'cat-mens-fashion',
+        parentId: 'cat-fashion',
+        name: "Man's Fashion",
+        imageAltText: "Man's Fashion Collection",
+        image: 'https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Panjabis, shirts, formal trousers and traditional waistcoats.',
+        status: 'published',
+        productCount: 18,
+        slug: 'mens-fashion'
+      },
+      {
+        id: 'cat-womens-fashion',
+        parentId: 'cat-fashion',
+        name: "Women's Fashion",
+        imageAltText: "Women's Fashion Collection",
+        image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Traditional sarees, salwar kameez sets, and designer lawn dresses.',
+        status: 'published',
+        productCount: 24,
+        slug: 'womens-fashion'
+      },
+      {
+        id: 'cat-jamdani',
+        parentId: 'cat-womens-fashion',
+        name: 'Jamdani Sarees',
+        imageAltText: 'Handloom Jamdani Sarees',
+        image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Authentic handcrafted Dhakai Jamdani cotton and silk sarees.',
+        status: 'published',
+        productCount: 12,
+        slug: 'jamdani-sarees'
+      },
+      {
+        id: 'cat-tech',
+        parentId: null,
+        name: 'Electronics & Gadgets',
+        imageAltText: 'Electronics Category',
+        image: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Mobile accessories, smart wearables, audio headphones.',
+        status: 'hidden',
+        productCount: 15,
+        slug: 'electronics-gadgets'
+      },
+      {
+        id: 'cat-crafts',
+        parentId: null,
+        name: 'Handicrafts & Decor',
+        imageAltText: 'Handicrafts and Home Decor',
+        image: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=200&auto=format&fit=crop&q=80',
+        coverImage: '',
+        description: 'Artisanal clay pottery, jute crafts and brass decor.',
+        status: 'published',
+        productCount: 7,
+        slug: 'handicrafts-decor'
+      }
+    ];
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadCategories = async () => {
+      try {
+        const response = await fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, { method: 'GET', signal: controller.signal, headers: { Accept: 'application/json' } });
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok || !contentType.includes('application/json')) return;
+        const payload = await response.json();
+        // A fresh serverless instance legitimately returns an empty list. Keep
+        // locally persisted tenant data in that case instead of erasing it.
+        if (Array.isArray(payload?.categories)) {
+          setCategories((current) => payload.categories.length > 0 || current.length === 0 ? payload.categories : current);
+        }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') console.warn('Category API unavailable; using local tenant data.', error);
+      }
+    };
+    void loadCategories();
+    return () => controller.abort();
+  }, [storeSlug]);
+
+  // Persist reordered categories sequence to localStorage
+  useEffect(() => {
+    localStorage.setItem('zid_store_categories_v2', JSON.stringify(categories));
+    writeZidStoreData({ categories });
+  }, [categories]);
 
   // Tree View State & Navigation Controls
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({
+    'cat-home': true,
+    'cat-fashion': true,
+    'cat-womens-fashion': true
+  });
   const [filterTab, setFilterTab] = useState<'all' | 'published' | 'hidden'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-
-  // Manage Products Modal State
-  const [managingCategory, setManagingCategory] = useState<CategoryNode | null>(null);
-  const [assignedProductIds, setAssignedProductIds] = useState<Record<string, boolean>>({});
-  const [productSearchQuery, setProductSearchQuery] = useState('');
-  const [isSavingProducts, setIsSavingProducts] = useState(false);
-
-  const handleOpenManageProducts = (cat: CategoryNode) => {
-    setActiveMenuId(null);
-    setManagingCategory(cat);
-    const initialAssigned: Record<string, boolean> = {};
-    products.forEach(p => {
-      if (p.category === cat.name || p.category === cat.slug || (p as any).categoryId === cat.id) {
-        initialAssigned[p.id] = true;
-      }
-    });
-    setAssignedProductIds(initialAssigned);
-    setProductSearchQuery('');
-  };
-
-  const handleSaveAssignedProducts = async () => {
-    if (!managingCategory) return;
-    setIsSavingProducts(true);
-    try {
-      const updatedProducts = products.map(p => {
-        const isAssigned = assignedProductIds[p.id];
-        const matchesCategory = p.category === managingCategory.name || p.category === managingCategory.slug || (p as any).categoryId === managingCategory.id;
-        
-        if (isAssigned && !matchesCategory) {
-          return { ...p, category: managingCategory.name, categoryId: managingCategory.id };
-        } else if (!isAssigned && matchesCategory) {
-          return { ...p, category: 'General', categoryId: undefined };
-        }
-        return p;
-      });
-
-      if (onUpdateProducts) {
-        onUpdateProducts(updatedProducts);
-      }
-
-      for (const p of updatedProducts) {
-        await fetch('/api/products', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(p),
-        }).catch(err => console.warn('Sync product error:', err));
-      }
-
-      setCategories(prev => prev.map(c => {
-        if (c.id === managingCategory.id) {
-          const count = updatedProducts.filter(p => p.category === c.name || p.category === c.slug || (p as any).categoryId === c.id).length;
-          return { ...c, productCount: count };
-        }
-        return c;
-      }));
-
-      setManagingCategory(null);
-    } catch (e) {
-      console.error('Error saving assigned products:', e);
-    } finally {
-      setIsSavingProducts(false);
-    }
-  };
 
   // Form View State (List vs Create/Edit)
   const [viewMode, setViewMode] = useState<'list' | 'form'>('list');
@@ -414,11 +396,11 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     if (!deletingCategory) return;
     const catId = deletingCategory.id;
     // Remove category and assign children to null parent
-    const updated = categories
-      .filter(c => c.id !== catId)
-      .map(c => c.parentId === catId ? { ...c, parentId: null } : c);
-    setCategories(updated);
-    syncCategoriesToDb(updated);
+    setCategories(prev => 
+      prev
+        .filter(c => c.id !== catId)
+        .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
+    );
     setDeletingCategory(null);
   };
 
@@ -455,10 +437,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     e.preventDefault();
     if (!formNameEn.trim()) return;
 
-    let updatedList: CategoryNode[] = [];
     if (editingCategory) {
       // Update
-      updatedList = categories.map(cat => {
+      setCategories(prev => prev.map(cat => {
         if (cat.id === editingCategory.id) {
           return {
             ...cat,
@@ -477,8 +458,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
           };
         }
         return cat;
-      });
-      setCategories(updatedList);
+      }));
     } else {
       // Create new
       const newCategory: CategoryNode = {
@@ -486,7 +466,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         parentId: formParentId,
         name: formNameEn.trim(),
         imageAltText: formAltText.trim(),
-        image: formImage || '',
+        image: formImage || 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=200&auto=format&fit=crop&q=80',
         coverImage: formCoverImage,
         description: formDescriptionEn.trim(),
         status: formStatus,
@@ -497,11 +477,9 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         keywords: formKeywords.trim(),
         noIndex: formNoIndex,
       };
-      updatedList = [newCategory, ...categories];
-      setCategories(updatedList);
+      setCategories(prev => [newCategory, ...prev]);
     }
 
-    syncCategoriesToDb(updatedList);
     setViewMode('list');
   };
 
@@ -701,7 +679,10 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleOpenManageProducts(cat)}
+                    onClick={() => {
+                      setActiveMenuId(null);
+                      alert(`Managing products under category "${cat.name}"`);
+                    }}
                     className="w-full px-3.5 py-2 hover:bg-[#282E3F] flex items-center gap-2 text-left cursor-pointer transition"
                   >
                     <Package className="w-4 h-4 text-purple-400" />
@@ -913,149 +894,6 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             </div>
           </div>
         )}
-
-      {/* Manage Products Modal */}
-      {managingCategory && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1D212E] border border-[#2E3548] rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
-            <div className="p-5 border-b border-[#2E3548] flex items-center justify-between bg-[#202533]">
-              <div>
-                <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Package className="w-4 h-4 text-[#00D68F]" />
-                  <span>Manage Products for "{managingCategory.name}"</span>
-                </h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Check products to assign them to this category. Uncheck to remove.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setManagingCategory(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#282E3F] transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 flex-1 overflow-y-auto space-y-4">
-              {products.length === 0 ? (
-                <div className="py-12 px-6 text-center bg-[#181B26] border border-[#2E3548] rounded-2xl">
-                  <div className="w-16 h-16 bg-[#202533] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#2E3548]">
-                    <Package className="w-8 h-8 text-slate-400" />
-                  </div>
-                  <h3 className="text-sm font-bold text-white mb-1">No products available to assign</h3>
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto mb-6">
-                    You haven't added any products to your catalog yet. Create your first product to assign it to categories.
-                  </p>
-                  {onSelectSubTab && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManagingCategory(null);
-                        onSelectSubTab('all_products');
-                      }}
-                      className="bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs inline-flex items-center gap-2 transition cursor-pointer shadow-lg"
-                    >
-                      <Plus className="w-4 h-4 stroke-[3]" />
-                      <span>Go to Products & Add Product</span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search products by title or SKU..."
-                      value={productSearchQuery}
-                      onChange={(e) => setProductSearchQuery(e.target.value)}
-                      className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#00D68F]"
-                    />
-                  </div>
-
-                  {/* Products Checklist */}
-                  <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
-                    {products
-                      .filter(p => {
-                        if (!productSearchQuery.trim()) return true;
-                        const q = productSearchQuery.toLowerCase();
-                        return p.title.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
-                      })
-                      .map(p => {
-                        const isAssigned = !!assignedProductIds[p.id];
-                        return (
-                          <label
-                            key={p.id}
-                            className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
-                              isAssigned
-                                ? 'bg-[#00D68F]/10 border-[#00D68F]/40'
-                                : 'bg-[#181B26] border-[#2E3548] hover:border-slate-600'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={isAssigned}
-                                onChange={(e) => {
-                                  setAssignedProductIds(prev => ({
-                                    ...prev,
-                                    [p.id]: e.target.checked
-                                  }));
-                                }}
-                                className="w-4 h-4 accent-[#00D68F] rounded cursor-pointer"
-                              />
-                              <img
-                                src={p.image || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=100'}
-                                alt={p.title}
-                                className="w-10 h-10 rounded-lg object-cover border border-[#2E3548]"
-                              />
-                              <div>
-                                <p className="text-xs font-bold text-white">{p.title}</p>
-                                <p className="text-[10px] text-slate-400">SKU: {p.sku} | Price: ৳{p.priceBDT}</p>
-                              </div>
-                            </div>
-                            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${
-                              isAssigned ? 'bg-[#00D68F]/20 text-[#00D68F]' : 'bg-slate-800 text-slate-400'
-                            }`}>
-                              {isAssigned ? 'Assigned' : 'Unassigned'}
-                            </span>
-                          </label>
-                        );
-                      })}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-[#2E3548] bg-[#202533] flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setManagingCategory(null)}
-                className="px-4 py-2 bg-[#282E3F] hover:bg-[#32394E] text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              {products.length > 0 && (
-                <button
-                  type="button"
-                  disabled={isSavingProducts}
-                  onClick={handleSaveAssignedProducts}
-                  className="px-5 py-2 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold rounded-xl text-xs transition cursor-pointer shadow-lg disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {isSavingProducts ? 'Saving...' : 'Save Changes'}
-                </button>
-              )}
-            </div>
-
-          </div>
-        </div>
-      )}
 
       </div>
     );
@@ -1390,7 +1228,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
                 https://store.zid.bd › categories › <span className="font-bold">{activeSlug}</span>
               </div>
               <div className="text-sm font-bold text-blue-400 hover:underline cursor-pointer truncate">
-                {formMetaTitle || formNameEn || 'Category Name'} | My Store Store
+                {formMetaTitle || formNameEn || 'Category Name'} | Dhaka Craft Store
               </div>
               <p className="text-[11px] text-slate-400 line-clamp-2 leading-tight">
                 {formMetaDescription || formDescriptionEn || 'Shop the best authentic category items with fast delivery in Dhaka and all over Bangladesh.'}
