@@ -1008,8 +1008,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     </div>
                     
                     <div className={`relative z-10 grid gap-6 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
-                      {hasCustomCategories ? (
-                        effectiveCategories.map((cat: any, idx: number) => (
+                      {effectiveCategories.filter((c: any) => c.status === 'Active').map((cat: any, idx: number) => (
                           <div key={idx} className="group flex flex-col items-center gap-3 cursor-pointer">
                             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
                               {cat.image ? (
@@ -1020,37 +1019,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                             </div>
                             <h3 className={`font-bold text-sm text-center ${textClass}`}>{cat.name}</h3>
                           </div>
-                        ))
-                      ) : !hasMerchantProducts ? (
-                        fallbackDemoCategories.map((cat: any, idx: number) => (
-                          <div key={idx} className="flex flex-col items-center gap-3 group cursor-pointer text-center">
-                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl bg-slate-100 flex items-center justify-center text-[#D4AF37] shadow-sm group-hover:shadow-md transition-shadow">
-                              {cat.vectorType === 'tshirt' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>}
-                              {cat.vectorType === 'bag' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>}
-                              {cat.vectorType === 'box' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>}
-                              {cat.vectorType === 'gadget' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
-                            </div>
-                            <h3 className={`font-bold text-sm ${textClass}`}>{cat.name}</h3>
-                          </div>
-                        ))
-                      ) : (
-                        Array.from(new Set(displayProducts.map(p => p.category))).slice(0, 5).map((cat, i) => {
-                          const catProducts = displayProducts.filter(p => p.category === cat);
-                          const image = catProducts[0]?.image;
-                          return (
-                            <div key={i} className="group flex flex-col items-center gap-3 cursor-pointer">
-                              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
-                                {image ? (
-                                  <img src={image} alt={cat} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
-                                ) : (
-                                  <VectorPlaceholder type="tshirt" className="bg-slate-100" />
-                                )}
-                              </div>
-                              <h3 className={`font-bold text-sm text-center ${textClass}`}>{cat}</h3>
-                            </div>
-                          );
-                        })
-                      )}
+                        ))}
                     </div>
                   </section>
                 );
