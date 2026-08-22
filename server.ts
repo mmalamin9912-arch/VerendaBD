@@ -341,7 +341,23 @@ const handleGetCategories = async (req: express.Request, res: express.Response) 
 app.get('/api/categories', handleGetCategories);
 app.get('/api/categories/:merchantId', handleGetCategories);
 
+// Middleware for /api/products CORS and Method Allow headers
+app.all('/api/products', (req, res, next) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  if (!['GET', 'POST', 'PUT', 'DELETE'].includes(req.method)) {
+    return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+  }
+  next();
+});
+
 app.post('/api/products', async (req, res) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
   res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
   
@@ -385,18 +401,20 @@ app.post('/api/products', async (req, res) => {
     try {
       const { data, error } = await supabaseAdmin.from('products').upsert(sanitizedPayload);
       if (error) {
-        console.warn('Supabase save product warning (falling back to memory store):', error.message || error);
+        console.warn('Supabase save product warning:', error.message || error);
       } else if (data) {
-        return res.json(data);
+        return res.status(200).json(data);
       }
     } catch (e) {
-      console.warn('Supabase save product exception (falling back to memory store):', e);
+      console.warn('Supabase save product exception:', e);
     }
   }
-  res.json(sanitizedPayload);
+  return res.status(200).json(sanitizedPayload);
 });
 
 app.delete('/api/products/:id', async (req, res) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const { id } = req.params;
   inMemoryStore.products.forEach((list, key) => {
     inMemoryStore.products.set(key, list.filter(p => p.id !== id));
@@ -405,29 +423,47 @@ app.delete('/api/products/:id', async (req, res) => {
   if (supabaseAdmin) {
     try {
       const { error } = await supabaseAdmin.from('products').delete().eq('id', id);
-      if (!error) return res.json({ success: true });
+      if (!error) return res.status(200).json({ success: true });
     } catch (e) {
       console.warn('Supabase delete product error:', e);
     }
   }
-  res.json({ success: true });
+  return res.status(200).json({ success: true });
+});
+
+// Middleware for /api/categories CORS and Method Allow headers
+app.all('/api/categories', (req, res, next) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  if (!['GET', 'POST', 'PUT', 'DELETE'].includes(req.method)) {
+    return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
+  }
+  next();
 });
 
 // Categories API
 app.get('/api/categories/:merchantId', async (req, res) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
+  res.setHeader('Access-Control-Allow-Origin', '*');
   const { merchantId } = req.params;
   if (supabaseAdmin) {
     try {
       const { data, error } = await supabaseAdmin.from('categories').select('*').eq('merchantId', merchantId);
-      if (!error && data && data.length > 0) return res.json(data);
+      if (!error && data) return res.status(200).json(data);
     } catch (e) {
-      // Fallback to in-memory
+      // Fallback
     }
   }
-  res.json(inMemoryStore.categories.get(merchantId) || []);
+  return res.status(200).json(inMemoryStore.categories.get(merchantId) || []);
 });
 
 app.post('/api/categories', async (req, res) => {
+  res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
   res.setHeader('Access-Control-Allow-Origin', '*');
   const payload = req.body;
   const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
@@ -449,7 +485,7 @@ app.post('/api/categories', async (req, res) => {
       // Ignored if table not migrated yet
     }
   }
-  res.json(payload);
+  return res.status(200).json(payload);
 });
 
 // Merchant Settings & Profile Persistence API

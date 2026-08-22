@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
 import { 
   ArrowLeft, 
@@ -133,38 +133,35 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
   const [category, setCategory] = useState(initialData?.category || '');
   const [barcode, setBarcode] = useState(initialData?.barcode || '');
 
-  const [customCategories] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('zid_merchant_categories_v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.map((c: any) => c.name);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return [];
-  });
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState<boolean>(false);
 
-  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(() => {
-    const saved = (() => {
-      try {
-        const s = localStorage.getItem('zid_merchant_categories_v2');
-        if (s) {
-          const parsed = JSON.parse(s);
-          if (Array.isArray(parsed)) return parsed.map((c: any) => c.name);
+  useEffect(() => {
+    let isMounted = true;
+    const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
+    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (isMounted && Array.isArray(data)) {
+          const names = data.map((c: any) => c.name || c.title).filter(Boolean);
+          setCustomCategories(names);
+          if (names.length === 0) {
+            setIsCustomCategoryMode(true);
+          } else if (initialData?.category && !names.includes(initialData.category)) {
+            setIsCustomCategoryMode(true);
+          }
         }
-      } catch {}
-      return [];
-    })();
-    if (saved.length === 0) return true;
-    if (initialData?.category && !saved.includes(initialData.category)) {
-      return true;
-    }
-    return false;
-  });
+      })
+      .catch(err => {
+        console.warn('Failed to fetch categories in product form:', err);
+        if (isMounted && customCategories.length === 0) {
+          setIsCustomCategoryMode(true);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [merchant?.storeSlug, merchant?.id, initialData?.category]);
 
   // 4. Images & Media State
   const [image, setImage] = useState(initialData?.image || '');
@@ -647,27 +644,24 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
     }
     setDeliveryValidationError('');
 
-    // Auto-save typed custom category to local categories list
+    // Auto-save typed custom category to database API
     if (isCustomCategoryMode && category.trim()) {
       try {
-        const saved = localStorage.getItem('zid_merchant_categories_v2');
-        let currentList: any[] = [];
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) currentList = parsed;
-        }
-        const exists = currentList.some((c: any) => c.name.toLowerCase() === category.trim().toLowerCase());
-        if (!exists) {
-          const newCat = {
-            id: `cat-${Date.now()}`,
-            name: category.trim(),
-            slug: category.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            status: 'published',
-            parentId: null
-          };
-          currentList.push(newCat);
-          localStorage.setItem('zid_merchant_categories_v2', JSON.stringify(currentList));
-        }
+        const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
+        const newCat = {
+          id: `cat-${Date.now()}`,
+          name: category.trim(),
+          slug: category.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          status: 'published',
+          parentId: null,
+          merchantId: targetSlug,
+          storeSlug: targetSlug
+        };
+        fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([newCat])
+        }).catch(err => console.error('Error syncing new category to backend:', err));
       } catch (err) {
         console.error('Error auto-saving new category:', err);
       }
@@ -1029,9 +1023,13 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                     className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-[#00D68F] cursor-pointer"
                   >
                     <option value="" disabled>Select category</option>
-                    {customCategories.map((catName) => (
-                      <option key={catName} value={catName}>{catName}</option>
-                    ))}
+                    {customCategories.length === 0 ? (
+                      <option value="" disabled>No categories found - Create one first</option>
+                    ) : (
+                      customCategories.map((catName) => (
+                        <option key={catName} value={catName}>{catName}</option>
+                      ))
+                    )}
                     <option value="__custom__">+ Type Custom Category...</option>
                   </select>
                 )}
