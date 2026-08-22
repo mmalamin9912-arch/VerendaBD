@@ -69,66 +69,325 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   // Dynamically load real products, categories and merchant settings from Supabase database by storeSlug on mount and poll
   useEffect(() => {
+    let isMounted = true;
+
     const loadStoreData = async () => {
+      console.log(`[TenantStorefrontView] 🚀 [${new Date().toLocaleTimeString()}] Initiating store data fetch for storeSlug: "${storeSlug}" (merchantId: "${merchantId}")`);
+      console.log('[TenantStorefrontView DB] Supabase client available:', Boolean(supabase));
+
+      let merchantDbId: string | null = merchantId || null;
+      let categoriesFromDb: any[] = [];
+      let productsFromDb: any[] = [];
+      let merchantUpdated = false;
+
+      // 1. Supabase Direct Database Queries
       if (supabase) {
+        // A. Merchant lookup by store_slug (with variations)
         try {
-          // A. Merchant lookup
-          const { data: dbMerchant } = await supabase
+          console.log('[TenantStorefrontView DB] 🔍 Querying merchants table for slug:', storeSlug);
+          const { data: dbMerchant, error: merchantErr } = await supabase
             .from('merchants')
             .select('*')
-            .eq('store_slug', storeSlug)
+            .or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`)
             .maybeSingle();
 
-          if (dbMerchant) {
+          console.log('[TenantStorefrontView DB] 🏢 Supabase merchant response:', { data: dbMerchant, error: merchantErr });
+
+          if (merchantErr) {
+            console.error('[TenantStorefrontView DB] ❌ Error fetching merchant profile from Supabase:', merchantErr);
+          } else if (dbMerchant && isMounted) {
+            merchantUpdated = true;
+            merchantDbId = dbMerchant.id || dbMerchant.store_id || dbMerchant.merchant_id || merchantDbId;
+            console.log('[TenantStorefrontView DB] ✅ Matched merchant from Supabase. Resolved merchant ID:', merchantDbId);
             setLocalMerchant(prev => ({
               ...prev,
               ...dbMerchant,
-              storeName: dbMerchant.store_name || prev.storeName,
-              logoUrl: dbMerchant.logo_url || prev.logoUrl,
-              themeConfig: dbMerchant.theme_config || prev.themeConfig,
+              id: dbMerchant.id || prev.id,
+              storeName: dbMerchant.store_name || dbMerchant.storeName || prev.storeName,
+              storeSlug: dbMerchant.store_slug || dbMerchant.storeSlug || storeSlug,
+              logoUrl: dbMerchant.logo_url || dbMerchant.logoUrl || prev.logoUrl,
+              themeConfig: dbMerchant.theme_config || dbMerchant.themeConfig || prev.themeConfig,
             }));
           }
+        } catch (mEx) {
+          console.error('[TenantStorefrontView DB] ❌ Exception during merchant lookup:', mEx);
+        }
 
-          // B. Fetch Active Categories
+        // B. Fetch Categories matching store_slug or merchantId/store_id
+        try {
+          const categoryOrFilters = [
+            `store_slug.eq.${storeSlug}`,
+            `storeSlug.eq.${storeSlug}`,
+            `store_id.eq.${storeSlug}`,
+            `merchant_id.eq.${storeSlug}`,
+            `merchantId.eq.${storeSlug}`,
+          ];
+          if (merchantDbId) {
+            categoryOrFilters.push(`merchant_id.eq.${merchantDbId}`);
+            categoryOrFilters.push(`merchantId.eq.${merchantDbId}`);
+            categoryOrFilters.push(`store_id.eq.${merchantDbId}`);
+          }
+          if (merchantId && merchantId !== merchantDbId && merchantId !== storeSlug) {
+            categoryOrFilters.push(`merchant_id.eq.${merchantId}`);
+            categoryOrFilters.push(`merchantId.eq.${merchantId}`);
+            categoryOrFilters.push(`store_id.eq.${merchantId}`);
+          }
+
+          const filterQuery = categoryOrFilters.join(',');
+          console.log('[TenantStorefrontView DB] 🔍 Querying categories table with filters:', filterQuery);
+
           const { data: sbCategories, error: catErr } = await supabase
             .from('categories')
             .select('*')
-            .eq('store_slug', storeSlug)
-            .eq('status', 'Active');
-            
+            .or(filterQuery);
+
+          console.log('[TenantStorefrontView DB] 📦 Supabase categories response:', { 
+            count: sbCategories?.length ?? 0, 
+            data: sbCategories, 
+            error: catErr 
+          });
+
           if (catErr) {
-            console.error('[Storefront DB] Error fetching categories:', catErr);
-          } else if (sbCategories) {
-            setLocalCategories(sbCategories);
+            console.error('[TenantStorefrontView DB] ❌ Supabase categories query error:', catErr);
+          } else if (Array.isArray(sbCategories) && sbCategories.length > 0) {
+            categoriesFromDb = sbCategories;
+          } else {
+            console.log('[TenantStorefrontView DB] ⚠️ Supabase returned 0 categories for slug:', storeSlug);
+          }
+        } catch (catEx) {
+          console.error('[TenantStorefrontView DB] ❌ Exception querying categories:', catEx);
+        }
+
+        // C. Fetch Products matching store_slug or merchantId/store_id
+        try {
+          const productOrFilters = [
+            `store_slug.eq.${storeSlug}`,
+            `storeSlug.eq.${storeSlug}`,
+            `store_id.eq.${storeSlug}`,
+            `merchant_id.eq.${storeSlug}`,
+            `merchantId.eq.${storeSlug}`,
+          ];
+          if (merchantDbId) {
+            productOrFilters.push(`merchant_id.eq.${merchantDbId}`);
+            productOrFilters.push(`merchantId.eq.${merchantDbId}`);
+            productOrFilters.push(`store_id.eq.${merchantDbId}`);
+          }
+          if (merchantId && merchantId !== merchantDbId && merchantId !== storeSlug) {
+            productOrFilters.push(`merchant_id.eq.${merchantId}`);
+            productOrFilters.push(`merchantId.eq.${merchantId}`);
+            productOrFilters.push(`store_id.eq.${merchantId}`);
           }
 
-          // C. Fetch Products
+          const filterQuery = productOrFilters.join(',');
+          console.log('[TenantStorefrontView DB] 🔍 Querying products table with filters:', filterQuery);
+
           const { data: sbProducts, error: prodErr } = await supabase
             .from('products')
             .select('*')
-            .eq('store_slug', storeSlug);
+            .or(filterQuery);
+
+          console.log('[TenantStorefrontView DB] 🛍️ Supabase products response:', { 
+            count: sbProducts?.length ?? 0, 
+            data: sbProducts, 
+            error: prodErr 
+          });
 
           if (prodErr) {
-            console.error('[Storefront DB] Error fetching products:', prodErr);
-          } else if (sbProducts) {
-            setLocalProducts(sbProducts);
+            console.error('[TenantStorefrontView DB] ❌ Supabase products query error:', prodErr);
+          } else if (Array.isArray(sbProducts) && sbProducts.length > 0) {
+            productsFromDb = sbProducts;
+          } else {
+            console.log('[TenantStorefrontView DB] ⚠️ Supabase returned 0 products for slug:', storeSlug);
           }
-        } catch (dbException) {
-          console.error('[Storefront DB] Exception in loadStoreData:', dbException);
+        } catch (prodEx) {
+          console.error('[TenantStorefrontView DB] ❌ Exception querying products:', prodEx);
         }
       }
 
+      // 2. Fallback to Direct Fetching via REST Endpoints (if Supabase empty or RLS blocks)
+      if (categoriesFromDb.length === 0) {
+        console.log(`[TenantStorefrontView API] 🔄 Categories empty from Supabase. Attempting REST API fallback for slug: "${storeSlug}"...`);
+        try {
+          const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+          if (catRes.ok) {
+            const restCats = await catRes.json();
+            console.log('[TenantStorefrontView API] 📥 REST /api/categories-by-slug response:', restCats);
+            if (Array.isArray(restCats) && restCats.length > 0) {
+              categoriesFromDb = restCats;
+            }
+          } else {
+            console.warn(`[TenantStorefrontView API] REST /api/categories-by-slug returned status ${catRes.status}`);
+          }
+        } catch (apiCatEx) {
+          console.error('[TenantStorefrontView API] ❌ Exception fetching /api/categories-by-slug:', apiCatEx);
+        }
+
+        // Secondary REST endpoint with merchant ID if still empty
+        if (categoriesFromDb.length === 0 && merchantDbId) {
+          try {
+            const catRes2 = await fetch(`/api/categories/${encodeURIComponent(merchantDbId)}`);
+            if (catRes2.ok) {
+              const restCats2 = await catRes2.json();
+              console.log(`[TenantStorefrontView API] 📥 REST /api/categories/${merchantDbId} response:`, restCats2);
+              if (Array.isArray(restCats2) && restCats2.length > 0) {
+                categoriesFromDb = restCats2;
+              }
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
+
+      if (productsFromDb.length === 0) {
+        console.log(`[TenantStorefrontView API] 🔄 Products empty from Supabase. Attempting REST API fallback for slug: "${storeSlug}"...`);
+        try {
+          const prodRes = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
+          if (prodRes.ok) {
+            const restProds = await prodRes.json();
+            console.log('[TenantStorefrontView API] 📥 REST /api/products-by-slug response:', restProds);
+            if (Array.isArray(restProds) && restProds.length > 0) {
+              productsFromDb = restProds;
+            }
+          } else {
+            console.warn(`[TenantStorefrontView API] REST /api/products-by-slug returned status ${prodRes.status}`);
+          }
+        } catch (apiProdEx) {
+          console.error('[TenantStorefrontView API] ❌ Exception fetching /api/products-by-slug:', apiProdEx);
+        }
+
+        // Secondary REST endpoint with merchant ID if still empty
+        if (productsFromDb.length === 0 && merchantDbId) {
+          try {
+            const prodRes2 = await fetch(`/api/products/${encodeURIComponent(merchantDbId)}`);
+            if (prodRes2.ok) {
+              const restProds2 = await prodRes2.json();
+              console.log(`[TenantStorefrontView API] 📥 REST /api/products/${merchantDbId} response:`, restProds2);
+              if (Array.isArray(restProds2) && restProds2.length > 0) {
+                productsFromDb = restProds2;
+              }
+            }
+          } catch (e) {
+            // Ignore
+          }
+        }
+      }
+
+      if (!merchantUpdated) {
+        try {
+          const mRes = await fetch(`/api/merchants/slug/${encodeURIComponent(storeSlug)}`);
+          if (mRes.ok) {
+            const restMerchant = await mRes.json();
+            if (restMerchant && isMounted) {
+              console.log('[TenantStorefrontView API] 📥 REST /api/merchants/slug response:', restMerchant);
+              setLocalMerchant(prev => ({
+                ...prev,
+                ...restMerchant,
+                storeName: restMerchant.storeName || restMerchant.store_name || prev.storeName,
+                logoUrl: restMerchant.logoUrl || restMerchant.logo_url || prev.logoUrl,
+                themeConfig: restMerchant.themeConfig || restMerchant.theme_config || prev.themeConfig,
+              }));
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      // 3. Fallback to Local Storage or Prop Data (if both Supabase and REST returned empty)
+      if (categoriesFromDb.length === 0) {
+        try {
+          const localSavedCats = localStorage.getItem('zid_merchant_categories_v2');
+          if (localSavedCats) {
+            const parsed = JSON.parse(localSavedCats);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log('[TenantStorefrontView Local] 💾 Using categories from localStorage (zid_merchant_categories_v2):', parsed);
+              categoriesFromDb = parsed;
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+
+        if (categoriesFromDb.length === 0 && merchant?.categories && merchant.categories.length > 0) {
+          console.log('[TenantStorefrontView Prop] 📦 Using categories from merchant prop:', merchant.categories);
+          categoriesFromDb = merchant.categories;
+        }
+      }
+
+      if (productsFromDb.length === 0) {
+        try {
+          const localSavedProds = localStorage.getItem('zid_merchant_products');
+          if (localSavedProds) {
+            const parsed = JSON.parse(localSavedProds);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log('[TenantStorefrontView Local] 💾 Using products from localStorage (zid_merchant_products):', parsed);
+              productsFromDb = parsed;
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+
+        if (productsFromDb.length === 0 && Array.isArray(products) && products.length > 0) {
+          console.log('[TenantStorefrontView Prop] 🛍️ Using products from products prop:', products);
+          productsFromDb = products;
+        }
+      }
+
+      // 4. Map and Synchronize State
+      if (!isMounted) return;
+
+      if (categoriesFromDb.length > 0) {
+        const mappedCategories = categoriesFromDb.map((c: any, index: number) => ({
+          ...c,
+          id: c.id || c._id || `cat-${index}`,
+          name: c.name || c.title || 'Category',
+          slug: c.slug || c.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          image: c.image || c.imageUrl || c.image_url || '',
+          coverImage: c.coverImage || c.cover_image || '',
+          status: c.status || 'Active',
+          productCount: Number(c.productCount ?? c.product_count ?? 0),
+        }));
+        setLocalCategories(mappedCategories);
+      }
+
+      if (productsFromDb.length > 0) {
+        const mappedProducts: Product[] = productsFromDb.map((p: any, index: number) => ({
+          ...p,
+          id: p.id || p._id || `p-${index}`,
+          title: p.title || p.name || 'Untitled Product',
+          titleBn: p.titleBn || p.title_bn,
+          priceBDT: Number(p.priceBDT ?? p.price ?? 0),
+          compareAtPriceBDT: p.compareAtPriceBDT ? Number(p.compareAtPriceBDT) : (p.compare_at_price ? Number(p.compare_at_price) : undefined),
+          status: p.status || 'Active',
+          category: p.category || p.category_name || '',
+          categoryId: p.categoryId || p.category_id,
+          image: p.image || (Array.isArray(p.images) && p.images[0]) || '',
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
+          stock: Number(p.stock ?? 10),
+          merchantId: p.merchantId || p.merchant_id || merchantDbId || storeSlug,
+        }));
+        setLocalProducts(mappedProducts);
+      }
+
+      console.log(`[TenantStorefrontView] 🏁 Data load complete for "${storeSlug}":`, {
+        categoriesRendered: categoriesFromDb.length,
+        productsRendered: productsFromDb.length,
+        merchantName: localMerchant?.storeName || merchant?.storeName
+      });
     };
 
     loadStoreData();
 
     // Poll to synchronize in real-time
-    const interval = setInterval(loadStoreData, 5000);
+    const interval = setInterval(loadStoreData, 6000);
 
     return () => {
+      isMounted = false;
       clearInterval(interval);
     };
-  }, [storeSlug, merchantId]);
+  }, [storeSlug, merchantId, products, merchant]);
 
   // Load orders and logged in user details
   useEffect(() => {
@@ -401,7 +660,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
 
   // Dynamic product inventory for storefront homepage
-  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : [];
+  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : (products && products.length > 0 ? products : []);
   const themeConfig = localMerchant.themeConfig || {};
   const { 
     headerBgColor = '#ffffff', 
@@ -917,7 +1176,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }
 
               if (sec.id === 'categories' && showCategories) {
-                const effectiveCategories = (localCategories && localCategories.length > 0) ? localCategories : categoriesList;
+                const effectiveCategories = (localCategories && localCategories.length > 0) 
+                  ? localCategories 
+                  : (categoriesList && categoriesList.length > 0 
+                      ? categoriesList 
+                      : (merchant?.categories && merchant.categories.length > 0 ? merchant.categories : []));
                 const hasCustomCategories = effectiveCategories && effectiveCategories.length > 0;
                 return (
                   <section 

@@ -171,7 +171,10 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
 
   if (supabaseAdmin) {
     try {
-      const { data: prodData, error } = await supabaseAdmin.from('products').select('*').or(`merchantId.eq.${merchantId},merchantId.eq.${storeSlug}`);
+      const { data: prodData, error } = await supabaseAdmin
+        .from('products')
+        .select('*')
+        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
       if (!error && prodData && prodData.length > 0) {
         return res.json(prodData);
       }
@@ -221,7 +224,10 @@ app.get('/api/categories-by-slug/:storeSlug', async (req, res) => {
 
   if (supabaseAdmin) {
     try {
-      const { data: catData, error } = await supabaseAdmin.from('categories').select('*').or(`merchantId.eq.${merchantId},merchantId.eq.${storeSlug}`);
+      const { data: catData, error } = await supabaseAdmin
+        .from('categories')
+        .select('*')
+        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
       if (!error && catData && catData.length > 0) {
         return res.json(catData);
       }
