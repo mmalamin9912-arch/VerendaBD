@@ -400,54 +400,6 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         categoriesFromDb.push(...merchant.categories);
       }
 
-      try {
-        const localSavedProds = safeGetItem('zid_merchant_products');
-        if (localSavedProds) {
-          const parsed = typeof localSavedProds === 'object' ? localSavedProds : JSON.parse(localSavedProds);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            parsed.forEach((p: any) => {
-              const alreadyExists = productsFromDb.some(existing => 
-                (existing.id && existing.id === p.id) || 
-                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-              );
-              if (!alreadyExists) {
-                productsFromDb.push(p);
-              }
-            });
-          }
-        }
-      } catch (e) {}
-
-      try {
-        const storeSavedData = safeGetItem(`ZID_MERCHANT_STORE_DATA_${storeSlug}`);
-        if (storeSavedData) {
-          const parsedData = typeof storeSavedData === 'object' ? storeSavedData : JSON.parse(storeSavedData);
-          if (Array.isArray(parsedData.products) && parsedData.products.length > 0) {
-            parsedData.products.forEach((p: any) => {
-              const alreadyExists = productsFromDb.some(existing => 
-                (existing.id && existing.id === p.id) || 
-                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-              );
-              if (!alreadyExists) {
-                productsFromDb.push(p);
-              }
-            });
-          }
-        }
-      } catch (e) {}
-
-      if (Array.isArray(products) && products.length > 0) {
-        products.forEach(p => {
-          const alreadyExists = productsFromDb.some(existing => 
-            (existing.id && existing.id === p.id) || 
-            (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-          );
-          if (!alreadyExists) {
-            productsFromDb.push(p);
-          }
-        });
-      }
-
       // 4. Map and Synchronize State
       if (!isMounted) return;
 
