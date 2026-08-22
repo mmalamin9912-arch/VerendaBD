@@ -159,7 +159,9 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
       if (mData && mData.id) {
         merchantId = mData.id;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[Server DB] Error fetching merchant for products-by-slug:', e);
+    }
   }
 
   const memMerchant = inMemoryStore.merchants.get(storeSlug);
@@ -174,11 +176,15 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
         return res.json(prodData);
       }
       // If none found with specific merchantId, try fetching all products table records
-      const { data: allProds } = await supabaseAdmin.from('products').select('*');
-      if (allProds && allProds.length > 0) {
+      const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
+      if (allProdsErr) {
+        console.error('[Server DB] Error fetching all products:', allProdsErr);
+      } else if (allProds && allProds.length > 0) {
         return res.json(allProds);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('[Server DB] Supabase get products-by-slug exception:', e);
+    }
   }
 
   const memProducts = inMemoryStore.products.get(merchantId) || inMemoryStore.products.get(storeSlug) || inMemoryStore.products.get('default') || [];
@@ -187,6 +193,55 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
   }
 
   for (const [_, list] of inMemoryStore.products.entries()) {
+    if (list && list.length > 0) return res.json(list);
+  }
+
+  res.json([]);
+});
+
+app.get('/api/categories-by-slug/:storeSlug', async (req, res) => {
+  const { storeSlug } = req.params;
+  let merchantId = storeSlug;
+
+  if (supabaseAdmin) {
+    try {
+      const { data: mData } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
+      if (mData && mData.id) {
+        merchantId = mData.id;
+      }
+    } catch (e) {
+      console.error('[Server DB] Error fetching merchant for categories-by-slug:', e);
+    }
+  }
+
+  const memMerchant = inMemoryStore.merchants.get(storeSlug);
+  if (memMerchant && memMerchant.id) {
+    merchantId = memMerchant.id;
+  }
+
+  if (supabaseAdmin) {
+    try {
+      const { data: catData, error } = await supabaseAdmin.from('categories').select('*').or(`merchantId.eq.${merchantId},merchantId.eq.${storeSlug}`);
+      if (!error && catData && catData.length > 0) {
+        return res.json(catData);
+      }
+      const { data: allCats, error: allCatsErr } = await supabaseAdmin.from('categories').select('*');
+      if (allCatsErr) {
+        console.error('[Server DB] Error fetching all categories:', allCatsErr);
+      } else if (allCats && allCats.length > 0) {
+        return res.json(allCats);
+      }
+    } catch (e) {
+      console.error('[Server DB] Supabase get categories-by-slug exception:', e);
+    }
+  }
+
+  const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || inMemoryStore.categories.get('default') || [];
+  if (memCats.length > 0) {
+    return res.json(memCats);
+  }
+
+  for (const [_, list] of inMemoryStore.categories.entries()) {
     if (list && list.length > 0) return res.json(list);
   }
 

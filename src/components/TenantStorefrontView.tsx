@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
 import { ShoppingBag, ShoppingCart, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, Video, Play, Loader2, User, History, Home, MoreVertical, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface TenantStorefrontViewProps {
   storeSlug: string;
@@ -64,83 +65,70 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     setLocalMerchant(merchant);
   }, [merchant]);
 
-  // Dynamically load real products and merchant settings from Supabase database by storeSlug on mount and poll
+  const merchantId = merchant?.id;
+
+  // Dynamically load real products, categories and merchant settings from Supabase database by storeSlug on mount and poll
   useEffect(() => {
     const loadStoreData = async () => {
-      try {
-        const res = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
-        if (res.ok) {
-          const dbProducts = await res.json();
-          if (Array.isArray(dbProducts) && dbProducts.length > 0) {
-            setLocalProducts(dbProducts);
-          } else {
-            const savedProductsStr = localStorage.getItem('zid_merchant_products');
-            if (savedProductsStr) {
-              const parsed = JSON.parse(savedProductsStr);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setLocalProducts(parsed);
-              } else {
-                setLocalProducts(products || []);
-              }
-            } else {
-              setLocalProducts(products || []);
-            }
-          }
-        }
+      if (supabase) {
+        try {
+          // A. Merchant lookup
+          const { data: dbMerchant } = await supabase
+            .from('merchants')
+            .select('*')
+            .eq('store_slug', storeSlug)
+            .maybeSingle();
 
-        const mRes = await fetch(`/api/merchants/slug/${encodeURIComponent(storeSlug)}`);
-        if (mRes.ok) {
-          const dbMerchant = await mRes.json();
           if (dbMerchant) {
             setLocalMerchant(prev => ({
               ...prev,
               ...dbMerchant,
-              themeConfig: dbMerchant.themeConfig || dbMerchant.theme_config || prev.themeConfig,
+              storeName: dbMerchant.store_name || prev.storeName,
+              logoUrl: dbMerchant.logo_url || prev.logoUrl,
+              themeConfig: dbMerchant.theme_config || prev.themeConfig,
             }));
           }
-        }
 
-        const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
-        if (catRes.ok) {
-          const dbCategories = await catRes.json();
-          if (Array.isArray(dbCategories)) {
-            setLocalCategories(dbCategories);
+          // B. Fetch Active Categories
+          const { data: sbCategories, error: catErr } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('store_slug', storeSlug)
+            .eq('status', 'Active');
+            
+          if (catErr) {
+            console.error('[Storefront DB] Error fetching categories:', catErr);
+          } else if (sbCategories) {
+            setLocalCategories(sbCategories);
           }
-        }
 
-        const key = `ZID_MERCHANT_STORE_DATA_${storeSlug}`;
-        const customStoreDataStr = localStorage.getItem(key);
-        if (customStoreDataStr) {
-          const parsed = JSON.parse(customStoreDataStr);
-          if (parsed.orders) {
-            setOrders(parsed.orders);
+          // C. Fetch Products
+          const { data: sbProducts, error: prodErr } = await supabase
+            .from('products')
+            .select('*')
+            .eq('store_slug', storeSlug);
+
+          if (prodErr) {
+            console.error('[Storefront DB] Error fetching products:', prodErr);
+          } else if (sbProducts) {
+            setLocalProducts(sbProducts);
           }
-          if (Array.isArray(parsed.products) && parsed.products.length > 0) {
-            setLocalProducts(parsed.products);
-          }
+        } catch (dbException) {
+          console.error('[Storefront DB] Exception in loadStoreData:', dbException);
         }
-      } catch (e) {
-        console.error('Error loading storefront data from database:', e);
-        setLocalProducts(products || []);
       }
+
     };
 
     loadStoreData();
 
-    // Listen to storage events and poll to synchronize in real-time across tabs/iframes
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'zid_merchant_products' || e.key === `ZID_MERCHANT_STORE_DATA_${storeSlug}`) {
-        loadStoreData();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-    const interval = setInterval(loadStoreData, 2500);
+    // Poll to synchronize in real-time
+    const interval = setInterval(loadStoreData, 5000);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [products, storeSlug]);
+  }, [storeSlug, merchantId]);
 
   // Load orders and logged in user details
   useEffect(() => {
@@ -959,16 +947,21 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     </div>
                     
                     <div className={`relative z-10 grid gap-6 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
-                      {effectiveCategories.filter((c: any) => c.status === 'Active').map((cat: any, idx: number) => (
-                          <div key={idx} className="group flex flex-col items-center gap-3 cursor-pointer">
-                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
+                      {effectiveCategories
+                        .filter((c: any) => !c.status || c.status === 'Active' || c.status === 'published' || c.status === 'Published' || (c.status !== 'hidden' && c.status !== 'draft'))
+                        .map((cat: any, idx: number) => (
+                          <div key={cat.id || idx} className="group flex flex-col items-center gap-3 cursor-pointer">
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-xs group-hover:shadow-md border border-slate-200/80 bg-slate-100/80 transition-all flex items-center justify-center">
                               {cat.image ? (
                                 <img src={cat.image} alt={cat.name} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
                               ) : (
-                                <VectorPlaceholder type="tshirt" className="bg-slate-100" />
+                                <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center bg-slate-100">
+                                  <Sparkles className="w-6 h-6 text-slate-400 mb-1" />
+                                  <span className="text-[10px] font-bold text-slate-500 line-clamp-1">{cat.name}</span>
+                                </div>
                               )}
                             </div>
-                            <h3 className={`font-bold text-sm text-center ${textClass}`}>{cat.name}</h3>
+                            <h3 className={`font-bold text-sm text-center ${categoriesBgImage ? 'text-white' : textClass}`}>{cat.name}</h3>
                           </div>
                         ))}
                     </div>
