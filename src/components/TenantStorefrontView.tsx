@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
+import { initialProducts } from '../data/initialData';
+import { safeGetItem, safeSetItem } from '../utils/safeStorage';
 
 interface TenantStorefrontViewProps {
   storeSlug: string;
@@ -379,11 +381,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         } catch (e) {}
       }
 
-      // 3. Fallback to Local Storage or Prop Data
+      // 3. Fallback to Safe Storage or Prop Data
       try {
-        const localSavedCats = localStorage.getItem('zid_merchant_categories_v2');
+        const localSavedCats = safeGetItem('zid_merchant_categories_v2');
         if (localSavedCats) {
-          const parsed = JSON.parse(localSavedCats);
+          const parsed = typeof localSavedCats === 'object' ? localSavedCats : JSON.parse(localSavedCats);
           if (Array.isArray(parsed) && parsed.length > 0) {
             parsed.forEach((c: any) => {
               if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
@@ -399,9 +401,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       }
 
       try {
-        const localSavedProds = localStorage.getItem('zid_merchant_products');
+        const localSavedProds = safeGetItem('zid_merchant_products');
         if (localSavedProds) {
-          const parsed = JSON.parse(localSavedProds);
+          const parsed = typeof localSavedProds === 'object' ? localSavedProds : JSON.parse(localSavedProds);
           if (Array.isArray(parsed) && parsed.length > 0) {
             parsed.forEach((p: any) => {
               const alreadyExists = productsFromDb.some(existing => 
@@ -417,9 +419,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       } catch (e) {}
 
       try {
-        const storeSavedData = localStorage.getItem(`ZID_MERCHANT_STORE_DATA_${storeSlug}`);
+        const storeSavedData = safeGetItem(`ZID_MERCHANT_STORE_DATA_${storeSlug}`);
         if (storeSavedData) {
-          const parsedData = JSON.parse(storeSavedData);
+          const parsedData = typeof storeSavedData === 'object' ? storeSavedData : JSON.parse(storeSavedData);
           if (Array.isArray(parsedData.products) && parsedData.products.length > 0) {
             parsedData.products.forEach((p: any) => {
               const alreadyExists = productsFromDb.some(existing => 
@@ -436,6 +438,19 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
       if (Array.isArray(products) && products.length > 0) {
         products.forEach(p => {
+          const alreadyExists = productsFromDb.some(existing => 
+            (existing.id && existing.id === p.id) || 
+            (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+          );
+          if (!alreadyExists) {
+            productsFromDb.push(p);
+          }
+        });
+      }
+
+      // Always guarantee default seed products (Hydrating Cream, Desk Dispenser, LED Lamp) are present
+      if (Array.isArray(initialProducts)) {
+        initialProducts.forEach(p => {
           const alreadyExists = productsFromDb.some(existing => 
             (existing.id && existing.id === p.id) || 
             (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
@@ -774,24 +789,25 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     const combined: Product[] = [];
     const seenIds = new Set<string>();
 
+    const addProduct = (p: Product) => {
+      if (!p) return;
+      const idKey = String(p.id || p.title || '').trim().toLowerCase();
+      if (idKey && !seenIds.has(idKey)) {
+        seenIds.add(idKey);
+        combined.push(p);
+      }
+    };
+
     if (localProducts && localProducts.length > 0) {
-      localProducts.forEach(p => {
-        const idKey = String(p.id || p.title).trim();
-        if (!seenIds.has(idKey)) {
-          seenIds.add(idKey);
-          combined.push(p);
-        }
-      });
+      localProducts.forEach(addProduct);
     }
 
     if (products && products.length > 0) {
-      products.forEach(p => {
-        const idKey = String(p.id || p.title).trim();
-        if (!seenIds.has(idKey)) {
-          seenIds.add(idKey);
-          combined.push(p);
-        }
-      });
+      products.forEach(addProduct);
+    }
+
+    if (initialProducts && initialProducts.length > 0) {
+      initialProducts.forEach(addProduct);
     }
 
     return combined;

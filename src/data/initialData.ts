@@ -154,7 +154,68 @@ export const initialMobileBanking: MobileBankingConfig[] = [
   }
 ];
 export const initialOrders: Order[] = [];
-export const initialProducts: Product[] = [];
+export const initialProducts: Product[] = [
+  {
+    id: 'prod-hydrating-cream',
+    title: 'Hydrating Face & Body Moisturizer Cream',
+    titleBn: 'হাইড্রেটিং ফেস ও বডি ময়েশ্চারাইজার ক্রিম',
+    sku: 'HYDRA-CRM-01',
+    category: 'Skincare & Beauty',
+    priceBDT: 750,
+    costPriceBDT: 450,
+    compareAtPriceBDT: 950,
+    stock: 45,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
+    additionalImages: [
+      'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80'
+    ],
+    variantsCount: 0,
+    salesCount: 18,
+    descriptionEn: 'Enriched deep hydrating face and body daily moisture care cream. Nourishes dry skin and provides 24-hour long-lasting smoothness and glow.',
+    descriptionBn: 'ত্বকের গভীর আর্দ্রতা ধরে রাখতে প্রিমিয়াম হাইড্রেটিং ফেস ও বডি ক্রিম। ২৪ ঘণ্টার মসৃণ ও কোমল ত্বক নিশ্চিত করে।'
+  },
+  {
+    id: 'prod-desk-dispenser',
+    title: 'Automatic Water Bottle Desk Dispenser',
+    titleBn: 'অটোমেটিক ওয়াটার বোতল ডেস্ক ডিসপেন্সার',
+    sku: 'AUTO-DISP-02',
+    category: 'Home & Kitchen',
+    priceBDT: 1250,
+    costPriceBDT: 800,
+    compareAtPriceBDT: 1650,
+    stock: 28,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
+    additionalImages: [
+      'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'
+    ],
+    variantsCount: 0,
+    salesCount: 34,
+    descriptionEn: 'Rechargeable electric USB water pump dispenser for 5-gallon bottles and desktop hydration. Fast pumping with smart one-touch operation.',
+    descriptionBn: 'স্মার্ট ওয়ান-টাচ ইউএসবি রিচার্জেবল পানির পাম্প ও ডেস্ক ডিসপেন্সার। সহজে যেকোনো বোতল বা গ্যালনে ব্যবহারযোগ্য।'
+  },
+  {
+    id: 'prod-led-lamp',
+    title: 'Nordic Minimalist LED Desk Lamp',
+    titleBn: 'নরডিক মিনিমালিস্ট রিচার্জেবল LED ল্যাম্প',
+    sku: 'LED-LAMP-03',
+    category: 'Electronics & Lighting',
+    priceBDT: 1850,
+    costPriceBDT: 1200,
+    compareAtPriceBDT: 2200,
+    stock: 32,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80',
+    additionalImages: [
+      'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80'
+    ],
+    variantsCount: 0,
+    salesCount: 42,
+    descriptionEn: 'Modern dimmable eye-protection reading table lamp with touch controls and warm/cool ambient LED lighting modes.',
+    descriptionBn: 'চোখের সুরক্ষায় টাচ কন্ট্রোল মাল্টি-মোড প্রিমিয়াম রিডিং টেবিল LED ল্যাম্প। ওয়ার্ম ও কুল লাইটিং সুবিধা।'
+  }
+];
 export const initialCustomers: Customer[] = [];
 export const initialCoupons: DiscountCoupon[] = [];
 export const initialInvoices: InvoiceRecord[] = [];

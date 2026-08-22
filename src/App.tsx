@@ -37,6 +37,7 @@ import { SubscriptionModal } from './components/SubscriptionModal';
 import { StorefrontPreviewModal } from './components/StorefrontPreviewModal';
 import { TenantStorefrontView } from './components/TenantStorefrontView';
 import { SuperAdminPortalView } from './components/SuperAdminPortalView';
+import { safeSetItem, safeGetItem, safeRemoveItem } from './utils/safeStorage';
 
 import { DashboardView } from './components/views/DashboardView';
 import { PaymentsView } from './components/views/PaymentsView';
@@ -519,16 +520,16 @@ export default function App() {
         // If slug has changed, migrate database data and delete the old entry
         const oldKey = `ZID_MERCHANT_STORE_DATA_${oldSlug}`;
         const newKey = `ZID_MERCHANT_STORE_DATA_${newSlug}`;
-        const oldData = localStorage.getItem(oldKey);
+        const oldData = safeGetItem(oldKey);
         if (oldData) {
           try {
-            const parsed = JSON.parse(oldData);
+            const parsed = typeof oldData === 'object' ? oldData : JSON.parse(oldData);
             parsed.merchant = merchant;
-            localStorage.setItem(newKey, JSON.stringify(parsed));
+            safeSetItem(newKey, parsed);
           } catch (err) {
-            localStorage.setItem(newKey, oldData);
+            safeSetItem(newKey, oldData);
           }
-          localStorage.removeItem(oldKey);
+          safeRemoveItem(oldKey);
         }
         
         // Update the ref to the new slug
@@ -537,20 +538,17 @@ export default function App() {
 
       const storeData = {
         merchant,
-        products,
         themes,
         bankAccounts,
         mobileBanking,
         codConfig,
-        gatewayConfig,
-        orders,
-        customers
+        gatewayConfig
       };
-      localStorage.setItem('ZID_MERCHANT_STORE_DATA', JSON.stringify(storeData));
+      safeSetItem('ZID_MERCHANT_STORE_DATA', storeData);
       if (merchant?.storeSlug) {
-        localStorage.setItem(`ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`, JSON.stringify(storeData));
+        safeSetItem(`ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`, storeData);
       }
-      localStorage.setItem('zid_merchant_products', JSON.stringify(products));
+      safeSetItem('zid_merchant_products', products);
 
       // Update the main merchants index (allMerchants) by email to prevent old profile/slug from persisting
       setAllMerchants(prev => {
@@ -560,17 +558,17 @@ export default function App() {
         const updated = exists
           ? filtered.map(m => m?.email === merchant?.email ? merchant : m)
           : (merchant ? [...filtered, merchant] : filtered);
-        localStorage.setItem('ZID_ALL_MERCHANTS', JSON.stringify(updated));
+        safeSetItem('ZID_ALL_MERCHANTS', updated);
         return updated;
       });
 
       // Synchronize zid_auth_session with updated profile
-      const savedSession = localStorage.getItem('zid_auth_session');
+      const savedSession = safeGetItem('zid_auth_session');
       if (savedSession) {
         try {
-          const parsed = JSON.parse(savedSession);
+          const parsed = typeof savedSession === 'object' ? savedSession : JSON.parse(savedSession);
           parsed.userProfile = merchant;
-          localStorage.setItem('zid_auth_session', JSON.stringify(parsed));
+          safeSetItem('zid_auth_session', parsed);
         } catch (err) {
           console.error(err);
         }
@@ -579,7 +577,7 @@ export default function App() {
       // Automatically update the storeName in any pending or historical subscription requests for this merchant
       setPendingRequests(prev => {
         const updated = prev.map(req => req?.email === merchant?.email ? { ...req, storeName: merchant?.storeName || 'My Store' } : req);
-        localStorage.setItem('ZID_PENDING_REQUESTS', JSON.stringify(updated));
+        safeSetItem('ZID_PENDING_REQUESTS', updated);
         return updated;
       });
 

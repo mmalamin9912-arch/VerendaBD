@@ -45,9 +45,76 @@ if (sbUrl && sbKey) {
 }
 
 // In-memory fallback stores for local resilience
+const SEED_PRODUCTS = [
+  {
+    id: 'prod-hydrating-cream',
+    title: 'Hydrating Face & Body Moisturizer Cream',
+    titleBn: 'হাইড্রেটিং ফেস ও বডি ময়েশ্চারাইজার ক্রিম',
+    sku: 'HYDRA-CRM-01',
+    category: 'Skincare & Beauty',
+    priceBDT: 750,
+    price: 750,
+    costPriceBDT: 450,
+    compareAtPriceBDT: 950,
+    compare_at_price: 950,
+    stock: 45,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
+    images: ['https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80'],
+    variantsCount: 0,
+    salesCount: 18,
+    descriptionEn: 'Enriched deep hydrating face and body daily moisture care cream. Nourishes dry skin and provides 24-hour long-lasting smoothness and glow.',
+    descriptionBn: 'ত্বকের গভীর আর্দ্রতা ধরে রাখতে প্রিমিয়াম হাইড্রেটিং ফেস ও বডি ক্রিম। ২৪ ঘণ্টার মসৃণ ও কোমল ত্বক নিশ্চিত করে।'
+  },
+  {
+    id: 'prod-desk-dispenser',
+    title: 'Automatic Water Bottle Desk Dispenser',
+    titleBn: 'অটোমেটিক ওয়াটার বোতল ডেস্ক ডিসপেন্সার',
+    sku: 'AUTO-DISP-02',
+    category: 'Home & Kitchen',
+    priceBDT: 1250,
+    price: 1250,
+    costPriceBDT: 800,
+    compareAtPriceBDT: 1650,
+    compare_at_price: 1650,
+    stock: 28,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
+    images: ['https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80'],
+    variantsCount: 0,
+    salesCount: 34,
+    descriptionEn: 'Rechargeable electric USB water pump dispenser for 5-gallon bottles and desktop hydration. Fast pumping with smart one-touch operation.',
+    descriptionBn: 'স্মার্ট ওয়ান-টাচ ইউএসবি রিচার্জেবল পানির পাম্প ও ডেস্ক ডিসপেন্সার। সহজে যেকোনো বোতল বা গ্যালনে ব্যবহারযোগ্য।'
+  },
+  {
+    id: 'prod-led-lamp',
+    title: 'Nordic Minimalist LED Desk Lamp',
+    titleBn: 'নরডিক মিনিমালিস্ট রিচার্জেবল LED ল্যাম্প',
+    sku: 'LED-LAMP-03',
+    category: 'Electronics & Lighting',
+    priceBDT: 1850,
+    price: 1850,
+    costPriceBDT: 1200,
+    compareAtPriceBDT: 2200,
+    compare_at_price: 2200,
+    stock: 32,
+    status: 'Active',
+    image: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80',
+    images: ['https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=600&q=80'],
+    variantsCount: 0,
+    salesCount: 42,
+    descriptionEn: 'Modern dimmable eye-protection reading table lamp with touch controls and warm/cool ambient LED lighting modes.',
+    descriptionBn: 'চোখের সুরক্ষায় টাচ কন্ট্রোল মাল্টি-মোড প্রিমিয়াম রিডিং টেবিল LED ল্যাম্প। ওয়ার্ম ও কুল লাইটিং সুবিধা।'
+  }
+];
+
 const inMemoryStore = {
   subscriptions: new Map<string, any>(),
-  products: new Map<string, any[]>(),
+  products: new Map<string, any[]>([
+    ['aminfashionbd', [...SEED_PRODUCTS]],
+    ['default', [...SEED_PRODUCTS]],
+    ['my-store', [...SEED_PRODUCTS]]
+  ]),
   categories: new Map<string, any[]>(),
   customers: new Map<string, any[]>(),
   orders: new Map<string, any[]>(),
@@ -523,44 +590,62 @@ app.post('/api/categories', async (req, res) => {
 });
 
 // Merchant Settings & Profile Persistence API
-app.post('/api/merchants/update', async (req, res) => {
+const handleMerchantUpdate = async (req: express.Request, res: express.Response) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const merchantData = req.body;
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  const merchantData = req.body || {};
   const slug = merchantData.storeSlug || merchantData.store_slug || 'default';
   
   inMemoryStore.merchants.set(slug, merchantData);
+  if (slug !== 'aminfashionbd' && merchantData.email === 'mmalamin9912@gmail.com') {
+    inMemoryStore.merchants.set('aminfashionbd', merchantData);
+  }
 
   if (supabaseAdmin) {
     try {
       const dbPayload = {
-        store_name: merchantData.storeName,
-        store_slug: merchantData.storeSlug,
-        owner_name: merchantData.ownerName,
+        store_name: merchantData.storeName || merchantData.store_name,
+        store_slug: merchantData.storeSlug || merchantData.store_slug,
+        owner_name: merchantData.ownerName || merchantData.owner_name,
         email: merchantData.email,
         phone: merchantData.phone,
-        currency: merchantData.currency,
-        language: merchantData.language,
-        logo_url: merchantData.logoUrl,
-        store_tagline: merchantData.storeTagline,
-        store_description: merchantData.storeDescription,
-        whatsapp_number: merchantData.whatsappNumber,
-        facebook_url: merchantData.facebookUrl,
-        instagram_url: merchantData.instagramUrl,
-        active_theme_id: merchantData.activeThemeId,
-        theme_config: merchantData.themeConfig,
-        shipping_config: merchantData.shippingConfig,
-        payment_methods: merchantData.paymentMethods,
+        currency: merchantData.currency || 'BDT',
+        language: merchantData.language || 'en',
+        logo_url: merchantData.logoUrl || merchantData.logo_url,
+        store_tagline: merchantData.storeTagline || merchantData.store_tagline,
+        store_description: merchantData.storeDescription || merchantData.store_description,
+        whatsapp_number: merchantData.whatsappNumber || merchantData.whatsapp_number,
+        facebook_url: merchantData.facebookUrl || merchantData.facebook_url,
+        instagram_url: merchantData.instagramUrl || merchantData.instagram_url,
+        active_theme_id: merchantData.activeThemeId || merchantData.active_theme_id,
+        theme_config: merchantData.themeConfig || merchantData.theme_config,
+        shipping_config: merchantData.shippingConfig || merchantData.shipping_config,
+        payment_methods: merchantData.paymentMethods || merchantData.payment_methods,
         tracking: merchantData.tracking,
         updated_at: new Date().toISOString()
       };
       
       await supabaseAdmin.from('merchants').upsert(dbPayload, { onConflict: 'store_slug' });
     } catch (e) {
-      // Gracefully fall back to in-memory store if table is not provisioned yet
+      console.warn('[API /api/merchants/update] Supabase upsert notice:', e);
     }
   }
-  res.json({ success: true, data: merchantData });
-});
+  return res.status(200).json({ success: true, data: merchantData });
+};
+
+app.post('/api/merchants/update', handleMerchantUpdate);
+app.put('/api/merchants/update', handleMerchantUpdate);
+app.patch('/api/merchants/update', handleMerchantUpdate);
+app.options('/api/merchants/update', (req, res) => res.status(200).end());
+
+app.post('/api/merchants', handleMerchantUpdate);
+app.put('/api/merchants', handleMerchantUpdate);
+app.put('/api/merchants/:id', handleMerchantUpdate);
 
 // Merchant Lookup by Slug
 const handleGetMerchantBySlug = async (req: express.Request, res: express.Response) => {
