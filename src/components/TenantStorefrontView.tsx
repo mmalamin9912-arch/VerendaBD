@@ -57,6 +57,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   const [localProducts, setLocalProducts] = useState<Product[]>([]);
   const [localMerchant, setLocalMerchant] = useState<MerchantProfile>(merchant);
+  const [localCategories, setLocalCategories] = useState<any[]>([]);
 
   // Sync localMerchant with merchant prop when it changes (critical for Theme Customizer preview)
   useEffect(() => {
@@ -96,6 +97,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               ...dbMerchant,
               themeConfig: dbMerchant.themeConfig || dbMerchant.theme_config || prev.themeConfig,
             }));
+          }
+        }
+
+        const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+        if (catRes.ok) {
+          const dbCategories = await catRes.json();
+          if (Array.isArray(dbCategories)) {
+            setLocalCategories(dbCategories);
           }
         }
 
@@ -969,7 +978,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }
 
               if (sec.id === 'categories' && showCategories) {
-                const hasCustomCategories = categoriesList && categoriesList.length > 0;
+                const effectiveCategories = (localCategories && localCategories.length > 0) ? localCategories : categoriesList;
+                const hasCustomCategories = effectiveCategories && effectiveCategories.length > 0;
                 return (
                   <section 
                     key="sec-categories"
@@ -999,9 +1009,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     
                     <div className={`relative z-10 grid gap-6 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
                       {hasCustomCategories ? (
-                        categoriesList.map((cat: any, idx: number) => (
+                        effectiveCategories.map((cat: any, idx: number) => (
                           <div key={idx} className="group flex flex-col items-center gap-3 cursor-pointer">
-                            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
                               {cat.image ? (
                                 <img src={cat.image} alt={cat.name} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
                               ) : (
