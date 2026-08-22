@@ -128,25 +128,96 @@ app.post('/api/subscription/update', async (req, res) => {
 });
 
 // Product API
-app.get('/api/products/:merchantId', async (req, res) => {
-  const { merchantId } = req.params;
+app.get('/api/products', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const allProdsList: any[] = [];
+  const seenIds = new Set<string>();
+
   if (supabaseAdmin) {
     try {
-      const { data, error } = await supabaseAdmin.from('products').select('*').eq('merchantId', merchantId);
-      if (!error && data && data.length > 0) return res.json(data);
+      const { data, error } = await supabaseAdmin.from('products').select('*');
+      if (!error && Array.isArray(data) && data.length > 0) {
+        data.forEach(p => {
+          const key = p.id || p.title;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            allProdsList.push(p);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Supabase get all products error:', e);
+    }
+  }
+
+  for (const [_, list] of inMemoryStore.products.entries()) {
+    if (Array.isArray(list)) {
+      list.forEach(p => {
+        const key = p.id || p.title;
+        if (!seenIds.has(key)) {
+          seenIds.add(key);
+          allProdsList.push(p);
+        }
+      });
+    }
+  }
+
+  res.json(allProdsList);
+});
+
+app.get('/api/products/:merchantId', async (req, res) => {
+  const { merchantId } = req.params;
+  const combined: any[] = [];
+  const seenIds = new Set<string>();
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('products')
+        .select('*')
+        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
+      if (!error && data && data.length > 0) {
+        data.forEach(p => {
+          const key = p.id || p.title;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            combined.push(p);
+          }
+        });
+      }
     } catch (e) {
       console.warn('Supabase get products error:', e);
     }
   }
-  const products = inMemoryStore.products.get(merchantId) || [];
-  if (products.length > 0) return res.json(products);
-  
-  // Also check if any inMemoryStore products exist
-  for (const [_, list] of inMemoryStore.products.entries()) {
-    if (list && list.length > 0) return res.json(list);
+
+  const memProducts = [
+    ...(inMemoryStore.products.get(merchantId) || []),
+    ...(inMemoryStore.products.get('default') || [])
+  ];
+
+  memProducts.forEach(p => {
+    const key = p.id || p.title;
+    if (!seenIds.has(key)) {
+      seenIds.add(key);
+      combined.push(p);
+    }
+  });
+
+  if (combined.length === 0) {
+    for (const [_, list] of inMemoryStore.products.entries()) {
+      if (Array.isArray(list)) {
+        list.forEach(p => {
+          const key = p.id || p.title;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            combined.push(p);
+          }
+        });
+      }
+    }
   }
 
-  res.json([]);
+  res.json(combined);
 });
 
 app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
@@ -155,7 +226,7 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
 
   if (supabaseAdmin) {
     try {
-      const { data: mData } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
+      const { data: mData } = await supabaseAdmin.from('merchants').select('*').or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`).maybeSingle();
       if (mData && mData.id) {
         merchantId = mData.id;
       }
@@ -169,37 +240,73 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
     merchantId = memMerchant.id;
   }
 
+  const combinedProducts: any[] = [];
+  const seenIds = new Set<string>();
+
   if (supabaseAdmin) {
     try {
       const { data: prodData, error } = await supabaseAdmin
         .from('products')
         .select('*')
         .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
-      if (!error && prodData && prodData.length > 0) {
-        return res.json(prodData);
+      
+      if (!error && Array.isArray(prodData) && prodData.length > 0) {
+        prodData.forEach(p => {
+          const key = p.id || p.title;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            combinedProducts.push(p);
+          }
+        });
       }
-      // If none found with specific merchantId, try fetching all products table records
-      const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
-      if (allProdsErr) {
-        console.error('[Server DB] Error fetching all products:', allProdsErr);
-      } else if (allProds && allProds.length > 0) {
-        return res.json(allProds);
+
+      // If still fewer than expected or empty, check all products table records
+      if (combinedProducts.length === 0) {
+        const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
+        if (!allProdsErr && Array.isArray(allProds) && allProds.length > 0) {
+          allProds.forEach(p => {
+            const key = p.id || p.title;
+            if (!seenIds.has(key)) {
+              seenIds.add(key);
+              combinedProducts.push(p);
+            }
+          });
+        }
       }
     } catch (e) {
       console.error('[Server DB] Supabase get products-by-slug exception:', e);
     }
   }
 
-  const memProducts = inMemoryStore.products.get(merchantId) || inMemoryStore.products.get(storeSlug) || inMemoryStore.products.get('default') || [];
-  if (memProducts.length > 0) {
-    return res.json(memProducts);
+  const memProducts = [
+    ...(inMemoryStore.products.get(merchantId) || []),
+    ...(inMemoryStore.products.get(storeSlug) || []),
+    ...(inMemoryStore.products.get('default') || [])
+  ];
+
+  memProducts.forEach(p => {
+    const key = p.id || p.title;
+    if (!seenIds.has(key)) {
+      seenIds.add(key);
+      combinedProducts.push(p);
+    }
+  });
+
+  if (combinedProducts.length === 0) {
+    for (const [_, list] of inMemoryStore.products.entries()) {
+      if (Array.isArray(list) && list.length > 0) {
+        list.forEach(p => {
+          const key = p.id || p.title;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            combinedProducts.push(p);
+          }
+        });
+      }
+    }
   }
 
-  for (const [_, list] of inMemoryStore.products.entries()) {
-    if (list && list.length > 0) return res.json(list);
-  }
-
-  res.json([]);
+  res.json(combinedProducts);
 });
 
 app.get('/api/categories-by-slug/:storeSlug', async (req, res) => {
@@ -262,15 +369,22 @@ app.post('/api/products', async (req, res) => {
   const sanitizeProduct = (p: any) => ({
     ...p,
     id: p.id || crypto.randomUUID(),
-    merchantId: p.merchantId || 'default',
-    title: p.title || 'Untitled Product',
-    priceBDT: Number(p.priceBDT) || 0,
-    stock: Number(p.stock) || 0,
+    merchantId: p.merchantId || p.merchant_id || 'default',
+    title: p.title || p.name || 'Untitled Product',
+    titleBn: p.titleBn || p.title_bn || '',
+    priceBDT: Number(p.priceBDT ?? p.price ?? 0),
+    compareAtPriceBDT: p.compareAtPriceBDT ? Number(p.compareAtPriceBDT) : (p.compare_at_price ? Number(p.compare_at_price) : undefined),
+    stock: Number(p.stock ?? 10),
     sku: p.sku || '',
-    category: p.category || '',
-    images: Array.isArray(p.images) ? p.images : [],
-    descriptionEn: p.descriptionEn || '',
-    descriptionBn: p.descriptionBn || ''
+    category: p.category || p.category_name || '',
+    categoryId: p.categoryId || p.category_id || '',
+    image: p.image || (Array.isArray(p.images) && p.images[0]) || '',
+    images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
+    status: p.status || 'Active',
+    descriptionEn: p.descriptionEn || p.description || '',
+    descriptionBn: p.descriptionBn || '',
+    store_slug: p.store_slug || p.storeSlug || '',
+    storeSlug: p.storeSlug || p.store_slug || '',
   });
 
   const sanitizedPayload = Array.isArray(payload) ? payload.map(sanitizeProduct) : sanitizeProduct(payload);

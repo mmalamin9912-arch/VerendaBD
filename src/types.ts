@@ -139,6 +139,9 @@ export interface Product {
   requiresShipping?: boolean;
   isTaxExempt?: boolean;
   hasDiscount?: boolean;
+  merchantId?: string;
+  storeSlug?: string;
+  categoryId?: string;
   customFields?: ProductCustomField[];
   colorImages?: Record<string, string>;
   deliveryRates?: { zoneName: string; fee: number }[];

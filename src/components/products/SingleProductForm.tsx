@@ -680,6 +680,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
     const savedProduct: Product = {
       id: initialData?.id || `prod-${Date.now()}`,
+      merchantId: initialData?.merchantId || (merchant?.id ?? merchant?.storeSlug ?? 'default'),
       title: title || titleBn,
       titleBn: titleBn || title,
       type: 'single',

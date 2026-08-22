@@ -124,25 +124,46 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const handleSaveProduct = async (savedProduct: Product) => {
     try {
+      const fullSavedProduct: Product = {
+        ...savedProduct,
+        merchantId: savedProduct.merchantId || merchant?.id || merchant?.storeSlug || 'default',
+        status: savedProduct.status || 'Active',
+      };
+
       // Optimistic update locally immediately
-      const existingIdx = products.findIndex(p => p.id === savedProduct.id);
+      const existingIdx = products.findIndex(p => p.id === fullSavedProduct.id);
       const updatedList = existingIdx >= 0
-        ? products.map(p => p.id === savedProduct.id ? savedProduct : p)
-        : [savedProduct, ...products];
+        ? products.map(p => p.id === fullSavedProduct.id ? fullSavedProduct : p)
+        : [fullSavedProduct, ...products];
       onUpdateProducts(updatedList);
       setIsFormViewActive(false);
       setEditingProduct(null);
 
+      // Persist to local storage caches
+      try {
+        localStorage.setItem('zid_merchant_products', JSON.stringify(updatedList));
+        if (merchant?.storeSlug) {
+          const storeKey = `ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`;
+          const existingStoreDataStr = localStorage.getItem(storeKey);
+          const existingData = existingStoreDataStr ? JSON.parse(existingStoreDataStr) : {};
+          existingData.products = updatedList;
+          localStorage.setItem(storeKey, JSON.stringify(existingData));
+        }
+      } catch (lsErr) {
+        console.warn('LocalStorage save product warning:', lsErr);
+      }
+
       const response = await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(savedProduct),
+        body: JSON.stringify(fullSavedProduct),
       });
 
       if (response.ok) {
         // Refresh products from server if available
         try {
-          const updatedResponse = await fetch(`/api/products/${merchant?.id || 'default'}`);
+          const targetId = merchant?.storeSlug || merchant?.id || 'default';
+          const updatedResponse = await fetch(`/api/products-by-slug/${encodeURIComponent(targetId)}`);
           if (updatedResponse.ok) {
             const updatedProducts = await updatedResponse.json();
             if (Array.isArray(updatedProducts) && updatedProducts.length > 0) {
@@ -162,6 +183,20 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     if (confirm('Are you sure you want to delete this product listing?')) {
       const updatedList = products.filter(p => p.id !== id);
       onUpdateProducts(updatedList);
+      try {
+        localStorage.setItem('zid_merchant_products', JSON.stringify(updatedList));
+        if (merchant?.storeSlug) {
+          const storeKey = `ZID_MERCHANT_STORE_DATA_${merchant.storeSlug}`;
+          const existingStoreDataStr = localStorage.getItem(storeKey);
+          if (existingStoreDataStr) {
+            const existingData = JSON.parse(existingStoreDataStr);
+            existingData.products = updatedList;
+            localStorage.setItem(storeKey, JSON.stringify(existingData));
+          }
+        }
+      } catch (lsErr) {
+        console.warn('LocalStorage delete product warning:', lsErr);
+      }
       try {
         await fetch(`/api/products/${id}`, { method: 'DELETE' });
       } catch (e) {

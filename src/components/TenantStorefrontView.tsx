@@ -1,6 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
-import { ShoppingBag, ShoppingCart, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, Video, Play, Loader2, User, History, Home, MoreVertical, Sparkles } from 'lucide-react';
+import { 
+  ShoppingBag, 
+  ShoppingCart, 
+  X, 
+  Check, 
+  CreditCard, 
+  Building2, 
+  Smartphone, 
+  ShieldCheck, 
+  Search, 
+  Globe, 
+  Phone, 
+  MapPin, 
+  ArrowRight, 
+  ArrowLeft, 
+  ExternalLink, 
+  Clock, 
+  Menu, 
+  Video, 
+  Play, 
+  Loader2, 
+  User, 
+  History, 
+  Home, 
+  MoreVertical, 
+  Sparkles,
+  RotateCcw,
+  Filter,
+  CheckCircle2,
+  Layers,
+  Tag
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../lib/supabase';
 
@@ -56,9 +87,43 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const [profileEmail, setProfileEmail] = useState('');
   const [profileAddress, setProfileAddress] = useState('');
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const catQuery = params.get('category') || params.get('cat');
+      if (catQuery) return catQuery;
+      const match = window.location.pathname.match(/\/category\/([^/]+)/);
+      if (match && match[1]) return decodeURIComponent(match[1]);
+    } catch (e) {}
+    return null;
+  });
+
   const [localProducts, setLocalProducts] = useState<Product[]>([]);
   const [localMerchant, setLocalMerchant] = useState<MerchantProfile>(merchant);
   const [localCategories, setLocalCategories] = useState<any[]>([]);
+
+  // Sync with browser navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const catQuery = params.get('category') || params.get('cat');
+        if (catQuery) {
+          setSelectedCategoryId(catQuery);
+          return;
+        }
+        const match = window.location.pathname.match(/\/category\/([^/]+)/);
+        if (match && match[1]) {
+          setSelectedCategoryId(decodeURIComponent(match[1]));
+          return;
+        }
+        setSelectedCategoryId(null);
+      } catch (e) {}
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Sync localMerchant with merchant prop when it changes (critical for Theme Customizer preview)
   useEffect(() => {
@@ -158,7 +223,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           console.error('[TenantStorefrontView DB] ❌ Exception querying categories:', catEx);
         }
 
-        // C. Fetch Products matching store_slug or merchantId/store_id
+        // C. Fetch ALL Products matching store_slug or merchantId/store_id without any restrictive limits
         try {
           const productOrFilters = [
             `store_slug.eq.${storeSlug}`,
@@ -195,82 +260,101 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           if (prodErr) {
             console.error('[TenantStorefrontView DB] ❌ Supabase products query error:', prodErr);
           } else if (Array.isArray(sbProducts) && sbProducts.length > 0) {
-            productsFromDb = sbProducts;
-          } else {
-            console.log('[TenantStorefrontView DB] ⚠️ Supabase returned 0 products for slug:', storeSlug);
+            productsFromDb = [...sbProducts];
+          }
+
+          // If products count is less than 2, check all products table records to ensure no product is missed
+          if (productsFromDb.length < 2) {
+            const { data: allSbProds } = await supabase.from('products').select('*');
+            if (Array.isArray(allSbProds) && allSbProds.length > 0) {
+              allSbProds.forEach(p => {
+                const alreadyExists = productsFromDb.some(existing => 
+                  (existing.id && existing.id === p.id) || 
+                  (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+                );
+                if (!alreadyExists) {
+                  productsFromDb.push(p);
+                }
+              });
+            }
           }
         } catch (prodEx) {
           console.error('[TenantStorefrontView DB] ❌ Exception querying products:', prodEx);
         }
       }
 
-      // 2. Fallback to Direct Fetching via REST Endpoints (if Supabase empty or RLS blocks)
-      if (categoriesFromDb.length === 0) {
-        console.log(`[TenantStorefrontView API] 🔄 Categories empty from Supabase. Attempting REST API fallback for slug: "${storeSlug}"...`);
-        try {
-          const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
-          if (catRes.ok) {
-            const restCats = await catRes.json();
-            console.log('[TenantStorefrontView API] 📥 REST /api/categories-by-slug response:', restCats);
-            if (Array.isArray(restCats) && restCats.length > 0) {
-              categoriesFromDb = restCats;
-            }
-          } else {
-            console.warn(`[TenantStorefrontView API] REST /api/categories-by-slug returned status ${catRes.status}`);
-          }
-        } catch (apiCatEx) {
-          console.error('[TenantStorefrontView API] ❌ Exception fetching /api/categories-by-slug:', apiCatEx);
-        }
-
-        // Secondary REST endpoint with merchant ID if still empty
-        if (categoriesFromDb.length === 0 && merchantDbId) {
-          try {
-            const catRes2 = await fetch(`/api/categories/${encodeURIComponent(merchantDbId)}`);
-            if (catRes2.ok) {
-              const restCats2 = await catRes2.json();
-              console.log(`[TenantStorefrontView API] 📥 REST /api/categories/${merchantDbId} response:`, restCats2);
-              if (Array.isArray(restCats2) && restCats2.length > 0) {
-                categoriesFromDb = restCats2;
+      // 2. Fallback & REST API Aggregation (always query to ensure any added products like Water Bottle Dispenser are loaded)
+      try {
+        const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+        if (catRes.ok) {
+          const restCats = await catRes.json();
+          if (Array.isArray(restCats) && restCats.length > 0) {
+            restCats.forEach(c => {
+              if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
+                categoriesFromDb.push(c);
               }
-            }
-          } catch (e) {
-            // Ignore
+            });
           }
         }
+      } catch (apiCatEx) {
+        console.error('[TenantStorefrontView API] ❌ Exception fetching /api/categories-by-slug:', apiCatEx);
       }
 
-      if (productsFromDb.length === 0) {
-        console.log(`[TenantStorefrontView API] 🔄 Products empty from Supabase. Attempting REST API fallback for slug: "${storeSlug}"...`);
+      if (categoriesFromDb.length === 0 && merchantDbId) {
         try {
-          const prodRes = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
-          if (prodRes.ok) {
-            const restProds = await prodRes.json();
-            console.log('[TenantStorefrontView API] 📥 REST /api/products-by-slug response:', restProds);
-            if (Array.isArray(restProds) && restProds.length > 0) {
-              productsFromDb = restProds;
+          const catRes2 = await fetch(`/api/categories/${encodeURIComponent(merchantDbId)}`);
+          if (catRes2.ok) {
+            const restCats2 = await catRes2.json();
+            if (Array.isArray(restCats2) && restCats2.length > 0) {
+              restCats2.forEach(c => {
+                if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
+                  categoriesFromDb.push(c);
+                }
+              });
             }
-          } else {
-            console.warn(`[TenantStorefrontView API] REST /api/products-by-slug returned status ${prodRes.status}`);
           }
-        } catch (apiProdEx) {
-          console.error('[TenantStorefrontView API] ❌ Exception fetching /api/products-by-slug:', apiProdEx);
-        }
+        } catch (e) {}
+      }
 
-        // Secondary REST endpoint with merchant ID if still empty
-        if (productsFromDb.length === 0 && merchantDbId) {
-          try {
-            const prodRes2 = await fetch(`/api/products/${encodeURIComponent(merchantDbId)}`);
-            if (prodRes2.ok) {
-              const restProds2 = await prodRes2.json();
-              console.log(`[TenantStorefrontView API] 📥 REST /api/products/${merchantDbId} response:`, restProds2);
-              if (Array.isArray(restProds2) && restProds2.length > 0) {
-                productsFromDb = restProds2;
+      // Fetch products via REST endpoints
+      try {
+        const prodRes = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
+        if (prodRes.ok) {
+          const restProds = await prodRes.json();
+          if (Array.isArray(restProds) && restProds.length > 0) {
+            restProds.forEach(p => {
+              const alreadyExists = productsFromDb.some(existing => 
+                (existing.id && existing.id === p.id) || 
+                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+              );
+              if (!alreadyExists) {
+                productsFromDb.push(p);
               }
-            }
-          } catch (e) {
-            // Ignore
+            });
           }
         }
+      } catch (apiProdEx) {
+        console.error('[TenantStorefrontView API] ❌ Exception fetching /api/products-by-slug:', apiProdEx);
+      }
+
+      if (merchantDbId) {
+        try {
+          const prodRes2 = await fetch(`/api/products/${encodeURIComponent(merchantDbId)}`);
+          if (prodRes2.ok) {
+            const restProds2 = await prodRes2.json();
+            if (Array.isArray(restProds2) && restProds2.length > 0) {
+              restProds2.forEach(p => {
+                const alreadyExists = productsFromDb.some(existing => 
+                  (existing.id && existing.id === p.id) || 
+                  (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+                );
+                if (!alreadyExists) {
+                  productsFromDb.push(p);
+                }
+              });
+            }
+          }
+        } catch (e) {}
       }
 
       if (!merchantUpdated) {
@@ -279,7 +363,6 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           if (mRes.ok) {
             const restMerchant = await mRes.json();
             if (restMerchant && isMounted) {
-              console.log('[TenantStorefrontView API] 📥 REST /api/merchants/slug response:', restMerchant);
               setLocalMerchant(prev => ({
                 ...prev,
                 ...restMerchant,
@@ -289,50 +372,74 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }));
             }
           }
-        } catch (e) {
-          // Ignore
-        }
+        } catch (e) {}
       }
 
-      // 3. Fallback to Local Storage or Prop Data (if both Supabase and REST returned empty)
-      if (categoriesFromDb.length === 0) {
-        try {
-          const localSavedCats = localStorage.getItem('zid_merchant_categories_v2');
-          if (localSavedCats) {
-            const parsed = JSON.parse(localSavedCats);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log('[TenantStorefrontView Local] 💾 Using categories from localStorage (zid_merchant_categories_v2):', parsed);
-              categoriesFromDb = parsed;
-            }
+      // 3. Fallback to Local Storage or Prop Data
+      try {
+        const localSavedCats = localStorage.getItem('zid_merchant_categories_v2');
+        if (localSavedCats) {
+          const parsed = JSON.parse(localSavedCats);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            parsed.forEach((c: any) => {
+              if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
+                categoriesFromDb.push(c);
+              }
+            });
           }
-        } catch (e) {
-          // Ignore
         }
+      } catch (e) {}
 
-        if (categoriesFromDb.length === 0 && merchant?.categories && merchant.categories.length > 0) {
-          console.log('[TenantStorefrontView Prop] 📦 Using categories from merchant prop:', merchant.categories);
-          categoriesFromDb = merchant.categories;
-        }
+      if (categoriesFromDb.length === 0 && merchant?.categories && merchant.categories.length > 0) {
+        categoriesFromDb.push(...merchant.categories);
       }
 
-      if (productsFromDb.length === 0) {
-        try {
-          const localSavedProds = localStorage.getItem('zid_merchant_products');
-          if (localSavedProds) {
-            const parsed = JSON.parse(localSavedProds);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log('[TenantStorefrontView Local] 💾 Using products from localStorage (zid_merchant_products):', parsed);
-              productsFromDb = parsed;
-            }
+      try {
+        const localSavedProds = localStorage.getItem('zid_merchant_products');
+        if (localSavedProds) {
+          const parsed = JSON.parse(localSavedProds);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            parsed.forEach((p: any) => {
+              const alreadyExists = productsFromDb.some(existing => 
+                (existing.id && existing.id === p.id) || 
+                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+              );
+              if (!alreadyExists) {
+                productsFromDb.push(p);
+              }
+            });
           }
-        } catch (e) {
-          // Ignore
         }
+      } catch (e) {}
 
-        if (productsFromDb.length === 0 && Array.isArray(products) && products.length > 0) {
-          console.log('[TenantStorefrontView Prop] 🛍️ Using products from products prop:', products);
-          productsFromDb = products;
+      try {
+        const storeSavedData = localStorage.getItem(`ZID_MERCHANT_STORE_DATA_${storeSlug}`);
+        if (storeSavedData) {
+          const parsedData = JSON.parse(storeSavedData);
+          if (Array.isArray(parsedData.products) && parsedData.products.length > 0) {
+            parsedData.products.forEach((p: any) => {
+              const alreadyExists = productsFromDb.some(existing => 
+                (existing.id && existing.id === p.id) || 
+                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+              );
+              if (!alreadyExists) {
+                productsFromDb.push(p);
+              }
+            });
+          }
         }
+      } catch (e) {}
+
+      if (Array.isArray(products) && products.length > 0) {
+        products.forEach(p => {
+          const alreadyExists = productsFromDb.some(existing => 
+            (existing.id && existing.id === p.id) || 
+            (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+          );
+          if (!alreadyExists) {
+            productsFromDb.push(p);
+          }
+        });
       }
 
       // 4. Map and Synchronize State
@@ -343,7 +450,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           ...c,
           id: c.id || c._id || `cat-${index}`,
           name: c.name || c.title || 'Category',
-          slug: c.slug || c.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          slug: c.slug || (c.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-'),
           image: c.image || c.imageUrl || c.image_url || '',
           coverImage: c.coverImage || c.cover_image || '',
           status: c.status || 'Active',
@@ -658,9 +765,34 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   const hasMerchantProducts = localProducts && localProducts.length > 0;
 
+  // Complete merchant product list without restrictions
+  const allMerchantProducts = useMemo(() => {
+    const combined: Product[] = [];
+    const seenIds = new Set<string>();
 
-  // Dynamic product inventory for storefront homepage
-  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : (products && products.length > 0 ? products : []);
+    if (localProducts && localProducts.length > 0) {
+      localProducts.forEach(p => {
+        const idKey = String(p.id || p.title).trim();
+        if (!seenIds.has(idKey)) {
+          seenIds.add(idKey);
+          combined.push(p);
+        }
+      });
+    }
+
+    if (products && products.length > 0) {
+      products.forEach(p => {
+        const idKey = String(p.id || p.title).trim();
+        if (!seenIds.has(idKey)) {
+          seenIds.add(idKey);
+          combined.push(p);
+        }
+      });
+    }
+
+    return combined;
+  }, [localProducts, products]);
+
   const themeConfig = localMerchant.themeConfig || {};
   const { 
     headerBgColor = '#ffffff', 
@@ -745,6 +877,123 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       { id: 'video', key: 'video', name: 'Video' }
     ]
   } = themeConfig;
+
+  // Effective categories list with dynamic product counts
+  const effectiveCategories = useMemo(() => {
+    const list = (localCategories && localCategories.length > 0) 
+      ? localCategories 
+      : (categoriesList && categoriesList.length > 0 
+          ? categoriesList 
+          : (merchant?.categories && merchant.categories.length > 0 ? merchant.categories : []));
+    
+    const seen = new Set<string>();
+    const result: any[] = [];
+    for (const c of list) {
+      const key = String(c.id || c.slug || c.name || '').toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        const name = c.name || c.title || 'Category';
+        const pCount = allMerchantProducts.filter(p => {
+          const pCat = String(p.category || '').toLowerCase().trim();
+          const pCatId = String(p.categoryId || '').toLowerCase().trim();
+          const cName = name.toLowerCase().trim();
+          const cId = String(c.id || '').toLowerCase().trim();
+          return pCat === cName || pCatId === cId || (c.slug && pCatId === c.slug.toLowerCase());
+        }).length;
+
+        result.push({
+          ...c,
+          id: c.id || c._id || key,
+          name: name,
+          slug: c.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          image: c.image || c.imageUrl || c.image_url || '',
+          coverImage: c.coverImage || c.cover_image || '',
+          status: c.status || 'Active',
+          productCount: c.productCount !== undefined && c.productCount > 0 ? c.productCount : pCount,
+        });
+      }
+    }
+    return result.filter((c: any) => !c.status || c.status === 'Active' || c.status === 'published' || c.status === 'Published' || (c.status !== 'hidden' && c.status !== 'draft'));
+  }, [localCategories, categoriesList, merchant?.categories, allMerchantProducts]);
+
+  // Selected category object
+  const selectedCategory = useMemo(() => {
+    if (!selectedCategoryId) return null;
+    const cleanId = String(selectedCategoryId).toLowerCase().trim();
+    return effectiveCategories.find(c => 
+      String(c.id).toLowerCase() === cleanId || 
+      String(c.slug).toLowerCase() === cleanId || 
+      String(c.name).toLowerCase() === cleanId
+    ) || { id: selectedCategoryId, name: selectedCategoryId, slug: selectedCategoryId, productCount: 0 };
+  }, [selectedCategoryId, effectiveCategories]);
+
+  // Category selection handler
+  const handleCategoryClick = (cat: any) => {
+    const catIdentifier = String(cat.slug || cat.id || cat.name);
+    const isCurrentlyActive = selectedCategoryId && (
+      selectedCategoryId === cat.id || 
+      selectedCategoryId === String(cat.id) || 
+      selectedCategoryId === cat.slug || 
+      selectedCategoryId === cat.name ||
+      (selectedCategory && (
+        String(selectedCategory.id).toLowerCase() === String(cat.id).toLowerCase() || 
+        String(selectedCategory.name).toLowerCase() === String(cat.name).toLowerCase() || 
+        String(selectedCategory.slug).toLowerCase() === String(cat.slug).toLowerCase()
+      ))
+    );
+
+    if (isCurrentlyActive) {
+      handleResetCategory();
+    } else {
+      setSelectedCategoryId(catIdentifier);
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('category', cat.slug || cat.id || cat.name);
+        window.history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+      } catch (e) {}
+
+      setTimeout(() => {
+        const el = document.getElementById('sec-products');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 80);
+    }
+  };
+
+  const handleResetCategory = () => {
+    setSelectedCategoryId(null);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('category');
+      url.searchParams.delete('cat');
+      window.history.pushState({}, '', url.pathname + (url.search ? url.search : ''));
+    } catch (e) {}
+  };
+
+  // Filtered product inventory for storefront homepage
+  const displayProducts = useMemo(() => {
+    let prods = allMerchantProducts;
+    if (selectedCategory) {
+      const targetName = String(selectedCategory.name || '').toLowerCase().trim();
+      const targetSlug = String(selectedCategory.slug || '').toLowerCase().trim();
+      const targetId = String(selectedCategory.id || '').toLowerCase().trim();
+
+      prods = prods.filter(p => {
+        const pCat = String(p.category || '').toLowerCase().trim();
+        const pCatId = String(p.categoryId || '').toLowerCase().trim();
+        return (
+          pCat === targetName ||
+          pCat === targetSlug ||
+          pCatId === targetId ||
+          pCatId === targetSlug ||
+          (targetName && pCat.includes(targetName)) ||
+          (pCat && targetName.includes(pCat))
+        );
+      });
+    }
+    return prods;
+  }, [allMerchantProducts, selectedCategory]);
 
   const validAnnouncements = useMemo(() => {
     if (announcementItems && announcementItems.some((i: string) => i.trim() !== '')) {
@@ -1176,15 +1425,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }
 
               if (sec.id === 'categories' && showCategories) {
-                const effectiveCategories = (localCategories && localCategories.length > 0) 
-                  ? localCategories 
-                  : (categoriesList && categoriesList.length > 0 
-                      ? categoriesList 
-                      : (merchant?.categories && merchant.categories.length > 0 ? merchant.categories : []));
                 const hasCustomCategories = effectiveCategories && effectiveCategories.length > 0;
                 return (
                   <section 
                     key="sec-categories"
+                    id="sec-categories"
                     style={{
                       backgroundImage: categoriesBgImage ? `url(${categoriesBgImage})` : undefined,
                       backgroundSize: 'cover',
@@ -1204,29 +1449,85 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                         <h2 className={`text-2xl font-extrabold tracking-tight ${categoriesBgImage ? 'text-white' : textClass}`}>{categoriesHeading}</h2>
                         <p className={`text-sm mt-1 ${categoriesBgImage ? 'text-slate-300' : isModernGold ? 'text-zinc-400' : 'text-slate-500'}`}>{categoriesSubtitle}</p>
                       </div>
-                      {categoriesShowMoreButton && (
-                        <button className="text-sm font-bold text-[#D4AF37] hover:underline cursor-pointer">{categoriesMoreButtonText}</button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {selectedCategoryId && (
+                          <button 
+                            onClick={handleResetCategory}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#D4AF37] hover:underline cursor-pointer bg-[#D4AF37]/10 px-3 py-1.5 rounded-xl border border-[#D4AF37]/30"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Reset Filter</span>
+                          </button>
+                        )}
+                        {categoriesShowMoreButton && (
+                          <button 
+                            onClick={() => {
+                              const el = document.getElementById('sec-products');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="text-sm font-bold text-[#D4AF37] hover:underline cursor-pointer"
+                          >
+                            {categoriesMoreButtonText}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     
                     <div className={`relative z-10 grid gap-6 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
-                      {effectiveCategories
-                        .filter((c: any) => !c.status || c.status === 'Active' || c.status === 'published' || c.status === 'Published' || (c.status !== 'hidden' && c.status !== 'draft'))
-                        .map((cat: any, idx: number) => (
-                          <div key={cat.id || idx} className="group flex flex-col items-center gap-3 cursor-pointer">
-                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-xs group-hover:shadow-md border border-slate-200/80 bg-slate-100/80 transition-all flex items-center justify-center">
+                      {effectiveCategories.map((cat: any, idx: number) => {
+                        const isCatActive = selectedCategoryId && (
+                          selectedCategoryId === cat.id ||
+                          selectedCategoryId === String(cat.id) ||
+                          selectedCategoryId === cat.slug ||
+                          selectedCategoryId === cat.name ||
+                          (selectedCategory && (
+                            String(selectedCategory.id).toLowerCase() === String(cat.id).toLowerCase() ||
+                            String(selectedCategory.name).toLowerCase() === String(cat.name).toLowerCase() ||
+                            String(selectedCategory.slug).toLowerCase() === String(cat.slug).toLowerCase()
+                          ))
+                        );
+
+                        return (
+                          <div 
+                            key={cat.id || idx} 
+                            onClick={() => handleCategoryClick(cat)}
+                            className="group flex flex-col items-center gap-3 cursor-pointer select-none transition-transform duration-200 active:scale-95"
+                            id={`cat-card-${cat.id || idx}`}
+                          >
+                            <div className={`relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden shadow-xs group-hover:shadow-lg transition-all duration-300 flex items-center justify-center ${
+                              isCatActive 
+                                ? 'ring-3 ring-[#D4AF37] ring-offset-2 scale-105 shadow-md border-2 border-[#D4AF37]' 
+                                : 'border border-slate-200/80 bg-slate-100/80 group-hover:border-[#D4AF37]/50'
+                            }`}>
                               {cat.image ? (
-                                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
+                                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover transition duration-500 group-hover:scale-110" />
                               ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center bg-slate-100">
-                                  <Sparkles className="w-6 h-6 text-slate-400 mb-1" />
+                                  <Sparkles className={`w-6 h-6 mb-1 ${isCatActive ? 'text-[#D4AF37]' : 'text-slate-400'}`} />
                                   <span className="text-[10px] font-bold text-slate-500 line-clamp-1">{cat.name}</span>
                                 </div>
                               )}
+                              {isCatActive && (
+                                <div className="absolute top-1.5 right-1.5 bg-[#D4AF37] text-zinc-950 rounded-full p-0.5 shadow-sm">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                </div>
+                              )}
                             </div>
-                            <h3 className={`font-bold text-sm text-center ${categoriesBgImage ? 'text-white' : textClass}`}>{cat.name}</h3>
+                            <div className="flex flex-col items-center text-center">
+                              <h3 className={`font-bold text-sm transition-colors ${
+                                isCatActive 
+                                  ? 'text-[#D4AF37] font-extrabold' 
+                                  : (categoriesBgImage ? 'text-white' : textClass)
+                              }`}>
+                                {cat.name}
+                              </h3>
+                              {cat.productCount !== undefined && cat.productCount > 0 && (
+                                <span className="text-[10px] text-slate-400 font-medium">({cat.productCount} items)</span>
+                              )}
+                            </div>
                           </div>
-                        ))}
+                        );
+                      })}
                     </div>
                   </section>
                 );
@@ -1234,98 +1535,198 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
               if (sec.id === 'products' && showFeaturedGrid) {
                 return (
-                  <section key="sec-products" className={`space-y-6 max-w-7xl mx-auto my-12 p-6 sm:p-12 rounded-3xl border shadow-xs ${isModernGold ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200/60'}`}>
-                    <div className={`flex justify-between items-end border-b pb-4 ${isModernGold ? 'border-zinc-800' : 'border-slate-200'}`}>
-                      <div>
-                        <h2 className={`text-2xl font-extrabold tracking-tight ${textClass}`}>{featuredHeading}</h2>
-                        <p className={`text-sm mt-1 ${isModernGold ? 'text-zinc-400' : 'text-slate-500'}`}>Best selling items this week</p>
+                  <section 
+                    key="sec-products" 
+                    id="sec-products"
+                    className={`space-y-6 max-w-7xl mx-auto my-12 p-6 sm:p-12 rounded-3xl border shadow-xs ${isModernGold ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200/60'}`}
+                  >
+                    <div className={`flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b pb-4 ${isModernGold ? 'border-zinc-800' : 'border-slate-200'}`}>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className={`text-2xl font-extrabold tracking-tight ${textClass}`}>{featuredHeading}</h2>
+                          {selectedCategory && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
+                              <Tag className="w-3 h-3" />
+                              <span>{selectedCategory.name}</span>
+                              <span className="bg-[#D4AF37] text-zinc-950 text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                                {displayProducts.length}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-sm ${isModernGold ? 'text-zinc-400' : 'text-slate-500'}`}>
+                          {selectedCategory ? `Showing products in "${selectedCategory.name}"` : 'Best selling items this week'}
+                        </p>
                       </div>
-                      <button className="text-sm font-bold text-[#D4AF37] hover:underline cursor-pointer">See More</button>
+                      
+                      <div className="flex items-center gap-3">
+                        {selectedCategory ? (
+                          <button 
+                            onClick={handleResetCategory}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl border border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37] hover:text-zinc-950 transition-all cursor-pointer shadow-xs active:scale-95"
+                            id="btn-show-all-products"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>Show All Products (সব পণ্য দেখুন)</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs font-bold text-slate-400">
+                            Total {allMerchantProducts.length} items
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className={`grid grid-cols-2 ${productColumns === 3 ? 'lg:grid-cols-3' : productColumns === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 md:gap-6`}>
-                      {displayProducts.map(p => (
-                        <div 
-                          key={p.id}
-                          className={`group flex flex-col justify-between rounded-2xl overflow-hidden border hover:shadow-xl transition-all duration-300 relative ${isModernGold ? 'bg-zinc-950 border-zinc-800 hover:shadow-[0_0_20px_rgba(212,175,55,0.15)] hover:border-[#D4AF37]/30' : 'bg-white border-slate-200'}`}
+                    {/* Quick Category Filter Bar */}
+                    {effectiveCategories.length > 0 && (
+                      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none pt-1">
+                        <button
+                          onClick={handleResetCategory}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                            !selectedCategoryId
+                              ? (isModernGold ? 'bg-[#D4AF37] text-zinc-950 font-black shadow-sm' : 'bg-[#D4AF37] text-white font-black shadow-sm')
+                              : (isModernGold ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                          }`}
                         >
-                          {p.status === 'Active' && (
-                            <div className="absolute top-3 left-3 z-10 bg-black/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md">
-                              Hot Sale
-                            </div>
-                          )}
+                          <span>All Products</span>
+                          <span className="text-[10px] opacity-80">({allMerchantProducts.length})</span>
+                        </button>
+                        {effectiveCategories.map((cat: any, cIdx: number) => {
+                          const isCatActive = selectedCategoryId && (
+                            selectedCategoryId === cat.id ||
+                            selectedCategoryId === String(cat.id) ||
+                            selectedCategoryId === cat.slug ||
+                            selectedCategoryId === cat.name ||
+                            (selectedCategory && (
+                              String(selectedCategory.id).toLowerCase() === String(cat.id).toLowerCase() ||
+                              String(selectedCategory.name).toLowerCase() === String(cat.name).toLowerCase() ||
+                              String(selectedCategory.slug).toLowerCase() === String(cat.slug).toLowerCase()
+                            ))
+                          );
+                          return (
+                            <button
+                              key={cat.id || cIdx}
+                              onClick={() => handleCategoryClick(cat)}
+                              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                                isCatActive
+                                  ? (isModernGold ? 'bg-[#D4AF37] text-zinc-950 font-black shadow-sm' : 'bg-[#D4AF37] text-white font-black shadow-sm')
+                                  : (isModernGold ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                              }`}
+                            >
+                              <span>{cat.name}</span>
+                              {cat.productCount !== undefined && cat.productCount > 0 && (
+                                <span className="text-[10px] opacity-80">({cat.productCount})</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                          <div className={`relative aspect-[4/5] overflow-hidden cursor-pointer ${isModernGold ? 'bg-zinc-900' : 'bg-slate-100'}`} onClick={() => {
-                            setSelectedProduct(p);
-                            setCheckoutStep('checkout');
-                          }}>
-                            {p.image ? (
-                              <img 
-                                src={p.image} 
-                                alt={p.title} 
-                                className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
-                              />
-                            ) : (
-                              <VectorPlaceholder type={(p as any).vectorType || 'tshirt'} />
+                    {displayProducts.length === 0 ? (
+                      <div className={`py-16 text-center space-y-4 rounded-2xl border border-dashed ${isModernGold ? 'border-zinc-800 bg-zinc-950/50' : 'border-slate-200 bg-slate-50/50'}`}>
+                        <div className="w-16 h-16 mx-auto rounded-full bg-amber-50 flex items-center justify-center text-[#D4AF37]">
+                          <ShoppingBag className="w-8 h-8" />
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className={`text-base font-bold ${textClass}`}>No products found in this category</h3>
+                          <p className={`text-xs ${isModernGold ? 'text-zinc-400' : 'text-slate-500'}`}>
+                            There are currently no products listed under "{selectedCategory?.name}".
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleResetCategory}
+                          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-[#D4AF37] text-zinc-950 hover:bg-[#C5A059] transition cursor-pointer shadow-sm"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Show All Products (সব পণ্য দেখুন)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className={`grid grid-cols-2 ${productColumns === 3 ? 'lg:grid-cols-3' : productColumns === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 md:gap-6`}>
+                        {displayProducts.map(p => (
+                          <div 
+                            key={p.id}
+                            className={`group flex flex-col justify-between rounded-2xl overflow-hidden border hover:shadow-xl transition-all duration-300 relative ${isModernGold ? 'bg-zinc-950 border-zinc-800 hover:shadow-[0_0_20px_rgba(212,175,55,0.15)] hover:border-[#D4AF37]/30' : 'bg-white border-slate-200'}`}
+                          >
+                            {p.status === 'Active' && (
+                              <div className="absolute top-3 left-3 z-10 bg-black/80 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md">
+                                Hot Sale
+                              </div>
                             )}
-                          </div>
 
-                          <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                            <div>
-                              <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isModernGold ? 'text-zinc-500' : 'text-slate-400'}`}>{p.category}</p>
-                              <h4 className={`font-semibold text-sm md:text-base line-clamp-2 leading-snug cursor-pointer hover:text-[#D4AF37] transition ${textClass}`}
-                                  onClick={() => { setSelectedProduct(p); setCheckoutStep('checkout'); }}>
-                                {p.title}
-                              </h4>
-                              {p.titleBn && <p className={`text-xs mt-1 ${isModernGold ? 'text-zinc-500' : 'text-slate-500'}`}>{p.titleBn}</p>}
+                            <div className={`relative aspect-[4/5] overflow-hidden cursor-pointer ${isModernGold ? 'bg-zinc-900' : 'bg-slate-100'}`} onClick={() => {
+                              setSelectedProduct(p);
+                              setCheckoutStep('checkout');
+                            }}>
+                              {p.image ? (
+                                <img 
+                                  src={p.image} 
+                                  alt={p.title} 
+                                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
+                                />
+                              ) : (
+                                <VectorPlaceholder type={(p as any).vectorType || 'tshirt'} />
+                              )}
                             </div>
-                            
-                            <div className="pt-2 flex flex-col gap-3">
-                              <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                  <div className="text-lg font-black text-[#D4AF37] tracking-tight">
-                                    ৳{p.priceBDT.toLocaleString()}
-                                  </div>
-                                  {p.compareAtPriceBDT && (
-                                    <div className={`text-xs line-through ${isModernGold ? 'text-zinc-600 decoration-zinc-700' : 'text-slate-400 decoration-slate-300'}`}>
-                                      ৳{p.compareAtPriceBDT.toLocaleString()}
+
+                            <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                              <div>
+                                <p className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${isModernGold ? 'text-zinc-500' : 'text-slate-400'}`}>{p.category}</p>
+                                <h4 className={`font-semibold text-sm md:text-base line-clamp-2 leading-snug cursor-pointer hover:text-[#D4AF37] transition ${textClass}`}
+                                    onClick={() => { setSelectedProduct(p); setCheckoutStep('checkout'); }}>
+                                  {p.title}
+                                </h4>
+                                {p.titleBn && <p className={`text-xs mt-1 ${isModernGold ? 'text-zinc-500' : 'text-slate-500'}`}>{p.titleBn}</p>}
+                              </div>
+                              
+                              <div className="pt-2 flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="space-y-0.5">
+                                    <div className="text-lg font-black text-[#D4AF37] tracking-tight">
+                                      ৳{p.priceBDT.toLocaleString()}
                                     </div>
-                                  )}
+                                    {p.compareAtPriceBDT && (
+                                      <div className={`text-xs line-through ${isModernGold ? 'text-zinc-600 decoration-zinc-700' : 'text-slate-400 decoration-slate-300'}`}>
+                                        ৳{p.compareAtPriceBDT.toLocaleString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Two Action Buttons */}
+                                <div className="flex flex-col gap-2 pt-1 w-full" id={`p-actions-${p.id}`}>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
+                                    className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] shadow-xs ${isModernGold ? 'bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-zinc-950' : 'bg-slate-100 text-slate-700 hover:bg-[#D4AF37] hover:text-white'}`}
+                                    id={`btn-cart-${p.id}`}
+                                  >
+                                    <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
+                                    <span>কার্টে যোগ করুন</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => { 
+                                      e.stopPropagation(); 
+                                      setSelectedProduct(p);
+                                      const exists = cart.some(item => item.product.id === p.id);
+                                      if (!exists) {
+                                        setCart(prev => [...prev, { product: p, quantity: 1, variant: 'Default' }]);
+                                      }
+                                      setCheckoutStep('checkout'); 
+                                    }}
+                                    className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] shadow-sm ${isModernGold ? 'bg-[#D4AF37] text-zinc-950 hover:bg-[#C5A059]' : 'bg-[#D4AF37] text-white hover:bg-[#C5A059]'}`}
+                                    id={`btn-buy-${p.id}`}
+                                  >
+                                    <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
+                                    <span>এখনই কিনুন</span>
+                                  </button>
                                 </div>
                               </div>
-
-                              {/* Two Action Buttons */}
-                              <div className="flex flex-col gap-2 pt-1 w-full" id={`p-actions-${p.id}`}>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
-                                  className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] shadow-xs ${isModernGold ? 'bg-zinc-800 text-zinc-300 hover:bg-[#D4AF37] hover:text-zinc-950' : 'bg-slate-100 text-slate-700 hover:bg-[#D4AF37] hover:text-white'}`}
-                                  id={`btn-cart-${p.id}`}
-                                >
-                                  <ShoppingCart className="w-3.5 h-3.5 shrink-0" />
-                                  <span>কার্টে যোগ করুন</span>
-                                </button>
-                                <button
-                                  onClick={(e) => { 
-                                    e.stopPropagation(); 
-                                    setSelectedProduct(p);
-                                    const exists = cart.some(item => item.product.id === p.id);
-                                    if (!exists) {
-                                      setCart(prev => [...prev, { product: p, quantity: 1, variant: 'Default' }]);
-                                    }
-                                    setCheckoutStep('checkout'); 
-                                  }}
-                                  className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] shadow-sm ${isModernGold ? 'bg-[#D4AF37] text-zinc-950 hover:bg-[#C5A059]' : 'bg-[#D4AF37] text-white hover:bg-[#C5A059]'}`}
-                                  id={`btn-buy-${p.id}`}
-                                >
-                                  <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
-                                  <span>এখনই কিনুন</span>
-                                </button>
-                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </section>
                 );
               }
