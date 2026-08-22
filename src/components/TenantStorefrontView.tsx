@@ -522,7 +522,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     videoFileUrl = '',
     videoAutoplay = false,
     videoMuted = true,
-    footerLogoText = 'My Store',
+    footerLogoText = 'Store',
     footerTagline = '',
     showPaymentBadges = true,
     aiRecommendationsEnabled = false,
@@ -726,7 +726,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 />
               ) : (
                 <h1 className="text-xl font-black tracking-tight text-slate-900">
-                  {themeConfig.storeLogoText || merchant?.storeName || 'My Store'}
+                  {merchant?.storeName || 'Store'}
                 </h1>
               )}
             </div>
@@ -910,7 +910,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                               New Arrivals
                             </span>
                             <h2 className="text-3xl md:text-5xl font-black text-white leading-tight">
-                              {activeSlide?.title || heroTitle || merchant?.heroTitle || 'Welcome to our Store'}
+                              {activeSlide?.title || heroTitle || merchant?.heroTitle || `Welcome to ${merchant?.storeName || 'Store'}`}
                             </h2>
                             <p className="text-sm md:text-base text-slate-300">
                               {activeSlide?.subtitle || heroSubtitle || merchant?.heroSubtitle || 'Discover our new collections.'}
@@ -997,84 +997,46 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       )}
                     </div>
                     
-                    <div className={`relative z-10 grid gap-4 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4'}`}>
+                    <div className={`relative z-10 grid gap-6 ${isElegantFashion ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8' : 'grid-cols-2 md:grid-cols-4 lg:grid-cols-5'}`}>
                       {hasCustomCategories ? (
                         categoriesList.map((cat: any, idx: number) => (
-                          <div key={idx} className={`group relative overflow-hidden bg-slate-900 cursor-pointer shadow-sm ${isElegantFashion ? 'aspect-square rounded-full border-2 border-[#D4AF37]' : 'aspect-square rounded-2xl border border-slate-200/60'}`}>
-                            {cat.image ? (
-                              <img src={cat.image} alt={cat.name} className={`w-full h-full object-cover transition duration-500 ${isElegantFashion ? 'opacity-90 group-hover:opacity-100 group-hover:scale-110' : 'opacity-60 group-hover:scale-110'}`} />
-                            ) : (
-                              <VectorPlaceholder type="tshirt" />
-                            )}
-                            {!isElegantFashion && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent" />}
-                            {!isElegantFashion && (
-                              <div className="absolute bottom-0 left-0 p-4">
-                                <h3 className="text-white font-bold text-base md:text-lg leading-snug">{cat.name}</h3>
-                                {categoriesShowItemCount && <span className="text-xs text-slate-300">{cat.count}</span>}
-                              </div>
-                            )}
+                          <div key={idx} className="group flex flex-col items-center gap-3 cursor-pointer">
+                            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
+                              {cat.image ? (
+                                <img src={cat.image} alt={cat.name} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
+                              ) : (
+                                <VectorPlaceholder type="tshirt" className="bg-slate-100" />
+                              )}
+                            </div>
+                            <h3 className={`font-bold text-sm text-center ${textClass}`}>{cat.name}</h3>
                           </div>
                         ))
                       ) : !hasMerchantProducts ? (
                         fallbackDemoCategories.map((cat: any, idx: number) => (
-                          isElegantFashion ? (
-                            <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer text-center">
-                              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-transparent group-hover:border-[#D4AF37] p-1 transition-all">
-                                <div className="w-full h-full bg-slate-100 rounded-full flex items-center justify-center text-[#D4AF37]">
-                                  {cat.vectorType === 'tshirt' && <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>}
-                                  {cat.vectorType === 'bag' && <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>}
-                                  {cat.vectorType === 'box' && <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>}
-                                  {cat.vectorType === 'gadget' && <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
-                                </div>
-                              </div>
-                              <span className="text-[10px] sm:text-xs font-semibold leading-tight text-slate-700">{cat.name}</span>
+                          <div key={idx} className="flex flex-col items-center gap-3 group cursor-pointer text-center">
+                            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl bg-slate-100 flex items-center justify-center text-[#D4AF37] shadow-sm group-hover:shadow-md transition-shadow">
+                              {cat.vectorType === 'tshirt' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>}
+                              {cat.vectorType === 'bag' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>}
+                              {cat.vectorType === 'box' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>}
+                              {cat.vectorType === 'gadget' && <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
                             </div>
-                          ) : (
-                            <div key={idx} className={`group aspect-square rounded-2xl relative overflow-hidden cursor-pointer shadow-sm flex flex-col items-center justify-center p-4 text-center ${isModernGold ? 'bg-zinc-950 border-zinc-800 border hover:border-[#D4AF37]/50' : 'bg-white border border-slate-200/80'}`}>
-                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 group-hover:scale-110 transition-transform ${isModernGold ? 'bg-zinc-900 text-[#D4AF37]' : 'bg-amber-50 text-[#D4AF37]'}`}>
-                                {cat.vectorType === 'tshirt' && <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"></path></svg>}
-                                {cat.vectorType === 'bag' && <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>}
-                                {cat.vectorType === 'box' && <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline></svg>}
-                                {cat.vectorType === 'gadget' && <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>}
-                              </div>
-                              <h3 className={`font-bold text-sm md:text-base leading-snug ${textClass}`}>{cat.name}</h3>
-                              {categoriesShowItemCount && <span className={`text-xs mt-0.5 ${isModernGold ? 'text-zinc-500' : 'text-slate-500'}`}>{cat.count}</span>}
-                            </div>
-                          )
+                            <h3 className={`font-bold text-sm ${textClass}`}>{cat.name}</h3>
+                          </div>
                         ))
                       ) : (
-                        Array.from(new Set(displayProducts.map(p => p.category))).slice(0, 4).map((cat, i) => {
+                        Array.from(new Set(displayProducts.map(p => p.category))).slice(0, 5).map((cat, i) => {
                           const catProducts = displayProducts.filter(p => p.category === cat);
                           const image = catProducts[0]?.image;
-                          
-                          if (isElegantFashion) {
-                             return (
-                                <div key={cat} className="flex flex-col items-center gap-2 group cursor-pointer text-center">
-                                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-transparent group-hover:border-[#D4AF37] p-1 transition-all">
-                                    <div className="w-full h-full rounded-full overflow-hidden">
-                                      {image ? (
-                                        <img src={image} alt={cat} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
-                                      ) : (
-                                        <VectorPlaceholder type="tshirt" />
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="text-[10px] sm:text-xs font-semibold leading-tight text-slate-700">{cat}</span>
-                                </div>
-                             )
-                          }
-                          
                           return (
-                            <div key={cat} className={`aspect-square rounded-2xl relative overflow-hidden group cursor-pointer border shadow-sm ${isModernGold ? 'bg-zinc-950 border-zinc-800' : 'bg-slate-100 border-slate-200'} ${i === 2 && Array.from(new Set(displayProducts.map(p => p.category))).length === 3 ? 'md:col-span-2' : ''}`}>
-                              {image ? (
-                                <img src={image} alt={cat} className="w-full h-full object-cover group-hover:scale-110 transition duration-500 opacity-80" />
-                              ) : (
-                                <VectorPlaceholder type="tshirt" />
-                              )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
-                              <div className="absolute bottom-0 left-0 p-4">
-                                <h3 className="text-white font-bold text-base md:text-lg">{cat}</h3>
+                            <div key={i} className="group flex flex-col items-center gap-3 cursor-pointer">
+                              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden shadow-md group-hover:shadow-lg transition-shadow">
+                                {image ? (
+                                  <img src={image} alt={cat} className="w-full h-full object-cover transition duration-500 group-hover:scale-105" />
+                                ) : (
+                                  <VectorPlaceholder type="tshirt" className="bg-slate-100" />
+                                )}
                               </div>
+                              <h3 className={`font-bold text-sm text-center ${textClass}`}>{cat}</h3>
                             </div>
                           );
                         })
@@ -1857,7 +1819,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 className="brightness-0 invert max-w-[150px] object-contain" 
               />
             ) : (
-              <h4 className="text-white text-xl font-black">{themeConfig.storeLogoText || merchant?.storeName || 'My Store'}</h4>
+              <h4 className="text-white text-xl font-black">{merchant?.storeName || 'Store'}</h4>
             )}
             <p className="text-xs leading-relaxed max-w-sm">
               {footerAboutText}
@@ -1887,7 +1849,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-slate-800 text-center text-xs">
-          © {new Date().getFullYear()} {themeConfig.storeLogoText || merchant?.storeName || 'My Store'}. All rights reserved.
+          © {new Date().getFullYear()} {merchant?.storeName || 'Store'}. All rights reserved.
         </div>
       </footer>
 
