@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Product, ProductSubTab, ProductType, MerchantProfile } from '../../types';
+import { buildProductDbPayload, mapApiProduct, postCatalogJson } from '../../utils/catalogPayload';
 import { 
   Boxes, 
   Clock, 
@@ -124,39 +125,33 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const handleSaveProduct = async (savedProduct: Product) => {
     try {
-      const fullSavedProduct: Product = {
-        ...savedProduct,
-        merchantId: savedProduct.merchantId || merchant?.id || merchant?.storeSlug || 'default',
-        storeSlug: merchant?.storeSlug || '',
-        status: savedProduct.status || 'Active',
-      };
+      const fullSavedProduct = buildProductDbPayload(savedProduct, merchant) as Product;
 
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullSavedProduct),
-      });
+      const mergedList = products.some(p => p.id === fullSavedProduct.id)
+        ? products.map(p => (p.id === fullSavedProduct.id ? { ...p, ...fullSavedProduct } : p))
+        : [fullSavedProduct, ...products];
+      onUpdateProducts(mergedList);
 
-      if (response.ok) {
-        // Refresh products from database
-        try {
-          const targetId = merchant?.storeSlug || merchant?.id || 'default';
-          const updatedResponse = await fetch(`/api/products-by-slug/${encodeURIComponent(targetId)}`);
-          if (updatedResponse.ok) {
-            const updatedProducts = await updatedResponse.json();
-            if (Array.isArray(updatedProducts)) {
-              onUpdateProducts(updatedProducts);
-            }
-          }
-        } catch (fetchErr) {
-          console.warn('Silent refresh products error:', fetchErr);
-        }
-        setIsFormViewActive(false);
-        setEditingProduct(null);
-        alert('Product saved and persisted to database successfully!');
-      } else {
-        alert('Failed to save product to database.');
+      const { ok, data } = await postCatalogJson('/api/products', fullSavedProduct);
+      if (!ok || data?.success === false) {
+        console.warn('Product save did not confirm persistence:', data);
       }
+
+      try {
+        const targetId = merchant?.storeSlug || merchant?.id || 'default';
+        const updatedResponse = await fetch(`/api/products-by-slug/${encodeURIComponent(targetId)}`);
+        if (updatedResponse.ok) {
+          const updatedProducts = await updatedResponse.json();
+          if (Array.isArray(updatedProducts)) {
+            onUpdateProducts(updatedProducts.map((p: any) => mapApiProduct(p)));
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('Silent refresh products error:', fetchErr);
+      }
+
+      setIsFormViewActive(false);
+      setEditingProduct(null);
     } catch (e) {
       console.warn('Network save product warning:', e);
     }

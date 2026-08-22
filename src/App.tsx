@@ -37,6 +37,7 @@ import { StorefrontPreviewModal } from './components/StorefrontPreviewModal';
 import { TenantStorefrontView } from './components/TenantStorefrontView';
 import { SuperAdminPortalView } from './components/SuperAdminPortalView';
 import { safeSetItem, safeGetItem, safeRemoveItem } from './utils/safeStorage';
+import { mapApiProduct } from './utils/catalogPayload';
 
 import { DashboardView } from './components/views/DashboardView';
 import { PaymentsView } from './components/views/PaymentsView';
@@ -299,11 +300,14 @@ export default function App() {
     };
 
     // Products
-    safeFetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`).then(data => {
-      if (isMounted && Array.isArray(data)) {
-        if (data.length > 0 || products.length === 0) {
-          setProducts(data);
-        }
+    safeFetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`).then(async data => {
+      let rows = Array.isArray(data) ? data : [];
+      if (rows.length === 0) {
+        const extra = await safeFetch(`/api/products/${encodeURIComponent(merchantId)}`);
+        if (Array.isArray(extra)) rows = extra;
+      }
+      if (isMounted) {
+        setProducts(rows.map((p: any) => mapApiProduct(p)));
       }
     });
 
@@ -869,19 +873,16 @@ export default function App() {
     }
 
     try {
-      // Restore this logged-in merchant's specific data from database
+      setProducts([]);
       const stored = localStorage.getItem(`ZID_MERCHANT_STORE_DATA_${userProfile.storeSlug}`);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed.products) setProducts(parsed.products);
         if (parsed.bankAccounts) setBankAccounts(parsed.bankAccounts);
         if (parsed.mobileBanking) setMobileBanking(parsed.mobileBanking);
         if (parsed.codConfig) setCodConfig(parsed.codConfig);
         if (parsed.orders) setOrders(parsed.orders);
         if (parsed.themes) setThemes(parsed.themes);
       } else {
-        // Fallback or fresh merchant setup
-        setProducts([]);
         setBankAccounts([]);
         setMobileBanking(initialMobileBanking);
         setCodConfig(initialCodConfig);

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
+import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug } from '../../utils/catalogPayload';
 import { 
   ArrowLeft, 
   Upload, 
@@ -647,21 +648,14 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
     // Auto-save typed custom category to database API
     if (isCustomCategoryMode && category.trim()) {
       try {
-        const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
-        const newCat = {
-          id: `cat-${Date.now()}`,
+        const newCat = buildCategoryDbPayload({
+          id: newCatalogId(),
           name: category.trim(),
-          slug: category.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          slug: toCatalogSlug(category.trim(), 'category'),
           status: 'published',
           parentId: null,
-          merchantId: targetSlug,
-          storeSlug: targetSlug
-        };
-        fetch('/api/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify([newCat])
-        }).catch(err => console.error('Error syncing new category to backend:', err));
+        }, merchant);
+        postCatalogJson('/api/categories', newCat).catch(err => console.error('Error syncing new category to backend:', err));
       } catch (err) {
         console.error('Error auto-saving new category:', err);
       }
@@ -673,8 +667,9 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
     if (weightUnit === 'lb') finalWeightKg = numericWeight * 0.453592;
 
     const savedProduct: Product = {
-      id: initialData?.id || `prod-${Date.now()}`,
+      id: initialData?.id || newCatalogId(),
       merchantId: initialData?.merchantId || (merchant?.id ?? merchant?.storeSlug ?? 'default'),
+      storeSlug: merchant?.storeSlug || initialData?.storeSlug || '',
       title: title || titleBn,
       titleBn: titleBn || title,
       type: 'single',
@@ -716,7 +711,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       selectedFilter,
     };
 
-    onSave(savedProduct);
+    onSave(buildProductDbPayload(savedProduct, merchant) as Product);
   };
 
   // AI Feature Lock Logic

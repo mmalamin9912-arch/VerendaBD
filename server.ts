@@ -23,7 +23,8 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 const PORT = 3000;
 
@@ -53,6 +54,195 @@ const inMemoryStore = {
   orders: new Map<string, any[]>(),
   merchants: new Map<string, any>(),
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function ensureUuid(id?: string): string {
+  if (id && UUID_RE.test(String(id))) return String(id);
+  return crypto.randomUUID();
+}
+
+function toSlug(value: string, fallback = 'item'): string {
+  const slug = String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || fallback;
+}
+
+function makeCatalogModel(name: string, collection: string) {
+  const schema = new mongoose.Schema({}, { strict: false, timestamps: true });
+  return mongoose.models[name] || mongoose.model(name, schema, collection);
+}
+
+const ProductDoc = makeCatalogModel('ProductDoc', 'catalog_products');
+const CategoryDoc = makeCatalogModel('CategoryDoc', 'catalog_categories');
+
+function isMongoReady() {
+  return mongoose.connection.readyState === 1;
+}
+
+function catalogMongoFilter(merchantId: string, storeSlug?: string) {
+  const values = Array.from(new Set([merchantId, storeSlug].filter(Boolean))) as string[];
+  const or: Record<string, string>[] = [];
+  for (const v of values) {
+    or.push({ merchantId: v }, { merchant_id: v }, { store_slug: v }, { storeSlug: v }, { store_id: v });
+  }
+  return { $or: or };
+}
+
+function rememberList(store: Map<string, any[]>, keys: string[], item: any) {
+  const uniqueKeys = Array.from(new Set(keys.filter(Boolean)));
+  for (const key of uniqueKeys) {
+    const existing = store.get(key) || [];
+    const idx = existing.findIndex((row: any) => String(row.id) === String(item.id));
+    if (idx >= 0) existing[idx] = item;
+    else existing.unshift(item);
+    store.set(key, existing);
+  }
+}
+
+function sanitizeCategory(input: any, fallbacks: { merchantId?: string; storeSlug?: string } = {}) {
+  const name = String(input?.name || input?.title || '').trim() || 'Category';
+  const merchantId = String(input?.merchantId || input?.merchant_id || fallbacks.merchantId || fallbacks.storeSlug || 'default');
+  const storeSlug = String(input?.store_slug || input?.storeSlug || fallbacks.storeSlug || merchantId || 'default');
+  const slug = toSlug(input?.slug || name, 'category');
+  return {
+    id: ensureUuid(input?.id),
+    name,
+    title: name,
+    slug,
+    store_slug: storeSlug,
+    storeSlug,
+    merchantId,
+    merchant_id: merchantId,
+    parentId: input?.parentId ?? input?.parent_id ?? null,
+    parent_id: input?.parentId ?? input?.parent_id ?? null,
+    description: input?.description || '',
+    status: input?.status === 'hidden' ? 'hidden' : (input?.status || 'published'),
+    image: input?.image || input?.image_url || '',
+    cover_image: input?.coverImage || input?.cover_image || '',
+    image_alt_text: input?.imageAltText || input?.image_alt_text || '',
+    product_count: Number(input?.productCount ?? input?.product_count ?? 0),
+    meta_title: input?.metaTitle || input?.meta_title || name,
+    meta_description: input?.metaDescription || input?.meta_description || '',
+    keywords: input?.keywords || '',
+    no_index: !!(input?.noIndex ?? input?.no_index),
+  };
+}
+
+function sanitizeProduct(input: any, fallbacks: { merchantId?: string; storeSlug?: string } = {}) {
+  const title = String(input?.title || input?.name || '').trim() || 'Untitled Product';
+  const merchantId = String(input?.merchantId || input?.merchant_id || fallbacks.merchantId || fallbacks.storeSlug || 'default');
+  const storeSlug = String(input?.store_slug || input?.storeSlug || fallbacks.storeSlug || merchantId || 'default');
+  return {
+    id: ensureUuid(input?.id),
+    name: title,
+    title,
+    titleBn: input?.titleBn || input?.title_bn || '',
+    title_bn: input?.titleBn || input?.title_bn || '',
+    slug: toSlug(input?.slug || input?.seoSlug || title, 'product'),
+    store_slug: storeSlug,
+    storeSlug,
+    merchantId,
+    merchant_id: merchantId,
+    priceBDT: Number(input?.priceBDT ?? input?.price ?? 0),
+    price: Number(input?.priceBDT ?? input?.price ?? 0),
+    compareAtPriceBDT: input?.compareAtPriceBDT != null ? Number(input.compareAtPriceBDT) : (input?.compare_at_price != null ? Number(input.compare_at_price) : undefined),
+    compare_at_price: input?.compareAtPriceBDT != null ? Number(input.compareAtPriceBDT) : (input?.compare_at_price != null ? Number(input.compare_at_price) : undefined),
+    cost_price: input?.costPriceBDT != null ? Number(input.costPriceBDT) : (input?.cost_price != null ? Number(input.cost_price) : undefined),
+    stock: Number(input?.stock ?? 10),
+    sku: input?.sku || '',
+    barcode: input?.barcode || '',
+    category: input?.category || input?.category_name || 'General',
+    categoryId: input?.categoryId || input?.category_id || '',
+    category_id: input?.categoryId || input?.category_id || '',
+    image: input?.image || input?.image_url || (Array.isArray(input?.images) && input.images[0]) || '',
+    images: Array.isArray(input?.images) && input.images.length > 0 ? input.images : (input?.image ? [input.image] : []),
+    additional_images: input?.additionalImages || input?.additional_images || [],
+    status: input?.status || 'Active',
+    description: input?.descriptionEn || input?.description || '',
+    descriptionEn: input?.descriptionEn || input?.description || '',
+    descriptionBn: input?.descriptionBn || input?.description_bn || '',
+    type: input?.type || 'single',
+    weightKg: Number(input?.weightKg ?? input?.weight_kg ?? 0),
+    variants: input?.variants || [],
+    warehouseStocks: input?.warehouseStocks || input?.warehouse_stocks || [],
+    deliveryRates: input?.deliveryRates || input?.delivery_rates || [],
+    seoTitle: input?.seoTitle || input?.seo_title || title,
+    seoDescription: input?.seoDescription || input?.seo_description || '',
+    seoSlug: input?.seoSlug || input?.seo_slug || toSlug(title, 'product'),
+    brand: input?.brand || '',
+    createdAt: input?.createdAt || input?.created_at || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function supabaseCategoryRow(c: any) {
+  return {
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    store_slug: c.store_slug,
+    merchantId: c.merchantId,
+    merchant_id: c.merchant_id,
+    parent_id: c.parent_id,
+    description: c.description,
+    status: c.status,
+    image: c.image,
+    cover_image: c.cover_image,
+    product_count: c.product_count,
+  };
+}
+
+function supabaseProductRow(p: any) {
+  return {
+    id: p.id,
+    name: p.name,
+    title: p.title,
+    slug: p.slug,
+    store_slug: p.store_slug,
+    merchantId: p.merchantId,
+    merchant_id: p.merchant_id,
+    price: p.price,
+    stock: p.stock,
+    sku: p.sku,
+    category: p.category,
+    category_id: p.category_id,
+    image: p.image,
+    status: p.status,
+    description: p.description,
+  };
+}
+
+async function upsertSupabase(table: string, rows: any[]) {
+  if (!supabaseAdmin || rows.length === 0) return { ok: false, error: 'no-client' };
+  const attempts = [rows];
+  let lastError: any = null;
+  for (const payload of attempts) {
+    const { data, error } = await supabaseAdmin.from(table).upsert(payload);
+    if (!error) return { ok: true, data };
+    lastError = error;
+    console.warn(`[API] Supabase upsert ${table} failed:`, error.message || error);
+  }
+  return { ok: false, error: lastError };
+}
+
+async function mongoUpsert(model: any, item: any) {
+  if (!isMongoReady()) return;
+  await model.updateOne({ id: item.id }, { $set: item }, { upsert: true });
+}
+
+async function mongoFindCatalog(model: any, merchantId: string, storeSlug?: string) {
+  if (!isMongoReady()) return [];
+  try {
+    return await model.find(catalogMongoFilter(merchantId, storeSlug)).lean();
+  } catch (e) {
+    console.warn('[API] Mongo catalog find error:', e);
+    return [];
+  }
+}
 
 // Middleware: Ensure all /api responses explicitly have application/json content-type and CORS
 app.use('/api', (req, res, next) => {
@@ -136,6 +326,20 @@ app.post('/api/subscription/update', async (req, res) => {
   res.json({ success: true, storeName, planId, expiryDate });
 });
 
+function mergeCatalogRows(groups: any[][]) {
+  const combined: any[] = [];
+  const seenIds = new Set<string>();
+  for (const group of groups) {
+    (group || []).forEach((row: any) => {
+      const key = String(row?.id || row?._id || row?.title || row?.name || '').trim();
+      if (!key || seenIds.has(key)) return;
+      seenIds.add(key);
+      combined.push(row);
+    });
+  }
+  return combined;
+}
+
 // Product API - Retrieve All or Filtered Products by merchantId or storeSlug
 const handleGetProducts = async (req: express.Request, res: express.Response) => {
   try {
@@ -144,39 +348,24 @@ const handleGetProducts = async (req: express.Request, res: express.Response) =>
       return res.status(200).json([]);
     }
 
-    const combined: any[] = [];
-    const seenIds = new Set<string>();
-
+    let supabaseRows: any[] = [];
     if (supabaseAdmin) {
       try {
         const query = supabaseAdmin.from('products').select('*')
           .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
         const { data, error } = await query;
-        if (!error && Array.isArray(data)) {
-          data.forEach(p => {
-            const key = String(p.id || p.title).trim();
-            if (!seenIds.has(key)) {
-              seenIds.add(key);
-              combined.push(p);
-            }
-          });
-        }
+        if (!error && Array.isArray(data)) supabaseRows = data;
       } catch (e) {
         console.error('[API Catch: /api/products] Supabase query error:', e);
       }
     }
 
-    // In-memory lookup strictly for this merchant
-    const memProducts = inMemoryStore.products.get(merchantId) || [];
-    memProducts.forEach(p => {
-      const key = String(p.id || p.title).trim();
-      if (!seenIds.has(key)) {
-        seenIds.add(key);
-        combined.push(p);
-      }
-    });
+    const mongoRows = await mongoFindCatalog(ProductDoc, merchantId, merchantId);
+    const memProducts = [
+      ...(inMemoryStore.products.get(merchantId) || []),
+    ];
 
-    res.status(200).json(combined);
+    res.status(200).json(mergeCatalogRows([supabaseRows, mongoRows, memProducts]));
   } catch (error) {
     console.error('[API Error in handleGetProducts]:', error);
     res.status(200).json([]);
@@ -216,9 +405,7 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
       merchantId = memMerchant.id;
     }
 
-    const combinedProducts: any[] = [];
-    const seenIds = new Set<string>();
-
+    let supabaseRows: any[] = [];
     if (supabaseAdmin) {
       try {
         const { data: prodData, error } = await supabaseAdmin
@@ -226,34 +413,19 @@ const handleGetProductsBySlug = async (req: express.Request, res: express.Respon
           .select('*')
           .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
         
-        if (!error && Array.isArray(prodData)) {
-          prodData.forEach(p => {
-            const key = String(p.id || p.title).trim();
-            if (!seenIds.has(key)) {
-              seenIds.add(key);
-              combinedProducts.push(p);
-            }
-          });
-        }
+        if (!error && Array.isArray(prodData)) supabaseRows = prodData;
       } catch (e) {
         console.error('[API DB: /api/products-by-slug] Supabase get products exception:', e);
       }
     }
 
+    const mongoRows = await mongoFindCatalog(ProductDoc, merchantId, storeSlug);
     const memProducts = [
       ...(inMemoryStore.products.get(merchantId) || []),
       ...(inMemoryStore.products.get(storeSlug) || [])
     ];
 
-    memProducts.forEach(p => {
-      const key = String(p.id || p.title).trim();
-      if (!seenIds.has(key)) {
-        seenIds.add(key);
-        combinedProducts.push(p);
-      }
-    });
-
-    res.status(200).json(combinedProducts);
+    res.status(200).json(mergeCatalogRows([supabaseRows, mongoRows, memProducts]));
   } catch (error) {
     console.error('[API Error in handleGetProductsBySlug]:', error);
     res.status(200).json([]);
@@ -289,22 +461,25 @@ const handleGetCategoriesBySlug = async (req: express.Request, res: express.Resp
       merchantId = memMerchant.id;
     }
 
+    let supabaseRows: any[] = [];
     if (supabaseAdmin) {
       try {
         const { data: catData, error } = await supabaseAdmin
           .from('categories')
           .select('*')
           .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
-        if (!error && Array.isArray(catData)) {
-          return res.status(200).json(catData);
-        }
+        if (!error && Array.isArray(catData)) supabaseRows = catData;
       } catch (e) {
         console.error('[API DB: /api/categories-by-slug] Supabase categories error:', e);
       }
     }
 
-    const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || [];
-    res.status(200).json(memCats);
+    const mongoRows = await mongoFindCatalog(CategoryDoc, merchantId, storeSlug);
+    const memCats = [
+      ...(inMemoryStore.categories.get(merchantId) || []),
+      ...(inMemoryStore.categories.get(storeSlug) || []),
+    ];
+    res.status(200).json(mergeCatalogRows([supabaseRows, mongoRows, memCats]));
   } catch (error) {
     console.error('[API Error in handleGetCategoriesBySlug]:', error);
     res.status(200).json([]);
@@ -322,16 +497,18 @@ const handleGetCategories = async (req: express.Request, res: express.Response) 
       return res.status(200).json([]);
     }
 
+    let supabaseRows: any[] = [];
     if (supabaseAdmin) {
       try {
         const { data, error } = await supabaseAdmin.from('categories').select('*').or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId}`);
-        if (!error && Array.isArray(data)) return res.status(200).json(data);
+        if (!error && Array.isArray(data)) supabaseRows = data;
       } catch (e) {
         console.error('[API DB: /api/categories] Supabase get categories error:', e);
       }
     }
+    const mongoRows = await mongoFindCatalog(CategoryDoc, merchantId, merchantId);
     const memCats = inMemoryStore.categories.get(merchantId) || [];
-    res.status(200).json(memCats);
+    res.status(200).json(mergeCatalogRows([supabaseRows, mongoRows, memCats]));
   } catch (error) {
     console.error('[API Error in handleGetCategories]:', error);
     res.status(200).json([]);
@@ -359,57 +536,50 @@ app.all('/api/products', (req, res, next) => {
 app.post('/api/products', async (req, res) => {
   res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const payload = req.body;
-  
-  // Helper to sanitize a single product
-  const sanitizeProduct = (p: any) => ({
-    ...p,
-    id: p.id || crypto.randomUUID(),
-    merchantId: p.merchantId || p.merchant_id || 'default',
-    title: p.title || p.name || 'Untitled Product',
-    titleBn: p.titleBn || p.title_bn || '',
-    priceBDT: Number(p.priceBDT ?? p.price ?? 0),
-    compareAtPriceBDT: p.compareAtPriceBDT ? Number(p.compareAtPriceBDT) : (p.compare_at_price ? Number(p.compare_at_price) : undefined),
-    stock: Number(p.stock ?? 10),
-    sku: p.sku || '',
-    category: p.category || p.category_name || '',
-    categoryId: p.categoryId || p.category_id || '',
-    image: p.image || (Array.isArray(p.images) && p.images[0]) || '',
-    images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image ? [p.image] : []),
-    status: p.status || 'Active',
-    descriptionEn: p.descriptionEn || p.description || '',
-    descriptionBn: p.descriptionBn || '',
-    store_slug: p.store_slug || p.storeSlug || '',
-    storeSlug: p.storeSlug || p.store_slug || '',
-  });
-
-  const sanitizedPayload = Array.isArray(payload) ? payload.map(sanitizeProduct) : sanitizeProduct(payload);
-  const merchantId = Array.isArray(sanitizedPayload) ? (sanitizedPayload[0].merchantId || 'default') : (sanitizedPayload.merchantId || 'default');
-
-  // Update in-memory
-  const existing = inMemoryStore.products.get(merchantId) || [];
-  if (Array.isArray(sanitizedPayload)) {
-    inMemoryStore.products.set(merchantId, sanitizedPayload);
-  } else {
-    const idx = existing.findIndex(p => p.id === sanitizedPayload.id);
-    if (idx >= 0) existing[idx] = sanitizedPayload;
-    else existing.unshift(sanitizedPayload);
-    inMemoryStore.products.set(merchantId, existing);
-  }
-
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin.from('products').upsert(sanitizedPayload);
-      if (error) {
-        console.warn('Supabase save product warning:', error.message || error);
-      } else if (data) {
-        return res.status(200).json(data);
-      }
-    } catch (e) {
-      console.warn('Supabase save product exception:', e);
+  try {
+    const payload = req.body;
+    if (!payload || (typeof payload !== 'object')) {
+      return res.status(200).json({ success: false, error: 'Missing product payload' });
     }
+
+    const items = (Array.isArray(payload) ? payload : [payload]).map((p) => sanitizeProduct(p));
+    if (items.length === 0) {
+      return res.status(200).json({ success: false, error: 'Empty product payload' });
+    }
+
+    for (const item of items) {
+      rememberList(inMemoryStore.products, [item.merchantId, item.store_slug, item.storeSlug], item);
+      try {
+        await mongoUpsert(ProductDoc, item);
+      } catch (e) {
+        console.warn('[API /api/products] Mongo upsert warning:', e);
+      }
+    }
+
+    if (supabaseAdmin) {
+      try {
+        const sbRows = items.map(supabaseProductRow);
+        const result = await upsertSupabase('products', sbRows);
+        if (!result.ok) {
+          const minimal = items.map((p) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            store_slug: p.store_slug,
+            merchantId: p.merchantId,
+          }));
+          await upsertSupabase('products', minimal);
+        }
+      } catch (e) {
+        console.warn('Supabase save product exception:', e);
+      }
+    }
+
+    return res.status(200).json({ success: true, data: Array.isArray(payload) ? items : items[0] });
+  } catch (error) {
+    console.error('[API Error in POST /api/products]:', error);
+    return res.status(200).json({ success: false, error: 'Failed to save product' });
   }
-  return res.status(200).json(sanitizedPayload);
 });
 
 app.delete('/api/products/:id', async (req, res) => {
@@ -419,6 +589,14 @@ app.delete('/api/products/:id', async (req, res) => {
   inMemoryStore.products.forEach((list, key) => {
     inMemoryStore.products.set(key, list.filter(p => p.id !== id));
   });
+
+  if (isMongoReady()) {
+    try {
+      await ProductDoc.deleteMany({ $or: [{ id }, { _id: id }] });
+    } catch (e) {
+      console.warn('Mongo delete product error:', e);
+    }
+  }
 
   if (supabaseAdmin) {
     try {
@@ -465,27 +643,50 @@ app.get('/api/categories/:merchantId', async (req, res) => {
 app.post('/api/categories', async (req, res) => {
   res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  const payload = req.body;
-  const merchantId = Array.isArray(payload) ? (payload[0]?.merchantId || 'default') : (payload.merchantId || 'default');
-  
-  if (Array.isArray(payload)) {
-    inMemoryStore.categories.set(merchantId, payload);
-  } else {
-    const existing = inMemoryStore.categories.get(merchantId) || [];
-    const idx = existing.findIndex((c: any) => c.id === payload.id || c.name === payload.name);
-    if (idx >= 0) existing[idx] = payload;
-    else existing.push(payload);
-    inMemoryStore.categories.set(merchantId, existing);
-  }
-
-  if (supabaseAdmin) {
-    try {
-      await supabaseAdmin.from('categories').upsert(payload);
-    } catch (e) {
-      // Ignored if table not migrated yet
+  try {
+    const payload = req.body;
+    if (!payload || (typeof payload !== 'object')) {
+      return res.status(200).json({ success: false, error: 'Missing category payload' });
     }
+
+    const items = (Array.isArray(payload) ? payload : [payload]).map((c) => sanitizeCategory(c));
+    if (items.length === 0) {
+      return res.status(200).json({ success: false, error: 'Empty category payload' });
+    }
+
+    for (const item of items) {
+      rememberList(inMemoryStore.categories, [item.merchantId, item.store_slug, item.storeSlug], item);
+      try {
+        await mongoUpsert(CategoryDoc, item);
+      } catch (e) {
+        console.warn('[API /api/categories] Mongo upsert warning:', e);
+      }
+    }
+
+    if (supabaseAdmin) {
+      try {
+        const sbRows = items.map(supabaseCategoryRow);
+        const result = await upsertSupabase('categories', sbRows);
+        if (!result.ok) {
+          const minimal = items.map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            store_slug: c.store_slug,
+            merchantId: c.merchantId,
+          }));
+          await upsertSupabase('categories', minimal);
+        }
+      } catch (e) {
+        console.warn('[API /api/categories] Supabase upsert exception:', e);
+      }
+    }
+
+    return res.status(200).json({ success: true, data: Array.isArray(payload) ? items : items[0] });
+  } catch (error) {
+    console.error('[API Error in POST /api/categories]:', error);
+    return res.status(200).json({ success: false, error: 'Failed to save category' });
   }
-  return res.status(200).json(payload);
 });
 
 // Merchant Settings & Profile Persistence API
