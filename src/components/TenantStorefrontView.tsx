@@ -263,19 +263,13 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   }, [currentProductDeliveryRates, storeCity, insideFee, outsideFee]);
 
   const shippingFee = useMemo(() => {
-    if (currentProductDeliveryRates && currentProductDeliveryRates.length > 0) {
-      const matched = currentProductDeliveryRates.find((r: any) => {
-        if (selectedIsInside) {
-          return r.zoneName.toLowerCase().includes('inside') || r.zoneName.toLowerCase().includes(storeCity.toLowerCase());
-        } else {
-          return r.zoneName.toLowerCase().includes('outside') || !r.zoneName.toLowerCase().includes(storeCity.toLowerCase());
-        }
-      });
-      if (matched) return Number(matched.fee);
-      return Number(currentProductDeliveryRates[0].fee);
-    }
-    return selectedIsInside ? insideFee : outsideFee;
-  }, [currentProductDeliveryRates, selectedIsInside, storeCity, insideFee, outsideFee]);
+    // Find the selected option in activeDeliveryOptions to get its fee
+    const selectedOption = activeDeliveryOptions.find(opt => opt.value === custCity);
+    if (selectedOption) return selectedOption.fee;
+    
+    // If no option is selected or found, default to inside fee
+    return insideFee;
+  }, [custCity, activeDeliveryOptions, insideFee]);
 
   const totalAmount = (cart.length > 0 ? cartTotal : (selectedProduct?.priceBDT || 0)) + shippingFee;
 
@@ -1582,14 +1576,13 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     <label className="block mb-1.5 font-bold text-sm text-slate-700">City / District / Delivery Rate</label>
                     <select
                       value={custCity}
-                      onChange={(e) => setCustCity(e.target.value)}
+                      onChange={(e) => {
+                        setCustCity(e.target.value);
+                      }}
                       className="w-full rounded-xl px-4 py-3 bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#D4AF37] focus:border-transparent transition font-medium"
                     >
                       {activeDeliveryOptions.map((opt) => (
-                        <option 
-                          key={opt.value} 
-                          value={opt.value.toLowerCase().includes('inside') || opt.value.toLowerCase().includes(storeCity.toLowerCase()) ? storeCity : 'Outside'}
-                        >
+                        <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
                       ))}
