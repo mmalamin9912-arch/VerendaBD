@@ -411,58 +411,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   const hasMerchantProducts = localProducts && localProducts.length > 0;
 
-  const fallbackDemoProducts: Product[] = [
-    {
-      id: 'demo-1',
-      title: 'Classic Cotton T-Shirt',
-      category: 'Apparel & Fashion',
-      priceBDT: 1200,
-      compareAtPriceBDT: 1500,
-      status: 'Active',
-      image: '',
-      vectorType: 'tshirt'
-    } as any,
-    {
-      id: 'demo-2',
-      title: 'Minimalist Leather Wallet',
-      category: 'Accessories & Gifts',
-      priceBDT: 1800,
-      compareAtPriceBDT: 2200,
-      status: 'Active',
-      image: '',
-      vectorType: 'box'
-    } as any,
-    {
-      id: 'demo-3',
-      title: 'Canvas Everyday Tote Bag',
-      category: 'Bags & Wallets',
-      priceBDT: 950,
-      compareAtPriceBDT: 1200,
-      status: 'Active',
-      image: '',
-      vectorType: 'bag'
-    } as any,
-    {
-      id: 'demo-4',
-      title: 'Wireless Bluetooth Earbuds',
-      category: 'Gadgets & Tech',
-      priceBDT: 2490,
-      compareAtPriceBDT: 3200,
-      status: 'Active',
-      image: '',
-      vectorType: 'gadget'
-    } as any
-  ];
-
-  const fallbackDemoCategories = [
-    { name: 'Apparel & Fashion', count: '12 Items', vectorType: 'tshirt' },
-    { name: 'Bags & Wallets', count: '8 Items', vectorType: 'bag' },
-    { name: 'Accessories & Gifts', count: '15 Items', vectorType: 'box' },
-    { name: 'Gadgets & Tech', count: '6 Items', vectorType: 'gadget' }
-  ];
 
   // Dynamic product inventory for storefront homepage
-  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : (products || []);
+  const displayProducts = (localProducts && localProducts.length > 0) ? localProducts : [];
   const themeConfig = localMerchant.themeConfig || {};
   const { 
     headerBgColor = '#ffffff', 
