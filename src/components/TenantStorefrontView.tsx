@@ -264,22 +264,6 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           } else if (Array.isArray(sbProducts) && sbProducts.length > 0) {
             productsFromDb = [...sbProducts];
           }
-
-          // If products count is less than 2, check all products table records to ensure no product is missed
-          if (productsFromDb.length < 2) {
-            const { data: allSbProds } = await supabase.from('products').select('*');
-            if (Array.isArray(allSbProds) && allSbProds.length > 0) {
-              allSbProds.forEach(p => {
-                const alreadyExists = productsFromDb.some(existing => 
-                  (existing.id && existing.id === p.id) || 
-                  (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-                );
-                if (!alreadyExists) {
-                  productsFromDb.push(p);
-                }
-              });
-            }
-          }
         } catch (prodEx) {
           console.error('[TenantStorefrontView DB] ❌ Exception querying products:', prodEx);
         }
@@ -381,24 +365,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         } catch (e) {}
       }
 
-      // 3. Fallback to Safe Storage or Prop Data
-      try {
-        const localSavedCats = safeGetItem('zid_merchant_categories_v2');
-        if (localSavedCats) {
-          const parsed = typeof localSavedCats === 'object' ? localSavedCats : JSON.parse(localSavedCats);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            parsed.forEach((c: any) => {
-              if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
-                categoriesFromDb.push(c);
-              }
-            });
-          }
-        }
-      } catch (e) {}
 
-      if (categoriesFromDb.length === 0 && merchant?.categories && merchant.categories.length > 0) {
-        categoriesFromDb.push(...merchant.categories);
-      }
 
       // 4. Map and Synchronize State
       if (!isMounted) return;
@@ -727,28 +694,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   const hasMerchantProducts = localProducts && localProducts.length > 0;
 
-  // Complete merchant product list without restrictions
+  // Complete merchant product list fetched strictly from database
   const allMerchantProducts = useMemo(() => {
-    const combined: Product[] = [];
-    const seenIds = new Set<string>();
-
-    const addProduct = (p: Product) => {
-      if (!p) return;
-      const idKey = String(p.id || p.title || '').trim().toLowerCase();
-      if (idKey && !seenIds.has(idKey)) {
-        seenIds.add(idKey);
-        combined.push(p);
-      }
-    };
-
-    if (localProducts && localProducts.length > 0) {
-      localProducts.forEach(addProduct);
-    } else if (products && products.length > 0) {
-      products.forEach(addProduct);
-    }
-
-    return combined;
-  }, [localProducts, products]);
+    return localProducts || [];
+  }, [localProducts]);
 
   const themeConfig = localMerchant.themeConfig || {};
   const { 
@@ -837,11 +786,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   // Effective categories list with dynamic product counts
   const effectiveCategories = useMemo(() => {
-    const list = (localCategories && localCategories.length > 0) 
-      ? localCategories 
-      : (categoriesList && categoriesList.length > 0 
-          ? categoriesList 
-          : (merchant?.categories && merchant.categories.length > 0 ? merchant.categories : []));
+    const list = localCategories || [];
     
     const seen = new Set<string>();
     const result: any[] = [];
@@ -871,7 +816,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       }
     }
     return result.filter((c: any) => !c.status || c.status === 'Active' || c.status === 'published' || c.status === 'Published' || (c.status !== 'hidden' && c.status !== 'draft'));
-  }, [localCategories, categoriesList, merchant?.categories, allMerchantProducts]);
+  }, [localCategories, allMerchantProducts]);
 
   // Selected category object
   const selectedCategory = useMemo(() => {
@@ -1397,6 +1342,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
               if (sec.id === 'categories' && showCategories) {
                 const hasCustomCategories = effectiveCategories && effectiveCategories.length > 0;
+                if (!hasCustomCategories) return null;
                 return (
                   <section 
                     key="sec-categories"

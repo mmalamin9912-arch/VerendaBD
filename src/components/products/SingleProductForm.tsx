@@ -533,7 +533,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
   const [newCfValue, setNewCfValue] = useState('');
 
   // SEO State
-  const [seoTitle, setSeoTitle] = useState(initialData?.seoTitle || title || 'Jamdani Silk Heritage Collection');
+  const [seoTitle, setSeoTitle] = useState(initialData?.seoTitle || title || '');
   const [seoDescription, setSeoDescription] = useState(initialData?.seoDescription || descriptionEn);
   const [seoSlug, setSeoSlug] = useState(initialData?.seoSlug || (title ? title.toLowerCase().replace(/\s+/g, '-') : 'product-item'));
 

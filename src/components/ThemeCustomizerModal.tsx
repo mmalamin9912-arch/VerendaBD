@@ -210,12 +210,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
   const [categoriesBgImage, setCategoriesBgImage] = useState(merchant?.themeConfig?.categoriesBgImage ?? '');
   const [categoriesOverlayOpacity, setCategoriesOverlayOpacity] = useState(merchant?.themeConfig?.categoriesOverlayOpacity ?? 40);
   const [categoriesList, setCategoriesList] = useState<Array<{name: string; image: string; count: string;}>>(
-    merchant?.themeConfig?.categoriesList ?? [
-      { name: 'Traditional Jamdani', image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=300&q=80', count: '14 items' },
-      { name: 'Handcrafted Clay', image: 'https://images.unsplash.com/photo-1612196808214-b8e1d6145a8c?auto=format&fit=crop&w=300&q=80', count: '8 items' },
-      { name: 'Organic Jute Products', image: 'https://images.unsplash.com/photo-1590736969955-71cb94801759?auto=format&fit=crop&w=300&q=80', count: '23 items' },
-      { name: 'Brass & Copper Art', image: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=300&q=80', count: '5 items' }
-    ]
+    merchant?.themeConfig?.categoriesList ?? []
   );
 
   // 3. Products
@@ -226,7 +221,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
   // 4. Countdown Timer
   const [showCountdown, setShowCountdown] = useState(merchant?.themeConfig?.showCountdown ?? true);
   const [countdownTitle, setCountdownTitle] = useState(merchant?.themeConfig?.countdownTitle ?? '⚡ Flash Sale Ends In:');
-  const [countdownEndDate, setCountdownEndDate] = useState(merchant?.themeConfig?.countdownEndDate ?? '2026-08-15T23:59');
+  const [countdownEndDate, setCountdownEndDate] = useState(merchant?.themeConfig?.countdownEndDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16));
   const [countdownBgImage, setCountdownBgImage] = useState(merchant?.themeConfig?.countdownBgImage ?? '');
   const [countdownOverlayOpacity, setCountdownOverlayOpacity] = useState(merchant?.themeConfig?.countdownOverlayOpacity ?? 60);
   const [countdownHours, setCountdownHours] = useState(merchant?.themeConfig?.countdownHours ?? 14);
