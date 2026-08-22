@@ -47,14 +47,15 @@ export interface CategoryNode {
 
 interface CategoriesViewProps {
   products: Product[];
+  storeSlug: string;
   onOpenSubscriptionModal?: () => void;
 }
 
 export const CategoriesView: React.FC<CategoriesViewProps> = ({ 
   products,
+  storeSlug,
   onOpenSubscriptionModal 
 }) => {
-  const storeSlug = readZidStoreData().merchant?.storeSlug || 'default-store';
   // Master Category List with Multi-Level Hierarchy & LocalStorage persistence
   const [categories, setCategories] = useState<CategoryNode[]>(() => {
     const saved = localStorage.getItem('zid_store_categories_v2');
@@ -203,7 +204,13 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   // Persist reordered categories sequence to localStorage
   useEffect(() => {
     localStorage.setItem('zid_store_categories_v2', JSON.stringify(categories));
-    writeZidStoreData({ categories });
+    writeZidStoreData({ categories }, storeSlug);
+    fetch(`/api/storefront?store_slug=${encodeURIComponent(storeSlug)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ patch: { categories } }),
+    }).catch(() => undefined);
+    fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories }),
+    }).catch(() => undefined);
   }, [categories]);
 
   // Tree View State & Navigation Controls

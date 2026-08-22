@@ -14,10 +14,12 @@ export interface ZidStoreData {
   [key: string]: unknown;
 }
 
-export function readZidStoreData(): ZidStoreData {
+const keyFor = (storeSlug?: string) => storeSlug ? `${ZID_STORE_DATA_KEY}:${storeSlug}` : ZID_STORE_DATA_KEY;
+
+export function readZidStoreData(storeSlug?: string): ZidStoreData {
   if (typeof window === 'undefined') return {};
   try {
-    const shared = JSON.parse(window.localStorage.getItem(ZID_STORE_DATA_KEY) || '{}');
+    const shared = JSON.parse(window.localStorage.getItem(keyFor(storeSlug)) || '{}');
     const legacy = JSON.parse(window.localStorage.getItem(LEGACY_STORE_DATA_KEY) || '{}');
     return { ...legacy, ...shared };
   } catch {
@@ -25,20 +27,23 @@ export function readZidStoreData(): ZidStoreData {
   }
 }
 
-export function writeZidStoreData(update: Partial<ZidStoreData>): ZidStoreData {
-  const next = { ...readZidStoreData(), ...update };
+export function writeZidStoreData(update: Partial<ZidStoreData>, storeSlug?: string): ZidStoreData {
+  const next = { ...readZidStoreData(storeSlug), ...update };
   if (typeof window === 'undefined') return next;
-  window.localStorage.setItem(ZID_STORE_DATA_KEY, JSON.stringify(next));
+  window.localStorage.setItem(keyFor(storeSlug), JSON.stringify(next));
   // CustomEvent notifies the current tab; the storage event handles other tabs.
-  window.dispatchEvent(new CustomEvent<ZidStoreData>(ZID_STORE_DATA_CHANGED, { detail: next }));
+  window.dispatchEvent(new CustomEvent(ZID_STORE_DATA_CHANGED, { detail: { storeSlug, data: next } }));
   return next;
 }
 
-export function subscribeToZidStoreData(listener: (data: ZidStoreData) => void) {
+export function subscribeToZidStoreData(listener: (data: ZidStoreData) => void, storeSlug?: string) {
   if (typeof window === 'undefined') return () => undefined;
-  const onChange = (event: Event) => listener((event as CustomEvent<ZidStoreData>).detail || readZidStoreData());
+  const onChange = (event: Event) => {
+    const detail = (event as CustomEvent<{ storeSlug?: string; data?: ZidStoreData }>).detail;
+    if (detail?.storeSlug === storeSlug) listener(detail.data || readZidStoreData(storeSlug));
+  };
   const onStorage = (event: StorageEvent) => {
-    if (event.key === ZID_STORE_DATA_KEY || event.key === LEGACY_STORE_DATA_KEY) listener(readZidStoreData());
+    if (event.key === keyFor(storeSlug) || (!storeSlug && event.key === LEGACY_STORE_DATA_KEY)) listener(readZidStoreData(storeSlug));
   };
   window.addEventListener(ZID_STORE_DATA_CHANGED, onChange);
   window.addEventListener('storage', onStorage);
