@@ -30,9 +30,19 @@ const PORT = 3000;
 // Initialize Supabase Admin for server-side persistence
 const sbUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const sbKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
-const supabaseAdmin = sbUrl && sbKey
-  ? createClient(sbUrl, sbKey)
-  : null;
+
+let supabaseAdmin: any = null;
+if (sbUrl && sbKey) {
+  try {
+    supabaseAdmin = createClient(sbUrl, sbKey);
+    console.log('[Supabase Server] ✅ Supabase Admin Client initialized successfully with URL:', sbUrl);
+  } catch (sbInitErr) {
+    console.error('[Supabase Server] ❌ Failed to initialize Supabase client:', sbInitErr);
+    supabaseAdmin = null;
+  }
+} else {
+  console.warn('[Supabase Server] ⚠️ SUPABASE_URL or SUPABASE_ANON_KEY missing. Supabase queries will safely fall back to in-memory store.');
+}
 
 // In-memory fallback stores for local resilience
 const inMemoryStore = {
@@ -43,6 +53,18 @@ const inMemoryStore = {
   orders: new Map<string, any[]>(),
   merchants: new Map<string, any>(),
 };
+
+// Middleware: Ensure all /api responses explicitly have application/json content-type and CORS
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 // Merchant API - database check before account creation
 app.get('/api/merchants/check/:email', async (req, res) => {
@@ -127,145 +149,161 @@ app.post('/api/subscription/update', async (req, res) => {
   res.json({ success: true, storeName, planId, expiryDate });
 });
 
-// Product API
-app.get('/api/products', async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  const allProdsList: any[] = [];
-  const seenIds = new Set<string>();
+// Product API - Retrieve All or Filtered Products
+const handleGetProducts = async (req: express.Request, res: express.Response) => {
+  try {
+    const merchantId = (req.params.merchantId || req.query.merchantId || req.query.storeSlug || '').toString().trim();
+    const combined: any[] = [];
+    const seenIds = new Set<string>();
 
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin.from('products').select('*');
-      if (!error && Array.isArray(data) && data.length > 0) {
-        data.forEach(p => {
-          const key = p.id || p.title;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            allProdsList.push(p);
-          }
-        });
+    if (supabaseAdmin) {
+      try {
+        let query = supabaseAdmin.from('products').select('*');
+        if (merchantId) {
+          query = query.or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
+        }
+        const { data, error } = await query;
+        if (!error && Array.isArray(data) && data.length > 0) {
+          data.forEach(p => {
+            const key = String(p.id || p.title).trim();
+            if (!seenIds.has(key)) {
+              seenIds.add(key);
+              combined.push(p);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('[API Catch: /api/products] Supabase query error:', e);
       }
-    } catch (e) {
-      console.warn('Supabase get all products error:', e);
     }
-  }
 
-  for (const [_, list] of inMemoryStore.products.entries()) {
-    if (Array.isArray(list)) {
-      list.forEach(p => {
-        const key = p.id || p.title;
+    // In-memory fallback
+    if (merchantId) {
+      const memProducts = [
+        ...(inMemoryStore.products.get(merchantId) || []),
+        ...(inMemoryStore.products.get('default') || [])
+      ];
+      memProducts.forEach(p => {
+        const key = String(p.id || p.title).trim();
         if (!seenIds.has(key)) {
           seenIds.add(key);
-          allProdsList.push(p);
+          combined.push(p);
         }
       });
     }
+
+    // If still empty or no merchantId specified, collect all from in-memory stores
+    if (combined.length === 0) {
+      for (const [_, list] of inMemoryStore.products.entries()) {
+        if (Array.isArray(list)) {
+          list.forEach(p => {
+            const key = String(p.id || p.title).trim();
+            if (!seenIds.has(key)) {
+              seenIds.add(key);
+              combined.push(p);
+            }
+          });
+        }
+      }
+    }
+
+    res.status(200).json(combined);
+  } catch (error) {
+    console.error('[API Error in handleGetProducts]:', error);
+    res.status(200).json([]);
   }
+};
 
-  res.json(allProdsList);
-});
+app.get('/api/products', handleGetProducts);
+app.get('/api/products/:merchantId', handleGetProducts);
 
-app.get('/api/products/:merchantId', async (req, res) => {
-  const { merchantId } = req.params;
-  const combined: any[] = [];
-  const seenIds = new Set<string>();
+// Products by Slug API
+const handleGetProductsBySlug = async (req: express.Request, res: express.Response) => {
+  try {
+    const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
+    const storeSlug = rawSlug || 'aminfashionbd';
+    let merchantId = storeSlug;
 
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('products')
-        .select('*')
-        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${merchantId},storeSlug.eq.${merchantId},store_id.eq.${merchantId}`);
-      if (!error && data && data.length > 0) {
-        data.forEach(p => {
-          const key = p.id || p.title;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            combined.push(p);
+    if (supabaseAdmin) {
+      try {
+        const { data: mData, error: mErr } = await supabaseAdmin
+          .from('merchants')
+          .select('*')
+          .or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`)
+          .maybeSingle();
+        if (mData && mData.id) {
+          merchantId = mData.id;
+        }
+        if (mErr) {
+          console.warn('[API DB: /api/products-by-slug] Merchant lookup note:', mErr.message);
+        }
+      } catch (e) {
+        console.error('[API DB: /api/products-by-slug] Merchant lookup error:', e);
+      }
+    }
+
+    const memMerchant = inMemoryStore.merchants.get(storeSlug);
+    if (memMerchant && memMerchant.id) {
+      merchantId = memMerchant.id;
+    }
+
+    const combinedProducts: any[] = [];
+    const seenIds = new Set<string>();
+
+    if (supabaseAdmin) {
+      try {
+        const { data: prodData, error } = await supabaseAdmin
+          .from('products')
+          .select('*')
+          .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
+        
+        if (!error && Array.isArray(prodData) && prodData.length > 0) {
+          prodData.forEach(p => {
+            const key = String(p.id || p.title).trim();
+            if (!seenIds.has(key)) {
+              seenIds.add(key);
+              combinedProducts.push(p);
+            }
+          });
+        }
+
+        // If specific lookup returned empty, also fetch general product records
+        if (combinedProducts.length === 0) {
+          const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
+          if (!allProdsErr && Array.isArray(allProds) && allProds.length > 0) {
+            allProds.forEach(p => {
+              const key = String(p.id || p.title).trim();
+              if (!seenIds.has(key)) {
+                seenIds.add(key);
+                combinedProducts.push(p);
+              }
+            });
           }
-        });
-      }
-    } catch (e) {
-      console.warn('Supabase get products error:', e);
-    }
-  }
-
-  const memProducts = [
-    ...(inMemoryStore.products.get(merchantId) || []),
-    ...(inMemoryStore.products.get('default') || [])
-  ];
-
-  memProducts.forEach(p => {
-    const key = p.id || p.title;
-    if (!seenIds.has(key)) {
-      seenIds.add(key);
-      combined.push(p);
-    }
-  });
-
-  if (combined.length === 0) {
-    for (const [_, list] of inMemoryStore.products.entries()) {
-      if (Array.isArray(list)) {
-        list.forEach(p => {
-          const key = p.id || p.title;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            combined.push(p);
-          }
-        });
+        }
+      } catch (e) {
+        console.error('[API DB: /api/products-by-slug] Supabase get products exception:', e);
       }
     }
-  }
 
-  res.json(combined);
-});
+    const memProducts = [
+      ...(inMemoryStore.products.get(merchantId) || []),
+      ...(inMemoryStore.products.get(storeSlug) || []),
+      ...(inMemoryStore.products.get('default') || [])
+    ];
 
-app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
-  const { storeSlug } = req.params;
-  let merchantId = storeSlug;
-
-  if (supabaseAdmin) {
-    try {
-      const { data: mData } = await supabaseAdmin.from('merchants').select('*').or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`).maybeSingle();
-      if (mData && mData.id) {
-        merchantId = mData.id;
+    memProducts.forEach(p => {
+      const key = String(p.id || p.title).trim();
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        combinedProducts.push(p);
       }
-    } catch (e) {
-      console.error('[Server DB] Error fetching merchant for products-by-slug:', e);
-    }
-  }
+    });
 
-  const memMerchant = inMemoryStore.merchants.get(storeSlug);
-  if (memMerchant && memMerchant.id) {
-    merchantId = memMerchant.id;
-  }
-
-  const combinedProducts: any[] = [];
-  const seenIds = new Set<string>();
-
-  if (supabaseAdmin) {
-    try {
-      const { data: prodData, error } = await supabaseAdmin
-        .from('products')
-        .select('*')
-        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
-      
-      if (!error && Array.isArray(prodData) && prodData.length > 0) {
-        prodData.forEach(p => {
-          const key = p.id || p.title;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            combinedProducts.push(p);
-          }
-        });
-      }
-
-      // If still fewer than expected or empty, check all products table records
-      if (combinedProducts.length === 0) {
-        const { data: allProds, error: allProdsErr } = await supabaseAdmin.from('products').select('*');
-        if (!allProdsErr && Array.isArray(allProds) && allProds.length > 0) {
-          allProds.forEach(p => {
-            const key = p.id || p.title;
+    if (combinedProducts.length === 0) {
+      for (const [_, list] of inMemoryStore.products.entries()) {
+        if (Array.isArray(list) && list.length > 0) {
+          list.forEach(p => {
+            const key = String(p.id || p.title).trim();
             if (!seenIds.has(key)) {
               seenIds.add(key);
               combinedProducts.push(p);
@@ -273,93 +311,105 @@ app.get('/api/products-by-slug/:storeSlug', async (req, res) => {
           });
         }
       }
-    } catch (e) {
-      console.error('[Server DB] Supabase get products-by-slug exception:', e);
     }
+
+    res.status(200).json(combinedProducts);
+  } catch (error) {
+    console.error('[API Error in handleGetProductsBySlug]:', error);
+    res.status(200).json([]);
   }
+};
 
-  const memProducts = [
-    ...(inMemoryStore.products.get(merchantId) || []),
-    ...(inMemoryStore.products.get(storeSlug) || []),
-    ...(inMemoryStore.products.get('default') || [])
-  ];
+app.get('/api/products-by-slug', handleGetProductsBySlug);
+app.get('/api/products-by-slug/:storeSlug', handleGetProductsBySlug);
 
-  memProducts.forEach(p => {
-    const key = p.id || p.title;
-    if (!seenIds.has(key)) {
-      seenIds.add(key);
-      combinedProducts.push(p);
-    }
-  });
+// Categories by Slug API
+const handleGetCategoriesBySlug = async (req: express.Request, res: express.Response) => {
+  try {
+    const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
+    const storeSlug = rawSlug || 'aminfashionbd';
+    let merchantId = storeSlug;
 
-  if (combinedProducts.length === 0) {
-    for (const [_, list] of inMemoryStore.products.entries()) {
-      if (Array.isArray(list) && list.length > 0) {
-        list.forEach(p => {
-          const key = p.id || p.title;
-          if (!seenIds.has(key)) {
-            seenIds.add(key);
-            combinedProducts.push(p);
-          }
-        });
+    if (supabaseAdmin) {
+      try {
+        const { data: mData } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
+        if (mData && mData.id) {
+          merchantId = mData.id;
+        }
+      } catch (e) {
+        console.error('[API DB: /api/categories-by-slug] Merchant lookup error:', e);
       }
     }
-  }
 
-  res.json(combinedProducts);
-});
-
-app.get('/api/categories-by-slug/:storeSlug', async (req, res) => {
-  const { storeSlug } = req.params;
-  let merchantId = storeSlug;
-
-  if (supabaseAdmin) {
-    try {
-      const { data: mData } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
-      if (mData && mData.id) {
-        merchantId = mData.id;
-      }
-    } catch (e) {
-      console.error('[Server DB] Error fetching merchant for categories-by-slug:', e);
+    const memMerchant = inMemoryStore.merchants.get(storeSlug);
+    if (memMerchant && memMerchant.id) {
+      merchantId = memMerchant.id;
     }
-  }
 
-  const memMerchant = inMemoryStore.merchants.get(storeSlug);
-  if (memMerchant && memMerchant.id) {
-    merchantId = memMerchant.id;
-  }
-
-  if (supabaseAdmin) {
-    try {
-      const { data: catData, error } = await supabaseAdmin
-        .from('categories')
-        .select('*')
-        .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
-      if (!error && catData && catData.length > 0) {
-        return res.json(catData);
+    if (supabaseAdmin) {
+      try {
+        const { data: catData, error } = await supabaseAdmin
+          .from('categories')
+          .select('*')
+          .or(`merchantId.eq.${merchantId},merchant_id.eq.${merchantId},store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},store_id.eq.${merchantId},store_id.eq.${storeSlug},merchantId.eq.${storeSlug},merchant_id.eq.${storeSlug}`);
+        if (!error && Array.isArray(catData) && catData.length > 0) {
+          return res.status(200).json(catData);
+        }
+        const { data: allCats, error: allCatsErr } = await supabaseAdmin.from('categories').select('*');
+        if (!allCatsErr && Array.isArray(allCats) && allCats.length > 0) {
+          return res.status(200).json(allCats);
+        }
+      } catch (e) {
+        console.error('[API DB: /api/categories-by-slug] Supabase categories error:', e);
       }
-      const { data: allCats, error: allCatsErr } = await supabaseAdmin.from('categories').select('*');
-      if (allCatsErr) {
-        console.error('[Server DB] Error fetching all categories:', allCatsErr);
-      } else if (allCats && allCats.length > 0) {
-        return res.json(allCats);
-      }
-    } catch (e) {
-      console.error('[Server DB] Supabase get categories-by-slug exception:', e);
     }
-  }
 
-  const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || inMemoryStore.categories.get('default') || [];
-  if (memCats.length > 0) {
-    return res.json(memCats);
-  }
+    const memCats = inMemoryStore.categories.get(merchantId) || inMemoryStore.categories.get(storeSlug) || inMemoryStore.categories.get('default') || [];
+    if (memCats.length > 0) {
+      return res.status(200).json(memCats);
+    }
 
-  for (const [_, list] of inMemoryStore.categories.entries()) {
-    if (list && list.length > 0) return res.json(list);
-  }
+    for (const [_, list] of inMemoryStore.categories.entries()) {
+      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
+    }
 
-  res.json([]);
-});
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('[API Error in handleGetCategoriesBySlug]:', error);
+    res.status(200).json([]);
+  }
+};
+
+app.get('/api/categories-by-slug', handleGetCategoriesBySlug);
+app.get('/api/categories-by-slug/:storeSlug', handleGetCategoriesBySlug);
+
+// Categories API
+const handleGetCategories = async (req: express.Request, res: express.Response) => {
+  try {
+    const merchantId = (req.params.merchantId || req.query.merchantId || '').toString().trim();
+    if (supabaseAdmin && merchantId) {
+      try {
+        const { data, error } = await supabaseAdmin.from('categories').select('*').eq('merchantId', merchantId);
+        if (!error && Array.isArray(data) && data.length > 0) return res.status(200).json(data);
+      } catch (e) {
+        console.error('[API DB: /api/categories] Supabase get categories error:', e);
+      }
+    }
+    const memCats = merchantId ? (inMemoryStore.categories.get(merchantId) || []) : [];
+    if (memCats.length > 0) return res.status(200).json(memCats);
+
+    for (const [_, list] of inMemoryStore.categories.entries()) {
+      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
+    }
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('[API Error in handleGetCategories]:', error);
+    res.status(200).json([]);
+  }
+};
+
+app.get('/api/categories', handleGetCategories);
+app.get('/api/categories/:merchantId', handleGetCategories);
 
 app.post('/api/products', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -512,44 +562,83 @@ app.post('/api/merchants/update', async (req, res) => {
   res.json({ success: true, data: merchantData });
 });
 
-app.get('/api/merchants/slug/:storeSlug', async (req, res) => {
-  const { storeSlug } = req.params;
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin.from('merchants').select('*').eq('store_slug', storeSlug).maybeSingle();
-      if (!error && data) {
-        return res.json({
-          ...data,
-          storeName: data.store_name || data.storeName || 'My Store',
-          storeSlug: data.store_slug || data.storeSlug || storeSlug,
-          ownerName: data.owner_name || data.ownerName || '',
-          logoUrl: data.logo_url || data.logoUrl || '',
-          themeConfig: data.theme_config || data.themeConfig || {},
-          shippingConfig: data.shipping_config || data.shippingConfig,
-          paymentMethods: data.payment_methods || data.paymentMethods,
-          tracking: data.tracking || data.tracking,
-        });
+// Merchant Lookup by Slug
+const handleGetMerchantBySlug = async (req: express.Request, res: express.Response) => {
+  try {
+    const rawSlug = (req.params.storeSlug || req.query.storeSlug || req.query.slug || '').toString().trim();
+    const storeSlug = rawSlug || 'aminfashionbd';
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin.from('merchants').select('*').or(`store_slug.eq.${storeSlug},storeSlug.eq.${storeSlug},slug.eq.${storeSlug},id.eq.${storeSlug}`).maybeSingle();
+        if (!error && data) {
+          return res.status(200).json({
+            ...data,
+            storeName: data.store_name || data.storeName || 'My Store',
+            storeSlug: data.store_slug || data.storeSlug || storeSlug,
+            ownerName: data.owner_name || data.ownerName || '',
+            logoUrl: data.logo_url || data.logoUrl || '',
+            themeConfig: data.theme_config || data.themeConfig || {},
+            shippingConfig: data.shipping_config || data.shippingConfig,
+            paymentMethods: data.payment_methods || data.paymentMethods,
+            tracking: data.tracking || data.tracking,
+          });
+        }
+      } catch (e) {
+        console.error('[API DB: /api/merchants/slug] Supabase merchant lookup error:', e);
       }
-    } catch (e) {
-      // Fallback
     }
+
+    const mem = inMemoryStore.merchants.get(storeSlug) || inMemoryStore.merchants.get('aminfashionbd');
+    if (mem) return res.status(200).json(mem);
+
+    // Fallback default merchant
+    res.status(200).json({
+      storeName: 'Amin Fashion BD',
+      storeSlug: 'aminfashionbd',
+      ownerName: 'Al-Amin Hossain',
+      email: 'mmalamin9912@gmail.com',
+      phone: '+880 1812-345678',
+      subscription_plan: 'enterprise',
+      subscriptionPlan: 'enterprise',
+      themeConfig: {},
+    });
+  } catch (error) {
+    console.error('[API Error in handleGetMerchantBySlug]:', error);
+    res.status(200).json(null);
   }
-  const mem = inMemoryStore.merchants.get(storeSlug);
-  if (mem) return res.json(mem);
-  res.json(null);
-});
-app.get('/api/customers/:merchantId', async (req, res) => {
-  const { merchantId } = req.params;
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin.from('customers').select('*').eq('merchantId', merchantId);
-      if (!error && data) return res.json(data);
-    } catch (e) {
-      console.warn('Supabase get customers error:', e);
+};
+
+app.get('/api/merchants/slug', handleGetMerchantBySlug);
+app.get('/api/merchants/slug/:storeSlug', handleGetMerchantBySlug);
+
+// Customers API
+const handleGetCustomers = async (req: express.Request, res: express.Response) => {
+  try {
+    const merchantId = (req.params.merchantId || req.query.merchantId || '').toString().trim();
+    if (supabaseAdmin && merchantId) {
+      try {
+        const { data, error } = await supabaseAdmin.from('customers').select('*').eq('merchantId', merchantId);
+        if (!error && Array.isArray(data) && data.length > 0) return res.status(200).json(data);
+      } catch (e) {
+        console.error('[API DB: /api/customers] Supabase customers error:', e);
+      }
     }
+    const memList = merchantId ? (inMemoryStore.customers.get(merchantId) || []) : [];
+    if (memList.length > 0) return res.status(200).json(memList);
+
+    for (const [_, list] of inMemoryStore.customers.entries()) {
+      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
+    }
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('[API Error in handleGetCustomers]:', error);
+    res.status(200).json([]);
   }
-  res.json(inMemoryStore.customers.get(merchantId) || []);
-});
+};
+
+app.get('/api/customers', handleGetCustomers);
+app.get('/api/customers/:merchantId', handleGetCustomers);
 
 app.post('/api/customers', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -563,12 +652,12 @@ app.post('/api/customers', async (req, res) => {
   if (supabaseAdmin) {
     try {
       const { data, error } = await supabaseAdmin.from('customers').upsert(payload);
-      if (!error) return res.json(data || payload);
+      if (!error) return res.status(200).json(data || payload);
     } catch (e) {
       console.warn('Supabase save customers error:', e);
     }
   }
-  res.json(payload);
+  res.status(200).json(payload);
 });
 
 app.delete('/api/customers/:id', async (req, res) => {
@@ -580,27 +669,41 @@ app.delete('/api/customers/:id', async (req, res) => {
   if (supabaseAdmin) {
     try {
       const { error } = await supabaseAdmin.from('customers').delete().eq('id', id);
-      if (!error) return res.json({ success: true });
+      if (!error) return res.status(200).json({ success: true });
     } catch (e) {
       console.warn('Supabase delete customer error:', e);
     }
   }
-  res.json({ success: true });
+  res.status(200).json({ success: true });
 });
 
 // Order API
-app.get('/api/orders/:merchantId', async (req, res) => {
-  const { merchantId } = req.params;
-  if (supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin.from('orders').select('*').eq('merchantId', merchantId);
-      if (!error && data) return res.json(data);
-    } catch (e) {
-      console.warn('Supabase get orders error:', e);
+const handleGetOrders = async (req: express.Request, res: express.Response) => {
+  try {
+    const merchantId = (req.params.merchantId || req.query.merchantId || '').toString().trim();
+    if (supabaseAdmin && merchantId) {
+      try {
+        const { data, error } = await supabaseAdmin.from('orders').select('*').eq('merchantId', merchantId);
+        if (!error && Array.isArray(data) && data.length > 0) return res.status(200).json(data);
+      } catch (e) {
+        console.error('[API DB: /api/orders] Supabase orders error:', e);
+      }
     }
+    const memOrders = merchantId ? (inMemoryStore.orders.get(merchantId) || []) : [];
+    if (memOrders.length > 0) return res.status(200).json(memOrders);
+
+    for (const [_, list] of inMemoryStore.orders.entries()) {
+      if (Array.isArray(list) && list.length > 0) return res.status(200).json(list);
+    }
+    res.status(200).json([]);
+  } catch (error) {
+    console.error('[API Error in handleGetOrders]:', error);
+    res.status(200).json([]);
   }
-  res.json(inMemoryStore.orders.get(merchantId) || []);
-});
+};
+
+app.get('/api/orders', handleGetOrders);
+app.get('/api/orders/:merchantId', handleGetOrders);
 
 app.post('/api/orders', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -617,12 +720,12 @@ app.post('/api/orders', async (req, res) => {
   if (supabaseAdmin) {
     try {
       const { data, error } = await supabaseAdmin.from('orders').upsert(payload);
-      if (!error) return res.json(data || payload);
+      if (!error) return res.status(200).json(data || payload);
     } catch (e) {
       console.warn('Supabase save orders error:', e);
     }
   }
-  res.json(payload);
+  res.status(200).json(payload);
 });
 
 // Gemini AI Setup with Resilient Multi-Model Failover & Rate-Limit Shield
@@ -1250,6 +1353,28 @@ async function handleLogin(req: express.Request, res: express.Response) {
 
 app.post('/api/login', handleLogin);
 app.post('/api/auth/login', handleLogin);
+
+// Explicit API 404 handler to prevent unhandled /api/* routes from falling through to Vite HTML
+app.all('/api/*', (req, res) => {
+  console.warn(`[API 404] Endpoint not found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    error: 'API endpoint not found',
+    path: req.originalUrl,
+    method: req.method
+  });
+});
+
+// Express global error handler for /api/*
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[API Uncaught Exception]', err);
+  if (req.path && req.path.startsWith('/api/')) {
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: err?.message || String(err)
+    });
+  }
+  next(err);
+});
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

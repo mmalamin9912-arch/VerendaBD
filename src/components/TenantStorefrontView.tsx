@@ -283,11 +283,25 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         }
       }
 
+      // Helper to safely fetch JSON and avoid HTML doctype parse errors
+      const safeFetchApi = async (url: string) => {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          const contentType = res.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) return null;
+          const text = await res.text();
+          if (!text || text.trim().startsWith('<')) return null;
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      };
+
       // 2. Fallback & REST API Aggregation (always query to ensure any added products like Water Bottle Dispenser are loaded)
-      try {
-        const catRes = await fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
-        if (catRes.ok) {
-          const restCats = await catRes.json();
+      if (storeSlug) {
+        try {
+          const restCats = await safeFetchApi(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
           if (Array.isArray(restCats) && restCats.length > 0) {
             restCats.forEach(c => {
               if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
@@ -295,32 +309,28 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }
             });
           }
+        } catch (apiCatEx) {
+          console.warn('[TenantStorefrontView API] Notice fetching /api/categories-by-slug:', apiCatEx);
         }
-      } catch (apiCatEx) {
-        console.error('[TenantStorefrontView API] ❌ Exception fetching /api/categories-by-slug:', apiCatEx);
       }
 
       if (categoriesFromDb.length === 0 && merchantDbId) {
         try {
-          const catRes2 = await fetch(`/api/categories/${encodeURIComponent(merchantDbId)}`);
-          if (catRes2.ok) {
-            const restCats2 = await catRes2.json();
-            if (Array.isArray(restCats2) && restCats2.length > 0) {
-              restCats2.forEach(c => {
-                if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
-                  categoriesFromDb.push(c);
-                }
-              });
-            }
+          const restCats2 = await safeFetchApi(`/api/categories/${encodeURIComponent(merchantDbId)}`);
+          if (Array.isArray(restCats2) && restCats2.length > 0) {
+            restCats2.forEach(c => {
+              if (!categoriesFromDb.some(existing => (existing.id && existing.id === c.id) || (existing.name && existing.name.toLowerCase() === (c.name || '').toLowerCase()))) {
+                categoriesFromDb.push(c);
+              }
+            });
           }
         } catch (e) {}
       }
 
       // Fetch products via REST endpoints
-      try {
-        const prodRes = await fetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
-        if (prodRes.ok) {
-          const restProds = await prodRes.json();
+      if (storeSlug) {
+        try {
+          const restProds = await safeFetchApi(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`);
           if (Array.isArray(restProds) && restProds.length > 0) {
             restProds.forEach(p => {
               const alreadyExists = productsFromDb.some(existing => 
@@ -332,45 +342,39 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               }
             });
           }
+        } catch (apiProdEx) {
+          console.warn('[TenantStorefrontView API] Notice fetching /api/products-by-slug:', apiProdEx);
         }
-      } catch (apiProdEx) {
-        console.error('[TenantStorefrontView API] ❌ Exception fetching /api/products-by-slug:', apiProdEx);
       }
 
       if (merchantDbId) {
         try {
-          const prodRes2 = await fetch(`/api/products/${encodeURIComponent(merchantDbId)}`);
-          if (prodRes2.ok) {
-            const restProds2 = await prodRes2.json();
-            if (Array.isArray(restProds2) && restProds2.length > 0) {
-              restProds2.forEach(p => {
-                const alreadyExists = productsFromDb.some(existing => 
-                  (existing.id && existing.id === p.id) || 
-                  (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
-                );
-                if (!alreadyExists) {
-                  productsFromDb.push(p);
-                }
-              });
-            }
+          const restProds2 = await safeFetchApi(`/api/products/${encodeURIComponent(merchantDbId)}`);
+          if (Array.isArray(restProds2) && restProds2.length > 0) {
+            restProds2.forEach(p => {
+              const alreadyExists = productsFromDb.some(existing => 
+                (existing.id && existing.id === p.id) || 
+                (existing.title && existing.title.trim().toLowerCase() === (p.title || '').trim().toLowerCase())
+              );
+              if (!alreadyExists) {
+                productsFromDb.push(p);
+              }
+            });
           }
         } catch (e) {}
       }
 
-      if (!merchantUpdated) {
+      if (!merchantUpdated && storeSlug) {
         try {
-          const mRes = await fetch(`/api/merchants/slug/${encodeURIComponent(storeSlug)}`);
-          if (mRes.ok) {
-            const restMerchant = await mRes.json();
-            if (restMerchant && isMounted) {
-              setLocalMerchant(prev => ({
-                ...prev,
-                ...restMerchant,
-                storeName: restMerchant.storeName || restMerchant.store_name || prev.storeName,
-                logoUrl: restMerchant.logoUrl || restMerchant.logo_url || prev.logoUrl,
-                themeConfig: restMerchant.themeConfig || restMerchant.theme_config || prev.themeConfig,
-              }));
-            }
+          const restMerchant = await safeFetchApi(`/api/merchants/slug/${encodeURIComponent(storeSlug)}`);
+          if (restMerchant && isMounted) {
+            setLocalMerchant(prev => ({
+              ...prev,
+              ...restMerchant,
+              storeName: restMerchant.storeName || restMerchant.store_name || prev.storeName,
+              logoUrl: restMerchant.logoUrl || restMerchant.logo_url || prev.logoUrl,
+              themeConfig: restMerchant.themeConfig || restMerchant.theme_config || prev.themeConfig,
+            }));
           }
         } catch (e) {}
       }
