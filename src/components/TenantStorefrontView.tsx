@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
 import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut } from 'lucide-react';
-import { readZidStoreData, subscribeToZidStoreData, type ZidStoreData } from '../lib/storeData';
+import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
 
 interface TenantStorefrontViewProps {
   storeSlug: string;
@@ -33,7 +33,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     let active = true;
     const loadStorefront = async () => {
       try {
-        const response = await fetch(`/api/storefront?store_slug=${encodeURIComponent(storeSlug)}`, { headers: { Accept: 'application/json' } });
+        const response = await fetch(`/api/storefront?store_slug=${encodeURIComponent(storeSlug)}`, {
+          cache: 'no-store',
+          headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        });
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
         const payload = await response.json();
         if (active && payload?.storefront) {

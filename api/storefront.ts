@@ -1,10 +1,15 @@
-import { getTenant, publicTenant, saveTenant } from './_tenantStore';
+import { getTenant, publicTenant, saveTenant } from './tenantStore';
 
 type Request = { method?: string; query: Record<string, string | string[] | undefined>; body?: Record<string, unknown> };
 type Response = { status: (status: number) => Response; json: (body: unknown) => unknown; setHeader: (name: string, value: string) => void };
 const reply = (res: Response, status: number, body: Record<string, unknown>) => res.status(status).json(body);
 
 export default async function handler(req: Request, res: Response) {
+  // Categories must be read fresh: a category can exist before any products are
+  // assigned to it, so storefront data cannot be derived from product results.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('CDN-Cache-Control', 'no-store');
+  res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
   const storeSlug = typeof req.query.store_slug === 'string' ? req.query.store_slug.trim() : typeof req.body?.store_slug === 'string' ? req.body.store_slug.trim() : '';
   if (!storeSlug) return reply(res, 400, { ok: false, error: 'store_slug is required' });
   try {
