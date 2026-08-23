@@ -227,7 +227,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       </div>
 
       {/* Render sub-views if sub-tab is not 'all_products' */}
-      {activeSubTab === 'categories' && <CategoriesView products={products} merchant={merchant} onUpdateProducts={onUpdateProducts} onSelectSubTab={onSelectSubTab} onOpenSubscriptionModal={onOpenSubscriptionModal} />}
+      {activeSubTab === 'categories' && <CategoriesView products={products} storeSlug={merchant?.storeSlug || 'default'} onOpenSubscriptionModal={onOpenSubscriptionModal} />}
       {activeSubTab === 'inventory' && <InventoryView products={products} onUpdateProducts={onUpdateProducts} />}
       {activeSubTab === 'preorder_campaigns' && <PreorderView products={products} />}
       {activeSubTab === 'stock_changes' && <StockChangesView />}

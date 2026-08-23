@@ -58,7 +58,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 }) => {
   // Master Category List with Multi-Level Hierarchy & LocalStorage persistence
   const [categories, setCategories] = useState<CategoryNode[]>(() => {
-    const saved = localStorage.getItem('zid_store_categories_v2');
+    const saved = localStorage.getItem(`zid_store_categories_v2:${storeSlug}`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -67,7 +67,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         // Fallback
       }
     }
-    return [];
+    const storefrontCategories = readZidStoreData(storeSlug).categories;
+    return Array.isArray(storefrontCategories) ? storefrontCategories as CategoryNode[] : [];
     return [
       {
         id: 'cat-home',
@@ -184,7 +185,12 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     const controller = new AbortController();
     const loadCategories = async () => {
       try {
-        const response = await fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, { method: 'GET', signal: controller.signal, headers: { Accept: 'application/json' } });
+        const response = await fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, {
+          method: 'GET',
+          signal: controller.signal,
+          cache: 'no-store',
+          headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        });
         const contentType = response.headers.get('content-type') || '';
         if (!response.ok || !contentType.includes('application/json')) return;
         const payload = await response.json();
@@ -203,13 +209,13 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
 
   // Persist reordered categories sequence to localStorage
   useEffect(() => {
-    localStorage.setItem('zid_store_categories_v2', JSON.stringify(categories));
+    localStorage.setItem(`zid_store_categories_v2:${storeSlug}`, JSON.stringify(categories));
     writeZidStoreData({ categories }, storeSlug);
     fetch(`/api/storefront?store_slug=${encodeURIComponent(storeSlug)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ patch: { categories } }),
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ patch: { categories } }),
     }).catch(() => undefined);
     fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories }),
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ categories }),
     }).catch(() => undefined);
   }, [categories]);
 
