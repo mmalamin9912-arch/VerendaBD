@@ -1,0 +1,257 @@
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+
+export type Language = 'en' | 'bn';
+
+const STORAGE_KEY = 'zid_language';
+
+export const translations: Record<Language, Record<string, string>> = {
+  en: {
+    // ---------- Shared / App chrome ----------
+    'welcome': 'Welcome to ZidSaaS BD',
+    'sign_in': 'Sign In',
+    'sign_up': 'Sign Up',
+    'start_free_trial': 'Start Free Trial',
+    'go_to_dashboard': 'Go to Dashboard',
+
+    // ---------- Storefront ----------
+    'sf_home': 'Home',
+    'sf_shop_all': 'Shop All',
+    'sf_sarees_ethnic': 'Sarees & Ethnic',
+    'sf_flash_sale': 'Flash Sale',
+    'sf_track_order': 'Track Order',
+    'sf_search_placeholder': 'Search products...',
+    'sf_announcement_default': '🎉 Free Nationwide Shipping across Bangladesh on Orders Over ৳2,000!',
+    'sf_new_arrivals': 'New Arrivals',
+    'sf_hero_fallback_title': 'Eid Ul Adha Special Collection 2026',
+    'sf_hero_fallback_subtitle': 'Discover authentic Jamdani and modern ethnic wear with fast bKash checkout.',
+    'sf_shop_collection': 'Shop Collection',
+    'sf_popular_categories': 'Popular Categories',
+    'sf_shop_by_category': 'Shop by category',
+    'sf_view_all': 'View All',
+    'sf_products': 'Products',
+    'sf_discover_collection': "Discover this merchant's collection",
+    'sf_see_more': 'See More',
+    'sf_no_products': 'No products added yet',
+    'sf_no_products_desc': 'This merchant has not published products yet. Please check back soon.',
+    'sf_my_orders': 'My Orders',
+    'sf_sign_out': 'Sign Out',
+    'sf_customer_sign_in': 'Customer Sign In',
+    'sf_cart_items': 'Shopping Cart',
+    'sf_customer_account': 'Customer Account',
+    'sf_auth_subtitle': 'Track orders, manage your checkout profile, and return to your dashboard instantly.',
+    'sf_auth_create_account': 'Create Account',
+    'sf_auth_full_name': 'Full Name',
+    'sf_auth_email': 'Email Address',
+    'sf_auth_phone': 'Phone Number',
+    'sf_auth_password': 'Password',
+    'sf_auth_name_placeholder': 'Your full name',
+    'sf_footer_powered': 'Powered by ZidSaaS BD',
+    'sf_loading_storefront': 'Loading Storefront',
+    'sf_tab_home': 'Home',
+    'sf_tab_orders': 'Orders',
+    'sf_tab_profile': 'Profile',
+    'sf_sign_in_required': 'Sign in required',
+    'sf_sign_in_to_view_orders': 'Sign in to view your orders, return requests and reviews.',
+    'sf_sign_in_to_profile': 'Sign in to view and manage your profile.',
+    'sf_delivered_banner_title': '🎉 Order Delivered!',
+    'sf_delivered_banner': 'Welcome to my app! After delivery, please check the product first, then complete your payment, and if you like the product, please leave a review.',
+    'sf_no_orders': 'No orders are linked to this account yet. Place your first order from the storefront catalog.',
+    'sf_token_return': 'Token / Return Request',
+    'sf_select_order': 'Select an order',
+    'sf_return_reason_placeholder': 'Why do you want to return this order?',
+    'sf_submit_return': 'Submit Return Request',
+    'sf_return_history': 'Return request history',
+    'sf_token': 'Token',
+    'sf_reviews': 'Product Reviews',
+    'sf_no_reviews': 'No reviews yet. Share your feedback after receiving a delivered order.',
+    'sf_share_facebook': 'Share to Facebook',
+    'sf_write_review': 'Write a review',
+    'sf_review_placeholder': 'How was your product? Share your honest feedback...',
+    'sf_submit_review': 'Submit Review',
+    'sf_select_order_first': 'Please select an order first.',
+    'sf_return_reason_required': 'Please write a reason for the return.',
+    'sf_return_submitted': 'Return request submitted. Your token is',
+    'sf_review_required': 'Please select a star rating and write a short review.',
+    'sf_review_submitted': 'Thanks! Your review has been submitted.',
+    'sf_language': 'Language',
+
+    // ---------- Landing / Pricing ----------
+    'land_launch_badge': 'Launch Your Dream Store Today',
+    'land_hero_title_1': 'Everything You Need to',
+    'land_hero_title_2': 'Sell Online in Bangladesh',
+    'land_hero_subtitle': 'Create your professional online store in minutes. 0% Commission on sales. Local payment gateways built right in.',
+    'land_free_trial': 'Free Trial',
+    'land_free_trial_desc': 'Experience the full platform risk-free for 30 days.',
+    'land_days': 'Days',
+    'land_subscribe_now': 'Subscribe Now',
+    'land_most_popular': 'Most Popular',
+    'land_plan_desc': 'Perfect for growing businesses.',
+
+    // ---------- Auth / Login ----------
+    'auth_badge': 'ZID SAAS Bangladesh',
+    'auth_welcome_back': 'Welcome back!',
+    'auth_welcome_subtitle': "Let's get you back to what matters.",
+    'auth_email_label': 'Email',
+    'auth_password_label': 'Password',
+    'auth_login_btn': 'Login to Dashboard',
+    'auth_continue_email': 'Continue with Email',
+    'auth_signin_with_email': 'Or direct sign in / profile setup',
+    'auth_google_title': 'Sign in with Google',
+    'auth_google_subtitle': 'Enter your Gmail address to continue',
+    'auth_slide_ai_title': 'Connect with AI tools',
+    'auth_slide_ai_desc': 'AI-powered store assistant for auto inventory & sales updates.',
+    'auth_slide_courier_title': 'Automated Courier Shipping',
+    'auth_slide_courier_desc': 'One-click order dispatch with Steadfast, Pathao & Courier APIs.',
+    'auth_slide_checkout_title': 'Express Checkout & bKash',
+    'auth_slide_checkout_desc': 'Fast 1-click checkout for maximum conversion rates.',
+    'auth_slide_nbr_title': 'NBR Mushak 6.3 Invoicing',
+    'auth_slide_nbr_desc': 'Compliant e-invoicing and VAT tax management made easy.',
+  },
+bn: {
+    // ---------- Shared / App chrome ----------
+    'welcome': 'ZidSaaS বিডি-তে স্বাগতম',
+    'sign_in': 'সাইন ইন',
+    'sign_up': 'সাইন আপ',
+    'start_free_trial': 'ফ্রি ট্রায়াল শুরু করুন',
+    'go_to_dashboard': 'ড্যাশবোর্ডে যান',
+
+    // ---------- Storefront ----------
+    'sf_home': 'হোম',
+    'sf_shop_all': 'সব কিনুন',
+    'sf_sarees_ethnic': 'শাড়ি ও এথনিক',
+    'sf_flash_sale': 'ফ্ল্যাশ সেল',
+    'sf_track_order': 'অর্ডার ট্র্যাক করুন',
+    'sf_search_placeholder': 'পণ্য খুঁজুন...',
+    'sf_announcement_default': '🎉 ৳২,০০০+ অর্ডারে সারাদেশে ফ্রি ডেলিভারি!',
+    'sf_new_arrivals': 'নতুন কালেকশন',
+    'sf_hero_fallback_title': 'ঈদুল আজহার বিশেষ কালেকশন ২০২৬',
+    'sf_hero_fallback_subtitle': 'প্রামাণিক জামদানি ও আধুনিক এথনিক পোশাক দ্রুত বিকাশ চেকআউটে।',
+    'sf_shop_collection': 'কালেকশন দেখুন',
+    'sf_popular_categories': 'জনপ্রিয় ক্যাটাগরি',
+    'sf_shop_by_category': 'ক্যাটাগরি অনুযায়ী কেনাকাটা',
+    'sf_view_all': 'সব দেখুন',
+    'sf_products': 'পণ্যসমূহ',
+    'sf_discover_collection': 'এই মার্চেন্টের কালেকশন দেখুন',
+    'sf_see_more': 'আরও দেখুন',
+    'sf_no_products': 'এখনো কোনো পণ্য যোগ করা হয়নি',
+    'sf_no_products_desc': 'এই মার্চেন্ট এখনো কোনো পণ্য প্রকাশ করেনি। পরে আবার দেখুন।',
+    'sf_my_orders': 'আমার অর্ডার',
+    'sf_sign_out': 'সাইন আউট',
+    'sf_customer_sign_in': 'কাস্টমার সাইন ইন',
+    'sf_cart_items': 'শপিং কার্ট',
+    'sf_customer_account': 'কাস্টমার অ্যাকাউন্ট',
+    'sf_auth_subtitle': 'অর্ডার ট্র্যাক করুন, চেকআউট প্রোফাইল ম্যানেজ করুন এবং সাথে সাথে ড্যাশবোর্ডে ফিরুন।',
+    'sf_auth_create_account': 'অ্যাকাউন্ট খুলুন',
+    'sf_auth_full_name': 'পুরো নাম',
+    'sf_auth_email': 'ইমেইল ঠিকানা',
+    'sf_auth_phone': 'মোবাইল নম্বর',
+    'sf_auth_password': 'পাসওয়ার্ড',
+    'sf_auth_name_placeholder': 'আপনার পুরো নাম',
+    'sf_footer_powered': 'ZidSaaS বিডি',
+    'sf_loading_storefront': 'স্টোরফ্রন্ট লোড হচ্ছে',
+    'sf_tab_home': 'হোম',
+    'sf_tab_orders': 'অর্ডার',
+    'sf_tab_profile': 'প্রোফাইল',
+    'sf_sign_in_required': 'সাইন ইন করুন',
+        'sf_sign_in_to_view_orders': 'আপনার অর্ডার, রিটার্ন রিকোয়েস্ট ও রিভিউ দেখতে সাইন ইন করুন।',
+    'sf_sign_in_to_profile': 'আপনার প্রোফাইল দেখতে ও ম্যানেজ করতে সাইন ইন করুন।',
+    'sf_delivered_banner_title': '🎉 অর্ডার ডেলিভারি হয়েছে!',
+    'sf_delivered_banner': 'আপনাকে স্বাগতম আমার অ্যাপ থেকে। ডেলিভারি পাওয়ার পরে সেটা চেক করবেন তারপরে টাকা পেমেন্ট করুন, আর পণ্য ভালো হলে অবশ্যই রিভিউ দেন।',
+    'sf_no_orders': 'এখনো এই অ্যাকাউন্টে কোনো অর্ডার যুক্ত নেই। স্টোরফ্রন্ট থেকে আপনার প্রথম অর্ডার দিন।',
+    'sf_token_return': 'টোকেন / রিটার্ন রিকোয়েস্ট',
+    'sf_select_order': 'অর্ডার নির্বাচন করুন',
+    'sf_return_reason_placeholder': 'কেন এই অর্ডার রিটার্ন করতে চান?',
+    'sf_submit_return': 'রিটার্ন রিকোয়েস্ট জমা দিন',
+    'sf_return_history': 'রিটার্ন রিকোয়েস্টের ইতিহাস',
+    'sf_token': 'টোকেন',
+    'sf_reviews': 'পণ্য রিভিউ',
+    'sf_no_reviews': 'এখনো কোনো রিভিউ নেই। ডেলিভারি পাওয়ার পর আপনার ফিডব্যাক দিন।',
+    'sf_share_facebook': 'ফেসবুকে শেয়ার করুন',
+    'sf_write_review': 'রিভিউ লিখুন',
+    'sf_review_placeholder': 'পণ্যটি কেমন ছিল? আপনার সত্যিকারের অভিজ্ঞতা জানান...',
+    'sf_submit_review': 'রিভিউ জমা দিন',
+    'sf_select_order_first': 'আগে একটি অর্ডার নির্বাচন করুন।',
+    'sf_return_reason_required': 'রিটার্নের কারণ লিখুন।',
+    'sf_return_submitted': 'রিটার্ন রিকোয়েস্ট জমা হয়েছে। আপনার টোকেন',
+    'sf_review_required': 'অনুগ্রহ করে স্টার রেটিং ও ছোট একটি রিভিউ লিখুন।',
+    'sf_review_submitted': 'ধন্যবাদ! আপনার রিভিউ জমা হয়েছে।',
+    'sf_language': 'ভাষা',
+
+    // ---------- Landing / Pricing ----------
+    'land_launch_badge': 'আজই আপনার স্বপ্নের স্টোর চালু করুন',
+    'land_hero_title_1': 'বাংলাদেশে অনলাইনে বিক্রি করার জন্য',
+    'land_hero_title_2': 'আপনার যা যা দরকার',
+    'land_hero_subtitle': 'মিনিটেই আপনার প্রফেশনাল অনলাইন স্টোর তৈরি করুন। বিক্রিতে ০% কমিশন। লোকাল পেমেন্ট গেটওয়ে বিল্ট-ইন।',
+    'land_free_trial': 'ফ্রি ট্রায়াল',
+    'land_free_trial_desc': '৩০ দিন পর্যন্ত সম্পূর্ণ প্ল্যাটফর্ম রিস্ক-ফ্রি ব্যবহার করুন।',
+    'land_days': 'দিন',
+    'land_subscribe_now': 'সাবস্ক্রাইব করুন',
+    'land_most_popular': 'সবচেয়ে জনপ্রিয়',
+    'land_plan_desc': 'বর্ধনশীল ব্যবসার জন্য পারফেক্ট।',
+
+    // ---------- Auth / Login ----------
+    'auth_badge': 'জি়আইডি সাস — বাংলাদেশ',
+    'auth_welcome_back': 'আবারও স্বাগতম!',
+    'auth_welcome_subtitle': 'চলুন আবার গুরুত্বপূর্ণ জায়গায় ফিরি।',
+    'auth_email_label': 'ইমেইল',
+    'auth_password_label': 'পাসওয়ার্ড',
+    'auth_login_btn': 'ড্যাশবোর্ডে লগইন করুন',
+    'auth_continue_email': 'ইমেইল দিয়ে চালিয়ে যান',
+    'auth_signin_with_email': 'অথবা সরাসরি সাইন ইন / প্রোফাইল সেটআপ',
+    'auth_google_title': 'গুগল দিয়ে সাইন ইন করুন',
+    'auth_google_subtitle': 'চালিয়ে যেতে আপনার জিমেইল ঠিকানা দিন',
+    'auth_slide_ai_title': 'এআই টুলের সাথে সংযোগ করুন',
+    'auth_slide_ai_desc': 'অটো ইনভেন্টরি ও সেলস আপডেটের জন্য এআই-চালিত স্টোর অ্যাসিস্ট্যান্ট।',
+    'auth_slide_courier_title': 'অটোমেটেড কুরিয়ার শিপিং',
+    'auth_slide_courier_desc': 'স্টেফাস্ট, পাঠাও ও কুরিয়ার API-তে এক ক্লিকে অর্ডার ডিসপ্যাচ।',
+    'auth_slide_checkout_title': 'এক্সপ্রেস চেকআউট ও বিকাশ',
+    'auth_slide_checkout_desc': 'সর্বোচ্চ কনভার্শনের জন্য ফাস্ট ১-ক্লিক চেকআউট।',
+    'auth_slide_nbr_title': 'এনবিআর মুশক ৬.৩ ইনভয়েসিং',
+    'auth_slide_nbr_desc': 'সহজে কমপ্লায়েন্ট ই-ইনভয়েস ও ভ্যাট ব্যবস্থাপনা।',
+  },
+};
+
+interface LanguageContextValue {
+  lang: Language;
+  setLanguage: (lang: Language) => void;
+  t: (key: string) => string;
+}
+
+const LanguageContext = createContext<LanguageContextValue>({
+  lang: 'en',
+  setLanguage: () => {},
+  t: (key) => key,
+});
+
+export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [lang, setLang] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved === 'bn' || saved === 'en' ? saved : 'en';
+    } catch {
+      return 'en';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, lang);
+      if (typeof document !== 'undefined') {
+        document.documentElement.lang = lang;
+      }
+    } catch {
+      /* storage may be unavailable in privacy mode */
+    }
+  }, [lang]);
+
+  const setLanguage = useCallback((next: Language) => setLang(next), []);
+  const t = useCallback((key: string) => translations[lang][key] ?? key, [lang]);
+
+  return (
+    <LanguageContext.Provider value={{ lang, setLanguage, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+};
+
+export const useLanguage = () => useContext(LanguageContext);

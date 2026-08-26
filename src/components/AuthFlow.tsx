@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MerchantProfile } from '../types';
 import { supabase } from '../lib/supabase';
 import AuthLayout from './AuthLayout';
+import { useLanguage } from '../lib/i18n';
 import { 
   Mail, 
   KeyRound, 
@@ -44,6 +45,7 @@ interface RegisteredUser {
 }
 
 export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerchant, onAdminAccess, initialMode = 'login' }) => {
+  const { t } = useLanguage();
   // Top level auth mode: 'login' (Sign In with password) vs 'signup' (Sign Up with OTP)
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
 
@@ -775,15 +777,15 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider">
             <ShieldCheck className="w-4 h-4" />
-            <span>ZID SAAS Bangladesh</span>
+            <span>{t('auth_badge')}</span>
           </div>
           
           <h1 className="text-2xl font-black text-white tracking-tight">
-            Welcome back!
+            {t('auth_welcome_back')}
           </h1>
           
           <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-            Let's get you back to what matters.
+            {t('auth_welcome_subtitle')}
           </p>
         </div>
 
@@ -802,7 +804,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             }`}
           >
             <LogIn className="w-3.5 h-3.5" />
-            <span>Sign In</span>
+            <span>{t('sign_in')}</span>
           </button>
 
           <button
@@ -815,7 +817,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Create Account</span>
+            <span>{t('sign_up')}</span>
           </button>
         </div>
 
@@ -871,7 +873,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                 }} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                      Email Address
+                      {t('auth_email_label')}
                     </label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -996,7 +998,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                       </>
                     ) : (
                       <>
-                        <span>Sign In</span>
+                        <span>{t('sign_in')}</span>
                         <ArrowRight className="w-4 h-4 stroke-[2.5]" />
                       </>
                     )}
@@ -1037,7 +1039,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                     className="text-xs text-slate-400 hover:text-[#D4AF37] font-medium transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Or direct sign in / profile setup</span>
+                    <span>{t('auth_signin_with_email')}</span>
                   </button>
                 </div>
               </form>

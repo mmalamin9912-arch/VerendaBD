@@ -1,6 +1,8 @@
 import React from 'react';
 import { CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
 import { subscriptionPlans } from '../data/initialData';
+import { LanguageToggle } from './LanguageToggle';
+import { useLanguage } from '../lib/i18n';
 
 interface PublicPricingLandingProps {
   onSelectPlan: (planId: string) => void;
@@ -15,6 +17,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
   isAuthenticated,
   onGoToDashboard
 }) => {
+  const { t } = useLanguage();
   return (
     <div id="pricing-landing-container" className="min-h-screen bg-slate-950 text-white font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col overflow-hidden">
       {/* Navbar */}
@@ -28,13 +31,14 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-4 text-sm font-semibold">
+          <LanguageToggle compact />
           {isAuthenticated && onGoToDashboard ? (
             <button 
               id="pricing-dashboard-btn"
               onClick={onGoToDashboard} 
               className="bg-[#D4AF37] hover:bg-[#e4be42] text-slate-950 px-4 py-2 rounded-xl transition flex items-center gap-2 font-bold cursor-pointer"
             >
-              <span>Go to Dashboard</span>
+              <span>{t('go_to_dashboard')}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           ) : (
@@ -44,14 +48,14 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
                 onClick={onLoginClick} 
                 className="text-slate-300 hover:text-white transition cursor-pointer"
               >
-                Sign In
+                {t('sign_in')}
               </button>
               <button 
                 id="pricing-start-trial-btn"
                 onClick={() => onSelectPlan('free_trial')}
                 className="bg-[#D4AF37] hover:bg-[#e4be42] text-slate-950 px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer font-bold"
               >
-                <span>Start Free Trial</span>
+                <span>{t('start_free_trial')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </>
@@ -63,14 +67,14 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
       <div id="pricing-hero" className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-16 w-full flex flex-col items-center text-center">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider mb-6">
           <Sparkles className="w-4 h-4" />
-          <span>Launch Your Dream Store Today</span>
+          <span>{t('land_launch_badge')}</span>
         </div>
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight mb-6 max-w-4xl">
-          Everything You Need to <br />
-          <span className="text-[#D4AF37]">Sell Online in Bangladesh</span>
+          {t('land_hero_title_1')} <br />
+          <span className="text-[#D4AF37]">{t('land_hero_title_2')}</span>
         </h1>
         <p className="text-base md:text-lg text-slate-400 max-w-2xl mb-12">
-          Create your professional online store in minutes. 0% Commission on sales. Local payment gateways built right in.
+          {t('land_hero_subtitle')}
         </p>
 
         {/* Pricing Grid */}
@@ -78,18 +82,18 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
           
           {/* Free Trial Card */}
           <div id="plan-card-free-trial" className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col text-left hover:border-slate-700 transition-colors relative">
-            <h3 className="text-xl font-bold text-white mb-2">Free Trial</h3>
-            <p className="text-sm text-slate-400 mb-4 h-10">Experience the full platform risk-free for 30 days.</p>
+            <h3 className="text-xl font-bold text-white mb-2">{t('land_free_trial')}</h3>
+            <p className="text-sm text-slate-400 mb-4 h-10">{t('land_free_trial_desc')}</p>
             <div className="mb-6">
               <span className="text-4xl font-black text-white">৳0</span>
-              <span className="text-slate-500"> / 30 Days</span>
+              <span className="text-slate-500"> / 30 {t('land_days')}</span>
             </div>
             <button 
               id="plan-btn-free-trial"
               onClick={() => onSelectPlan('free_trial')}
               className="w-full bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold py-3 rounded-xl mb-6 transition cursor-pointer"
             >
-              Start Free Trial
+              {t('start_free_trial')}
             </button>
             <div className="space-y-3 flex-1">
               {['Up to 20 Products', 'Basic Theme', 'Standard Support'].map((feat, idx) => (
@@ -114,16 +118,16 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
             >
               {plan.isPopular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#D4AF37] text-slate-950 text-[10px] font-black uppercase px-3 py-1 rounded-full whitespace-nowrap">
-                  Most Popular
+                  {t('land_most_popular')}
                 </div>
               )}
               <div className="flex justify-between items-start mb-2">
                 <h3 className="text-xl font-bold text-white">{plan.name}</h3>
               </div>
-              <p className="text-sm text-slate-400 mb-4 h-10">Perfect for growing businesses.</p>
+              <p className="text-sm text-slate-400 mb-4 h-10">{t('land_plan_desc')}</p>
               <div className="mb-6">
                 <span className="text-4xl font-black text-white">৳{plan.price}</span>
-                <span className="text-slate-500"> / {plan.durationDays} Days</span>
+                <span className="text-slate-500"> / {plan.durationDays} {t('land_days')}</span>
               </div>
               <button 
                 id={`plan-btn-${plan.id}`}
@@ -134,7 +138,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
                     : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white'
                 }`}
               >
-                Subscribe Now
+                {t('land_subscribe_now')}
               </button>
               <div className="space-y-3 flex-1">
                 {plan.features.map((feat, idx) => (

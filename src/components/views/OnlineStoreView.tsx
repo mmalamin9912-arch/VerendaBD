@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreSubTab, MerchantProfile, AdminPaymentGatewayConfig, ThemePurchaseRequest } from '../../types';
 import { ThemeCustomizerModal } from '../ThemeCustomizerModal';
 import { StorefrontPreviewModal } from '../StorefrontPreviewModal';
@@ -146,7 +146,13 @@ export const OnlineStoreView: React.FC<OnlineStoreViewProps> = ({
   const [upgradingForTheme, setUpgradingForTheme] = useState<ThemeMarketItem | null>(null);
 
   // Customizer Controls State
-  const [themePrimaryColor, setThemePrimaryColor] = useState('#00D68F');
+  const [themePrimaryColor, setThemePrimaryColor] = useState(
+    merchant?.themeConfig?.primaryColor || merchant?.themeConfig?.themePrimaryColor || '#00D68F'
+  );
+  useEffect(() => {
+    const saved = merchant?.themeConfig?.primaryColor || merchant?.themeConfig?.themePrimaryColor;
+    if (typeof saved === 'string' && saved.trim()) setThemePrimaryColor(saved);
+  }, [merchant?.themeConfig?.primaryColor, merchant?.themeConfig?.themePrimaryColor]);
   const [headerAnnouncement, setHeaderAnnouncement] = useState(merchant?.announcementText || '');
   const [storeLogo, setStoreLogo] = useState<string | null>(null);
   const [storeFavicon, setStoreFavicon] = useState<string | null>(null);
@@ -309,6 +315,8 @@ export const OnlineStoreView: React.FC<OnlineStoreViewProps> = ({
         announcementText: headerAnnouncement,
         announcementItems: headerAnnouncement ? [headerAnnouncement] : [],
         logoImageUrl: storeLogo || prev.themeConfig?.logoImageUrl,
+        primaryColor: themePrimaryColor,
+        themePrimaryColor,
       }
     }));
     alert('Brand identity and styling changes saved successfully!');

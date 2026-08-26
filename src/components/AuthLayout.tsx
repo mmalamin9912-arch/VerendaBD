@@ -1,31 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bot, Truck, CreditCard, FileText } from 'lucide-react';
+import { LanguageToggle } from './LanguageToggle';
+import { useLanguage } from '../lib/i18n';
 
 const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const { t } = useLanguage();
   const slides = [
     {
-      title: "Connect with AI tools",
-      description: "AI-powered store assistant for auto inventory & sales updates.",
+      titleKey: 'auth_slide_ai_title',
+      descKey: 'auth_slide_ai_desc',
       icon: Bot,
       imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"
     },
     {
-      title: "Automated Courier Shipping",
-      description: "One-click order dispatch with Steadfast, Pathao & Courier APIs.",
+      titleKey: 'auth_slide_courier_title',
+      descKey: 'auth_slide_courier_desc',
       icon: Truck,
       imageUrl: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80"
     },
     {
-      title: "Express Checkout & BKash",
-      description: "Fast 1-click checkout for maximum conversion rates.",
+      titleKey: 'auth_slide_checkout_title',
+      descKey: 'auth_slide_checkout_desc',
       icon: CreditCard,
       imageUrl: "https://images.unsplash.com/photo-1556742049-0a67f572d312?auto=format&fit=crop&w=800&q=80"
     },
     {
-      title: "NBR Mushak 6.3 Invoicing",
-      description: "Compliant e-invoicing and VAT tax management made easy.",
+      titleKey: 'auth_slide_nbr_title',
+      descKey: 'auth_slide_nbr_desc',
       icon: FileText,
       imageUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80"
     }
@@ -44,6 +47,9 @@ const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       {/* Left Side: Auth Form */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-10 lg:p-12 bg-[#121824] shadow-2xl border-r border-[#1E2638] overflow-y-auto">
         <div className="w-full max-w-md my-auto">
+          <div className="flex justify-end mb-4">
+            <LanguageToggle />
+          </div>
           {children}
         </div>
       </div>
@@ -74,10 +80,10 @@ const AuthLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   })()}
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-black text-white mb-2.5 tracking-tight">
-                  {slides[currentSlide].title}
+                  {t(slides[currentSlide].titleKey)}
                 </h2>
                 <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-                  {slides[currentSlide].description}
+                  {t(slides[currentSlide].descKey)}
                 </p>
               </div>
             </motion.div>

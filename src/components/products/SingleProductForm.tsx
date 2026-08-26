@@ -110,6 +110,19 @@ const PRESET_PRODUCT_IMAGES = [
   }
 ];
 
+// Safely parse a number field value without corrupting typed digits.
+// A controlled <input type="number"> can duplicate trailing digits when its raw
+// string value is stored verbatim each keystroke (e.g. "33" renders as "330").
+// Converting to a numeric value avoids that re-render glitch while still
+// preserving in-progress states like "33.", "-" or "" so the field stays editable.
+const toSafeNumberValue = (raw: string): string | number => {
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '-' || trimmed === '.' || /^-?\d*\.$/.test(trimmed)) {
+    return raw;
+  }
+  const numeric = Number(trimmed);
+  return Number.isNaN(numeric) ? raw : numeric;
+};
 export const SingleProductForm: React.FC<SingleProductFormProps> = ({
   initialData,
   onSave,
@@ -139,25 +152,43 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
-    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        if (isMounted && Array.isArray(data)) {
-          const names = data.map((c: any) => c.name || c.title).filter(Boolean);
-          setCustomCategories(names);
-          if (names.length === 0) {
-            setIsCustomCategoryMode(true);
-          } else if (initialData?.category && !names.includes(initialData.category)) {
-            setIsCustomCategoryMode(true);
-          }
-        }
-      })
-      .catch(err => {
-        console.warn('Failed to fetch categories in product form:', err);
-        if (isMounted && customCategories.length === 0) {
-          setIsCustomCategoryMode(true);
-        }
+    const targetSlug = merchant?.storeSlug || merchant?.id || 'default'
+
+  // 1. LocalStorage থেকে ডাটা নেওয়া
+  const localCats = localStorage.getItem(`zid_categories_${targetSlug}`);
+  let parsedLocal: string[] = [];
+  if (localCats) {
+    try {
+      const parsed = JSON.parse(localCats);
+      if (Array.isArray(parsed)) {
+        parsedLocal = parsed.map((c: any) => c?.name || c?.title || c);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // 2. API থেকে ডাটা ফেচ করা
+  fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
+    .then((res) => (res.ok ? res.json() : []))
+    .then((data) => {
+      if (isMounted) {
+        const apiNames = Array.isArray(data)
+          ? data.map((c: any) => c?.name || c?.title).filter(Boolean)
+          : [];
+        const combined = Array.from(new Set([...apiNames, ...parsedLocal]));
+        setCustomCategories(combined);
+      }
+    })
+    .catch((err) => {
+      console.warn('Failed to fetch categories, using local data:', err);
+      if (isMounted) setCustomCategories(parsedLocal);
+    });
+
+  return () => {
+    isMounted = false;
+  };
+}, [merchant]);
       });
     return () => {
       isMounted = false;
@@ -803,6 +834,100 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
         {/* Left Main Column */}
         <div className="lg:col-span-2 space-y-6">
           
+          {/* Card 1: Product Media & Images (Reorder: media uploads first) */}
+          <div className="bg-[#202533] border border-[#2E3548] p-5 sm:p-6 rounded-2xl space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#2E3548] pb-3">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-[#00D68F]" />
+                <h2 className="text-base font-bold text-white">Product Media & Images</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setImageModalTarget('additional');
+                  setShowImageModal(true);
+                }}
+                className="px-3 py-1.5 bg-[#282E3F] hover:bg-[#32394E] text-[#00D68F] font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-[#00D68F]/30"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                <span>Upload Photos</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Main Image (Upload Image) */}
+              <div className="relative group border-2 border-dashed border-[#00D68F]/50 hover:border-[#00D68F] rounded-xl p-2 bg-[#181B26] flex flex-col items-center justify-center min-h-[110px] text-center transition">
+                {image ? (
+                  <>
+                    <img src={image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt="Main thumbnail" className="w-full h-24 object-cover rounded-lg" />
+                    <span className="absolute bottom-3 left-3 bg-black/70 text-[#00D68F] font-black text-[9px] px-1.5 py-0.5 rounded">MAIN</span>
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={enhanceImageWithAi}
+                        disabled={isEnhancingImage}
+                        className="p-1.5 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 rounded-lg shadow-md cursor-pointer disabled:opacity-50 relative overflow-hidden"
+                        title="Magic Enhance"
+                      >
+                        {isFreeTier && (
+                          <div className="absolute top-0 right-0 bg-slate-950 text-white text-[6px] font-black px-1 py-0.2 rounded-bl-sm uppercase tracking-tighter leading-none">
+                            P
+                          </div>
+                        )}
+                        <Sparkles className={`w-3.5 h-3.5 ${isEnhancingImage ? 'animate-spin' : ''}`} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImage('')}
+                        className="p-1.5 bg-red-500/80 hover:bg-red-600 text-white rounded-lg shadow-md cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    onClick={() => {
+                      setImageModalTarget('main');
+                      setShowImageModal(true);
+                    }}
+                    className="space-y-1 cursor-pointer py-3 w-full"
+                  >
+                    <Upload className="w-5 h-5 text-[#00D68F] mx-auto" />
+                    <span className="text-[11px] font-bold text-slate-300 block">Main Image *</span>
+                    <span className="text-[10px] text-slate-500">Select photo</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional Images */}
+              {additionalImages.map((imgUrl, idx) => (
+                <div key={idx} className="relative group border border-[#2E3548] rounded-xl p-2 bg-[#181B26] flex items-center justify-center h-28">
+                  <img src={imgUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt={`Gallery ${idx}`} className="w-full h-full object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => setAdditionalImages(additionalImages.filter((_, i) => i !== idx))}
+                    className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-600 text-white rounded-md cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setImageModalTarget('additional');
+                  setShowImageModal(true);
+                }}
+                className="border border-dashed border-[#2E3548] hover:border-slate-400 rounded-xl p-3 bg-[#181B26] flex flex-col items-center justify-center min-h-[110px] text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <Plus className="w-5 h-5 mb-1 text-slate-400" />
+                <span className="text-[11px] font-semibold">Add Image</span>
+              </button>
+            </div>
+          </div>
+
           {/* Card 1: Product Main Info & Names */}
           <div className="bg-[#202533] border border-[#2E3548] p-5 sm:p-6 rounded-2xl space-y-5 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#2E3548] pb-3">
@@ -884,7 +1009,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                       step="any"
                       required
                       value={priceBDT}
-                      onChange={(e) => setPriceBDT(e.target.value)}
+                      onChange={(e) => setPriceBDT(toSafeNumberValue(e.target.value))}
                       placeholder="0.00"
                       className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-3.5 pr-8 py-2.5 text-sm font-extrabold text-[#00D68F] focus:outline-none focus:border-[#00D68F]"
                     />
@@ -910,7 +1035,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                       type="number"
                       step="any"
                       value={costPriceBDT}
-                      onChange={(e) => setCostPriceBDT(e.target.value)}
+                      onChange={(e) => setCostPriceBDT(toSafeNumberValue(e.target.value))}
                       placeholder="0.00"
                       className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-3.5 pr-8 py-2.5 text-sm font-bold text-slate-200 focus:outline-none focus:border-[#00D68F]"
                     />
@@ -927,64 +1052,11 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
             {/* SKU, Weight & Category Grid */}
             <div className="pt-4 border-t border-[#2E3548] space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Product Code SKU */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-bold text-slate-300">
-                      Product code SKU *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleGenerateSku}
-                      className="text-[10px] text-[#00D68F] font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <RefreshCw className="w-2.5 h-2.5" />
-                      <span>Auto</span>
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    placeholder="SKU-XXXX"
-                    className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-200 focus:outline-none focus:border-[#00D68F]"
-                  />
-                </div>
-
-                {/* Product Weight with Unit Dropdown (kg / lb / g choices) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                    Product weight
-                  </label>
-                  <div className="relative flex items-center bg-[#181B26] border border-[#2E3548] rounded-xl overflow-hidden focus-within:border-[#00D68F]">
-                    <input
-                      type="number"
-                      step="any"
-                      value={weightKg}
-                      onChange={(e) => setWeightKg(e.target.value)}
-                      placeholder="0.5"
-                      className="w-full bg-transparent px-3.5 py-2.5 text-xs font-bold text-slate-200 focus:outline-none"
-                    />
-                    <select
-                      value={weightUnit}
-                      onChange={(e) => setWeightUnit(e.target.value as 'kg' | 'lb' | 'g')}
-                      className="bg-[#202533] text-slate-300 font-bold text-xs px-3 py-2.5 border-l border-[#2E3548] focus:outline-none cursor-pointer hover:bg-[#282E3F] transition"
-                    >
-                      <option value="kg">kg (Kilograms)</option>
-                      <option value="lb">lb (Pounds)</option>
-                      <option value="g">g (Grams)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
               {/* Categories Full-width Dropdown or Custom Input */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="block text-xs font-bold text-slate-300">
-                    Categories
+                    Categories *
                   </label>
                   {customCategories.length > 0 && (
                     <button
@@ -999,6 +1071,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                 {isCustomCategoryMode ? (
                   <input
                     type="text"
+                    required
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
                     placeholder="Enter custom category name..."
@@ -1006,6 +1079,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                   />
                 ) : (
                   <select
+                    required
                     value={category}
                     onChange={(e) => {
                       if (e.target.value === '__custom__') {
@@ -1029,102 +1103,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                   </select>
                 )}
               </div>
-            </div>
-
-
-
-            {/* Media Uploads */}
-            <div className="pt-4 border-t border-[#2E3548] space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-bold text-slate-200">
-                  Product Media & Images
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageModalTarget('additional');
-                    setShowImageModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-[#282E3F] hover:bg-[#32394E] text-[#00D68F] font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer border border-[#00D68F]/30"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  <span>Upload Photos</span>
-                </button>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {/* Main Image */}
-                <div className="relative group border-2 border-dashed border-[#00D68F]/50 hover:border-[#00D68F] rounded-xl p-2 bg-[#181B26] flex flex-col items-center justify-center min-h-[110px] text-center transition">
-                  {image ? (
-                    <>
-                      <img src={image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt="Main thumbnail" className="w-full h-24 object-cover rounded-lg" />
-                      <span className="absolute bottom-3 left-3 bg-black/70 text-[#00D68F] font-black text-[9px] px-1.5 py-0.5 rounded">MAIN</span>
-                      <div className="absolute top-2 right-2 flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={enhanceImageWithAi}
-                          disabled={isEnhancingImage}
-                          className="p-1.5 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 rounded-lg shadow-md cursor-pointer disabled:opacity-50 relative overflow-hidden"
-                          title="Magic Enhance"
-                        >
-                          {isFreeTier && (
-                            <div className="absolute top-0 right-0 bg-slate-950 text-white text-[6px] font-black px-1 py-0.2 rounded-bl-sm uppercase tracking-tighter leading-none">
-                              P
-                            </div>
-                          )}
-                          <Sparkles className={`w-3.5 h-3.5 ${isEnhancingImage ? 'animate-spin' : ''}`} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setImage('')}
-                          className="p-1.5 bg-red-500/80 hover:bg-red-600 text-white rounded-lg shadow-md cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div
-                      onClick={() => {
-                        setImageModalTarget('main');
-                        setShowImageModal(true);
-                      }}
-                      className="space-y-1 cursor-pointer py-3 w-full"
-                    >
-                      <Upload className="w-5 h-5 text-[#00D68F] mx-auto" />
-                      <span className="text-[11px] font-bold text-slate-300 block">Main Image *</span>
-                      <span className="text-[10px] text-slate-500">Select photo</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Additional Images */}
-                {additionalImages.map((imgUrl, idx) => (
-                  <div key={idx} className="relative group border border-[#2E3548] rounded-xl p-2 bg-[#181B26] flex items-center justify-center h-28">
-                    <img src={imgUrl || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt={`Gallery ${idx}`} className="w-full h-full object-cover rounded-lg" />
-                    <button
-                      type="button"
-                      onClick={() => setAdditionalImages(additionalImages.filter((_, i) => i !== idx))}
-                      className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-600 text-white rounded-md cursor-pointer"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageModalTarget('additional');
-                    setShowImageModal(true);
-                  }}
-                  className="border border-dashed border-[#2E3548] hover:border-slate-400 rounded-xl p-3 bg-[#181B26] flex flex-col items-center justify-center min-h-[110px] text-slate-400 hover:text-white transition cursor-pointer"
-                >
-                  <Plus className="w-5 h-5 mb-1 text-slate-400" />
-                  <span className="text-[11px] font-semibold">Add Image</span>
-                </button>
-              </div>
-            </div>
 
           </div>
 
@@ -1247,6 +1226,66 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
               <Plus className="w-4 h-4" />
               <span>+ Add new inventory</span>
             </button>
+          </div>
+
+          {/* SKU & Weight card - remaining detail fields placed below the primary order */}
+          <div className="bg-[#202533] border border-[#2E3548] p-5 sm:p-6 rounded-2xl space-y-4 shadow-xl">
+            <div className="flex items-center gap-2 border-b border-[#2E3548] pb-3">
+              <Hash className="w-5 h-5 text-[#00D68F]" />
+              <h2 className="text-base font-bold text-white">SKU & Weight</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Product Code SKU */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-300">
+                    Product code SKU *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateSku}
+                    className="text-[10px] text-[#00D68F] font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    <span>Auto</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="SKU-XXXX"
+                  className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-200 focus:outline-none focus:border-[#00D68F]"
+                />
+              </div>
+
+              {/* Product Weight with Unit Dropdown (kg / lb / g choices) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Product weight
+                </label>
+                <div className="relative flex items-center bg-[#181B26] border border-[#2E3548] rounded-xl overflow-hidden focus-within:border-[#00D68F]">
+                  <input
+                    type="number"
+                    step="any"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(e.target.value)}
+                    placeholder="0.5"
+                    className="w-full bg-transparent px-3.5 py-2.5 text-xs font-bold text-slate-200 focus:outline-none"
+                  />
+                  <select
+                    value={weightUnit}
+                    onChange={(e) => setWeightUnit(e.target.value as 'kg' | 'lb' | 'g')}
+                    className="bg-[#202533] text-slate-300 font-bold text-xs px-3 py-2.5 border-l border-[#2E3548] focus:outline-none cursor-pointer hover:bg-[#282E3F] transition"
+                  >
+                    <option value="kg">kg (Kilograms)</option>
+                    <option value="lb">lb (Pounds)</option>
+                    <option value="g">g (Grams)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Lower Accordion Cards Stack */}
