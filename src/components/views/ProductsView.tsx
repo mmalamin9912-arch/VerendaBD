@@ -579,6 +579,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         onClose={() => setIsTypeModalOpen(false)}
         onSelectType={handleSelectProductTypeFromModal}
         onOpenSubscriptionModal={onOpenSubscriptionModal}
+        merchant={merchant}
       />
 
     </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ProductType } from '../../types';
+import { ProductType, MerchantProfile } from '../../types';
 import { 
   Package, 
   Boxes, 
@@ -19,6 +19,7 @@ interface ProductTypeModalProps {
   onClose: () => void;
   onSelectType: (type: ProductType) => void;
   onOpenSubscriptionModal?: () => void;
+  merchant?: MerchantProfile;
 }
 
 interface TypeOption {
@@ -36,10 +37,17 @@ export const ProductTypeModal: React.FC<ProductTypeModalProps> = ({
   onClose,
   onSelectType,
   onOpenSubscriptionModal,
+  merchant,
 }) => {
   const [lockedAlertOption, setLockedAlertOption] = useState<TypeOption | null>(null);
 
   if (!isOpen) return null;
+
+  const isProPlanActive = Boolean(
+    merchant?.subscriptionPlan && 
+    merchant.subscriptionPlan !== 'free_trial' && 
+    merchant.subscriptionPlan !== 'trial'
+  );
 
   const typeOptions: TypeOption[] = [
     {
@@ -56,8 +64,8 @@ export const ProductTypeModal: React.FC<ProductTypeModalProps> = ({
       title: 'Grouped product',
       description: 'Bundle multiple standalone products into a single curated collection or outfit set.',
       icon: Boxes,
-      isLocked: true,
-      badge: 'PRO PLAN',
+      isLocked: !isProPlanActive,
+      badge: isProPlanActive ? 'PRO UNLOCKED' : 'PRO PLAN',
       gradient: 'from-amber-500/10 to-amber-500/5 border-amber-500/30 text-amber-400',
     },
     {
@@ -65,8 +73,8 @@ export const ProductTypeModal: React.FC<ProductTypeModalProps> = ({
       title: 'Voucher & Gift Card',
       description: 'Issue redeemable store vouchers, promotional gift cards, and electronic balance codes.',
       icon: Ticket,
-      isLocked: true,
-      badge: 'PRO PLAN',
+      isLocked: !isProPlanActive,
+      badge: isProPlanActive ? 'PRO UNLOCKED' : 'PRO PLAN',
       gradient: 'from-purple-500/10 to-purple-500/5 border-purple-500/30 text-purple-400',
     },
     {
@@ -74,8 +82,8 @@ export const ProductTypeModal: React.FC<ProductTypeModalProps> = ({
       title: 'Digital files',
       description: 'Sell downloadable software, PDF e-books, course materials, licenses, and digital assets.',
       icon: FileCode2,
-      isLocked: true,
-      badge: 'PRO PLAN',
+      isLocked: !isProPlanActive,
+      badge: isProPlanActive ? 'PRO UNLOCKED' : 'PRO PLAN',
       gradient: 'from-blue-500/10 to-blue-500/5 border-blue-500/30 text-blue-400',
     },
     {
@@ -83,8 +91,8 @@ export const ProductTypeModal: React.FC<ProductTypeModalProps> = ({
       title: 'Dynamic Bundle',
       description: 'Interactive mix-and-match product bundles with step-by-step custom selection for customers.',
       icon: Layers,
-      isLocked: true,
-      badge: 'PRO PLAN',
+      isLocked: !isProPlanActive,
+      badge: isProPlanActive ? 'PRO UNLOCKED' : 'PRO PLAN',
       gradient: 'from-pink-500/10 to-pink-500/5 border-pink-500/30 text-pink-400',
     },
   ];

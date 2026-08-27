@@ -821,14 +821,19 @@ export default function App() {
     }
   }, [allMerchants]);
 
-  // Dynamic Site Title and Favicon Synchronization
+  // Enforce Tab Title strictly to "Zid SaaS BD" across all dashboard routing and layout views
   React.useEffect(() => {
     document.title = "Zid SaaS BD";
+    const interval = setInterval(() => {
+      if (document.title !== "Zid SaaS BD") {
+        document.title = "Zid SaaS BD";
+      }
+    }, 500);
+    return () => clearInterval(interval);
   }, []);
 
   React.useEffect(() => {
-    const title = platformSettings?.siteTitle ? platformSettings.siteTitle : 'Zid SaaS BD';
-    document.title = title || 'Zid SaaS BD';
+    document.title = "Zid SaaS BD";
 
     const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement;
     if (faviconEl) {
@@ -838,7 +843,7 @@ export default function App() {
         faviconEl.href = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='gold' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23BF953F'/%3E%3Cstop offset='50%25' stop-color='%23FCF6BA'/%3E%3Cstop offset='100%25' stop-color='%23AA771C'/%3E%3C/linearGradient%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23181B26'/%3E%3Cstop offset='100%25' stop-color='%230E1017'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23bg)' stroke='%23D4AF37' stroke-width='2.5'/%3E%3Cpath d='M18 20 H46 L26 44 H46' stroke='url(%23gold)' stroke-width='6.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='46' cy='20' r='3.5' fill='%23FCF6BA'/%3E%3Ccircle cx='18' cy='44' r='3.5' fill='%23BF953F'/%3E%3C/svg%3E";
       }
     }
-  }, [platformSettings?.siteTitle, platformSettings?.logoUrl]);
+  }, [platformSettings?.logoUrl]);
 
   React.useEffect(() => {
     try {

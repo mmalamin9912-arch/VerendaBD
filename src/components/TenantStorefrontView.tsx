@@ -61,7 +61,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     let active = true;
     const loadStorefront = async () => {
       try {
-        const response = await fetch(`/api/storefront?store_slug=${encodeURIComponent(storeSlug)}`, {
+        const response = await fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, {
           cache: 'no-store',
           headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
         });
@@ -141,11 +141,21 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     : (Array.isArray(bankAccounts) ? bankAccounts : []);
   const enabledMobileMethods = (storefrontMobileBanking || []).filter((method) => method?.isEnabled && method?.number?.trim());
   const visibleBankAccount = (storefrontBankAccounts || []).find((account) => account?.isVisibleAtCheckout);
-  const storefrontCategories = Array.isArray(liveStoreData.categories)
+  const rawStorefrontCategories = Array.isArray(liveStoreData.categories)
     ? liveStoreData.categories
-        .filter((category): category is { name: string; status?: string; image?: string; coverImage?: string } => !!category && typeof category === 'object' && typeof (category as { name?: unknown }).name === 'string')
+        .filter((category): category is { name: string; status?: string; image?: string; coverImage?: string; productCount?: number } => !!category && typeof category === 'object' && typeof (category as { name?: unknown }).name === 'string')
         .filter((category) => category.status !== 'hidden')
     : [];
+    
+  const allActiveProducts = (storefrontProducts || []).filter(p => {
+    const status = (p.status || 'active').toLowerCase();
+    return status === 'active' || status === 'published';
+  });
+
+  const storefrontCategories = rawStorefrontCategories.map(cat => {
+    const count = allActiveProducts.filter(p => p.category && p.category.toLowerCase() === cat.name.toLowerCase()).length;
+    return { ...cat, productCount: count };
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<'catalog' | 'checkout' | 'success'>('catalog');
   const [cart, setCart] = useState<{product: Product, quantity: number, variant: string}[]>([]);
@@ -522,7 +532,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   // Ensure we have some products for the listing grid - include all active/published products from both sources
   const displayProducts = (storefrontProducts || [])
-    .filter(p => p && (p.status === 'Active' || p.status === 'Published' || p.status === 'active' || p.status === 'published'))
+    .filter(p => {
+      const status = (p.status || 'active').toLowerCase();
+      return status === 'active' || status === 'published';
+    })
     .filter(p => !searchQuery.trim() || p.title.toLowerCase().includes(searchQuery.toLowerCase()) || (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase())));
 
   return (
@@ -751,7 +764,15 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     const firstProductImage = displayProducts.find(p => p.category === catName)?.image || '';
                     const image = catName ? (catImage || firstProductImage) : '';
                     return (
-                      <div key={catName || `cat-${i}`} className="aspect-[4/3] bg-slate-100 rounded-xl relative overflow-hidden group cursor-pointer border border-slate-200 shadow-sm">
+                      <div 
+                        key={catName || `cat-${i}`} 
+                        className="aspect-[4/3] bg-slate-100 rounded-xl relative overflow-hidden group cursor-pointer border border-slate-200 shadow-sm"
+                        onClick={() => {
+                          setSearchQuery(catName);
+                          // Scroll to products section smoothly
+                          document.getElementById('storefront-products-section')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                      >
                         {image ? (
                           <img src={image} alt={catName} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                         ) : (

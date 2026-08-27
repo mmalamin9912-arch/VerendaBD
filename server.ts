@@ -378,6 +378,47 @@ app.get('/api/categories-by-slug/:slug', (req, res) => {
   return res.json(cats);
 });
 
+// Products mocked in memory to prevent 404s
+const productStore = new Map<string, any[]>();
+
+app.get('/api/products-by-slug/:slug', async (req, res) => {
+  const slug = (req.params.slug || '').trim().toLowerCase();
+  const payload = await readStorePayload();
+  let prods = productStore.get(slug) || [];
+  if (prods.length === 0 && Array.isArray(payload.products)) {
+    prods = payload.products.filter((p: any) => p.storeSlug === slug || p.store_slug === slug);
+  }
+  return res.json(prods);
+});
+
+app.post('/api/products', async (req, res) => {
+  const product = req.body;
+  if (!product) return res.status(400).json({ ok: false, error: 'Product required' });
+  const slug = (product.storeSlug || product.store_slug || 'bd').trim().toLowerCase();
+  const prods = productStore.get(slug) || [];
+  
+  const existingIdx = prods.findIndex(p => p.id === product.id);
+  if (existingIdx >= 0) {
+    prods[existingIdx] = product;
+  } else {
+    prods.unshift(product);
+  }
+  productStore.set(slug, prods);
+  
+  const payload = await readStorePayload();
+  if (Array.isArray(payload.products)) {
+    const pIdx = payload.products.findIndex((p: any) => p.id === product.id);
+    if (pIdx >= 0) {
+      payload.products[pIdx] = product;
+    } else {
+      payload.products.unshift(product);
+    }
+    await writeStorePayload(payload);
+  }
+  
+  return res.json({ ok: true, success: true, product });
+});
+
 app.all('/api/tenant-store', async (req, res) => {
   const slug = (req.query.slug as string || req.body?.slug as string || '').trim().toLowerCase();
   if (!slug) return jsonError(res, 400, 'slug is required');
