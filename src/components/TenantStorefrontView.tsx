@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
 import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, Loader2 } from 'lucide-react';
-import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../lib/whatsappOtpService';
+import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../lib/whatsappOtpService';
+import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
 import { LanguageToggle } from './LanguageToggle';
+import { BrandLogo } from './BrandLogo';
 import { useLanguage } from '../lib/i18n';
 
 interface TenantStorefrontViewProps {
@@ -537,7 +539,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 <div className="absolute -inset-2 rounded-[28px] border border-[#00D68F]/70 animate-ping" />
               </div>
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#00D68F]">Zid BD</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#00D68F]">ZID SAAS BD</div>
                 <div className="mt-2 text-xl font-black text-white">{t('sf_loading_storefront')}</div>
               </div>
             </div>
@@ -587,17 +589,22 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             </div>
           </div>
 
-          <div className="h-14 px-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
+          <div className="py-2 px-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
               <button 
-                className="p-1.5 -ml-1 text-slate-700 hover:text-slate-900 rounded-lg"
+                className="p-1.5 -ml-1 text-slate-700 hover:text-slate-900 rounded-lg shrink-0"
                 onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(!isMobileMenuOpen); }}
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h1 className="text-base font-black tracking-tight text-slate-900 truncate max-w-[150px]">
-                {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}
-              </h1>
+              
+              {/* Stacked Branding Hierarchy: Official ZID SAAS BD logo at the top, Merchant store name right below */}
+              <div className="flex flex-col min-w-0">
+                <BrandLogo size="sm" showSubtitle={false} isDarkMode={false} />
+                <h1 className="text-xs font-black tracking-tight text-slate-900 truncate max-w-[170px] mt-0.5">
+                  {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}
+                </h1>
+              </div>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
@@ -1613,97 +1620,29 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-300">{t('sf_auth_phone')}</label>
-                  {isCustomerPhoneVerified && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#25D366] bg-[#25D366]/10 px-2 py-0.5 rounded-md border border-[#25D366]/30">
-                      <Check className="w-3 h-3" /> WhatsApp Verified
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    value={authPhone}
-                    onChange={(e) => {
-                      setAuthPhone(e.target.value);
-                      if (isCustomerPhoneVerified && e.target.value !== verifiedCustomerPhone) {
-                        setIsCustomerPhoneVerified(false);
-                      }
-                    }}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
-                    placeholder="01711000000"
-                  />
-                  {authMode === 'signup' && !isCustomerPhoneVerified && (
-                    <button
-                      type="button"
-                      onClick={handleSendCustomerWhatsappOtp}
-                      disabled={isSendingCustomerWhatsappOtp || !authPhone.trim()}
-                      className="px-3 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer disabled:opacity-50 shadow-md"
-                    >
-                      {isSendingCustomerWhatsappOtp ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Sending...</span>
-                        </>
-                      ) : (
-                        <>
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Verify via WhatsApp</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-
-                {/* Conditionally Revealed Customer WhatsApp OTP Field */}
-                {authMode === 'signup' && isCustomerWhatsappOtpSent && !isCustomerPhoneVerified && (
-                  <div className="mt-2.5 p-3 rounded-2xl border border-[#25D366]/40 bg-slate-900/90 space-y-2 animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                        <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" />
-                        Enter 6-Digit WhatsApp Code
-                      </span>
-                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Supabase DB</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={customerWhatsappOtpInput}
-                        onChange={(e) => setCustomerWhatsappOtpInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="• • • • • •"
-                        className="flex-1 bg-slate-950 border border-slate-700 focus:border-[#25D366] text-center font-mono font-bold tracking-[0.3em] text-white rounded-xl px-3 py-2 text-sm outline-none"
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifyCustomerWhatsappOtp}
-                        disabled={isVerifyingCustomerWhatsappOtp || customerWhatsappOtpInput.trim().length < 6}
-                        className="px-4 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black rounded-xl text-xs disabled:opacity-50 transition cursor-pointer shrink-0"
-                      >
-                        {isVerifyingCustomerWhatsappOtp ? (
-                          <span className="flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
-                          </span>
-                        ) : (
-                          'Confirm Code'
-                        )}
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                      <span>Code sent to WhatsApp app</span>
-                      <button
-                        type="button"
-                        onClick={handleSendCustomerWhatsappOtp}
-                        disabled={isSendingCustomerWhatsappOtp}
-                        className="text-[#25D366] font-bold hover:underline"
-                      >
-                        Resend
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <PhoneVerificationInput
+                  id="customer-auth-phone-verification"
+                  value={authPhone}
+                  onChange={(fullPhone) => {
+                    setAuthPhone(fullPhone);
+                    if (isCustomerPhoneVerified && fullPhone !== verifiedCustomerPhone) {
+                      setIsCustomerPhoneVerified(false);
+                    }
+                  }}
+                  isVerified={isCustomerPhoneVerified}
+                  onVerifiedChange={(verified) => {
+                    setIsCustomerPhoneVerified(verified);
+                    if (verified) {
+                      setVerifiedCustomerPhone(authPhone);
+                      setAuthNotice('Phone number successfully verified via WhatsApp OTP ✓');
+                    }
+                  }}
+                  userType="customer"
+                  label={t('sf_auth_phone')}
+                  required={true}
+                  defaultCountryCode="+880"
+                  darkMode={true}
+                />
               </div>
 
               <div>
@@ -1843,7 +1782,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         <div className="space-y-3 text-center">
           <h4 className="text-white text-base font-black">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
           <p className="text-[11px] leading-relaxed text-slate-400 max-w-xs mx-auto">
-            Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by Zid Multi-Tenant SaaS Engine.
+            Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by ZID SAAS BD Engine.
           </p>
           <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-300 pt-1">
             <ShieldCheck className="w-4 h-4 text-[#00D68F]" />

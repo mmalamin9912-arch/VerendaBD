@@ -309,7 +309,7 @@ export const initialPaymentGateway: PaymentGatewayConfig = {
 };
 
 export const initialPlatformSettings: PlatformSettings = {
-  siteTitle: 'Zid SaaS Engine',
+  siteTitle: 'Zid SaaS BD',
   logoUrl: '',
   faviconUrl: '',
   supportPhone: '+8801844990011',

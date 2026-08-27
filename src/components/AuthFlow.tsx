@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MerchantProfile } from '../types';
 import { supabase } from '../lib/supabase';
 import AuthLayout from './AuthLayout';
+import { BrandLogo } from './BrandLogo';
 import { useLanguage } from '../lib/i18n';
 import { 
   Mail, 
@@ -804,7 +805,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       <div className="space-y-6">
         
         {/* Header */}
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-3">
+          <div className="flex justify-center mb-1">
+            <BrandLogo size="lg" showSubtitle={false} />
+          </div>
+
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] text-xs font-bold uppercase tracking-wider">
             <ShieldCheck className="w-4 h-4" />
             <span>{t('auth_badge')}</span>

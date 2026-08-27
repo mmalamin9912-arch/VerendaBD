@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NavigationTab, ProductSubTab, CustomerSubTab, StoreSubTab, SettingsSubTab } from '../types';
+import { BrandLogo } from './BrandLogo';
 import { 
   LayoutDashboard, 
   ShoppingBag, 
@@ -235,42 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Top Logo Header */}
         <div>
           <div className={`p-4 border-b ${isDarkMode ? 'border-[#2A3042]' : 'border-slate-200'} flex items-center justify-between`}>
-            <div className="flex items-center gap-2.5">
-              {platformSettings?.logoUrl ? (
-                <img
-                  src={platformSettings.logoUrl}
-                  alt={platformSettings?.siteTitle || 'Logo'}
-                  className="w-8 h-8 rounded-lg object-contain"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728] shrink-0">
-                  <div className={`w-full h-full rounded-[6px] ${isDarkMode ? 'bg-[#181B26]' : 'bg-white'} flex items-center justify-center`}>
-                    <svg viewBox="0 0 40 40" className="w-4 h-4" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path
-                        d="M10 12 H30 L16 28 H30"
-                        stroke="#D4AF37"
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                </div>
-              )}
-              <div>
-                <div className="flex items-center gap-1">
-                  <span className={`text-sm font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-tight`}>
-                    {platformSettings?.siteTitle || 'ZID SAAS'}
-                  </span>
-                  <span className="text-[#E6C587] text-[9px] uppercase font-bold px-1 py-0.2 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20">
-                    BD
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  Merchant Dashboard
-                </div>
-              </div>
-            </div>
+            <BrandLogo size="sm" subtitle="Merchant Portal" isDarkMode={isDarkMode} />
 
             <button 
               onClick={onCloseMobile}

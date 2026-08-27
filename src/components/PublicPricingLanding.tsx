@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
 import { subscriptionPlans } from '../data/initialData';
 import { LanguageToggle } from './LanguageToggle';
+import { BrandLogo } from './BrandLogo';
 import { useLanguage } from '../lib/i18n';
 
 interface PublicPricingLandingProps {
@@ -22,14 +23,7 @@ export const PublicPricingLanding: React.FC<PublicPricingLandingProps> = ({
     <div id="pricing-landing-container" className="min-h-screen bg-slate-950 text-white font-sans selection:bg-[#D4AF37] selection:text-slate-950 flex flex-col overflow-hidden">
       {/* Navbar */}
       <nav id="pricing-navbar" className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900">
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5">
-            <span className="font-black text-white tracking-tight text-base">ZID</span>
-            <span className="font-extrabold text-[#E6C587] uppercase text-xs px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/25">
-              SAAS BD
-            </span>
-          </div>
-        </div>
+        <BrandLogo size="md" showSubtitle={false} />
         <div className="flex items-center gap-4 text-sm font-semibold">
           <LanguageToggle compact />
           {isAuthenticated && onGoToDashboard ? (

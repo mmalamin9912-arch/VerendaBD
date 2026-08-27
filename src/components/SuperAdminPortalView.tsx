@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BrandLogo } from './BrandLogo';
 import { 
   ShieldAlert, 
   DollarSign, 
@@ -1098,20 +1099,10 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       {/* Super Admin Top Header Bar */}
       <header className="bg-[#181B26] border-b border-[#2E3548] px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-extrabold text-white tracking-tight">ZID SAAS SUPER ADMIN PORTAL</h1>
-              <span className="text-[10px] bg-red-500/20 text-red-400 font-bold px-2 py-0.5 rounded border border-red-500/30 uppercase">
-                Restricted Access
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Global Platform Control • Payment Gateways • Subscription Approvals • Merchant Accounts
-            </p>
-          </div>
+          <BrandLogo size="md" subtitle="Super Admin Portal" />
+          <span className="text-[10px] bg-red-500/20 text-red-400 font-bold px-2 py-0.5 rounded border border-red-500/30 uppercase">
+            Restricted Access
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -1844,7 +1835,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
                         type="text"
                         value={gatewayForm.qrAccountName}
                         onChange={(e) => setGatewayForm({ ...gatewayForm, qrAccountName: e.target.value })}
-                        placeholder="e.g. Zid SaaS Engine"
+                        placeholder="e.g. Zid SaaS BD"
                         disabled={!gatewayForm.qrActive}
                         className="w-full bg-[#181B26] border border-[#3A435E] rounded-xl px-4 py-2.5 text-xs text-white outline-none disabled:opacity-50"
                       />
@@ -1946,7 +1937,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
                         type="text"
                         value={gatewayForm.accountName}
                         onChange={(e) => setGatewayForm({ ...gatewayForm, accountName: e.target.value })}
-                        placeholder="Zid SaaS Engine"
+                        placeholder="Zid SaaS BD"
                         disabled={!gatewayForm.bankActive}
                         className="w-full bg-[#181B26] border border-[#3A435E] rounded-xl px-4 py-2.5 text-xs text-white outline-none disabled:opacity-50"
                       />
@@ -2609,7 +2600,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
                         value={settingsForm.siteTitle}
                         onChange={(e) => setSettingsForm({...settingsForm, siteTitle: e.target.value})}
                         className="w-full bg-[#181B26] border border-[#3A435E] rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500/50 outline-none"
-                        placeholder="e.g. Zid SaaS Engine"
+                        placeholder="e.g. Zid SaaS BD"
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-4">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MerchantProfile, SubscriptionRequest } from '../types';
 import { calculateRemainingDays, getPlanDisplayName, getPlanDurationInDays, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { supabase } from '../lib/supabase';
+import { BrandLogo } from './BrandLogo';
 import { 
   Sparkles, 
   ExternalLink, 
@@ -138,14 +139,15 @@ export const Header: React.FC<HeaderProps> = ({
     trial_ends_at?: string;
   } | null>(null);
 
-  // 1. Connect to Supabase: Fetch active merchant's real subscription record directly from Supabase
+  // 1. Connect to Supabase: Fetch active merchant's real subscription record directly from Supabase & Listen to Realtime changes
   useEffect(() => {
     let isMounted = true;
-    const fetchSupabaseSubRecord = async () => {
-      if (!supabase || !merchant) return;
-      const email = (merchant.email || '').trim().toLowerCase();
-      const storeSlug = (merchant.storeSlug || '').trim().toLowerCase();
+    if (!supabase || !merchant) return;
 
+    const email = (merchant.email || '').trim().toLowerCase();
+    const storeSlug = (merchant.storeSlug || merchant.storeName || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const fetchSupabaseSubRecord = async () => {
       try {
         // Query 'subscriptions' table in Supabase
         const { data: subData } = await supabase
@@ -176,8 +178,59 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
 
+    // Initial fetch
     fetchSupabaseSubRecord();
-    return () => { isMounted = false; };
+
+    // Set up Realtime listener for Postgres Changes on merchants & subscriptions
+    const channelId = `header-sub-realtime-${email || storeSlug || 'user'}-${Math.random().toString(36).substring(2, 6)}`;
+    const channel = supabase
+      .channel(channelId)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'subscriptions'
+        },
+        (payload) => {
+          if (!isMounted) return;
+          const newRec: any = payload.new || {};
+          const recEmail = (newRec.merchant_email || '').trim().toLowerCase();
+          const recSlug = (newRec.store_slug || '').trim().toLowerCase();
+          if ((email && recEmail === email) || (storeSlug && recSlug === storeSlug)) {
+            console.log('[Header Realtime] Received live subscription update:', newRec);
+            setSupabaseSub(newRec);
+            fetchSupabaseSubRecord();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'merchants'
+        },
+        (payload) => {
+          if (!isMounted) return;
+          const newRec: any = payload.new || {};
+          const recEmail = (newRec.email || '').trim().toLowerCase();
+          const recSlug = (newRec.store_slug || '').trim().toLowerCase();
+          if ((email && recEmail === email) || (storeSlug && recSlug === storeSlug)) {
+            console.log('[Header Realtime] Received live merchant update:', newRec);
+            setSupabaseSub(newRec);
+            fetchSupabaseSubRecord();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      try {
+        supabase.removeChannel(channel);
+      } catch (e) {}
+    };
   }, [merchant?.email, merchant?.storeSlug]);
 
   // Stable fallback start time ref initialized ONCE per component instance
@@ -195,52 +248,73 @@ export const Header: React.FC<HeaderProps> = ({
 
   // 2. Real-Time Dynamic Clock: 1-second interval calculating Remaining Time = expires_at - Date.now()
   useEffect(() => {
-    // Determine Duration in Days (30, 90, 180, 365, etc)
-    const durationDays =
-      supabaseSub?.duration_days ||
-      supabaseSub?.selected_plan_days ||
-      (merchant as any)?.duration_days ||
-      (merchant as any)?.durationDays ||
-      merchant?.selectedPlanDays ||
-      merchant?.trialDaysTotal ||
-      getPlanDurationInDays(supabaseSub?.subscription_plan || merchant?.subscriptionPlan);
+    const activePlan = supabaseSub?.subscription_plan || merchant?.subscriptionPlan || 'free_trial';
+    const isPaidPlanActive = activePlan !== 'free_trial' && activePlan !== 'trial';
 
+    // Determine Duration in Days (30, 90, 180, 365, etc) dynamically based on active plan
+    const durationDays = getPlanDurationInDays(activePlan);
     const durationMs = durationDays * 24 * 60 * 60 * 1000;
-
-    // Check for absolute expiration timestamp (expires_at / subscription_expiry / etc)
-    const explicitExpiry =
-      supabaseSub?.expires_at ||
-      supabaseSub?.subscription_expiry ||
-      supabaseSub?.subscription_end_date ||
-      supabaseSub?.trial_ends_at ||
-      merchant?.expires_at ||
-      (merchant as any)?.expiresAt ||
-      merchant?.subscriptionExpiry ||
-      merchant?.subscriptionEndDate ||
-      merchant?.trialEndsAt;
 
     let targetTimestamp: number;
 
-    if (explicitExpiry && !isNaN(new Date(explicitExpiry).getTime())) {
-      targetTimestamp = new Date(explicitExpiry).getTime();
-    } else {
-      // If no explicit expiry, derive from absolute plan start timestamp + duration
+    if (isPaidPlanActive) {
+      // For paid plan: check start time and explicit expiry
       const rawStartTime =
-        supabaseSub?.plan_started_at ||
-        supabaseSub?.plan_start_date ||
-        supabaseSub?.subscription_start_date ||
-        supabaseSub?.created_at ||
         merchant?.plan_started_at ||
         (merchant as any)?.planStartedAt ||
         merchant?.subscriptionStartDate ||
-        merchant?.trialStartDate ||
-        merchant?.createdAt;
+        supabaseSub?.plan_started_at ||
+        supabaseSub?.plan_start_date ||
+        supabaseSub?.created_at;
 
       const planStartTimeMs = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
         ? new Date(rawStartTime).getTime()
         : initialMountTimeRef.current;
 
-      targetTimestamp = planStartTimeMs + durationMs;
+      const explicitExpiry =
+        merchant?.expires_at ||
+        (merchant as any)?.expiresAt ||
+        merchant?.subscriptionExpiry ||
+        merchant?.subscriptionEndDate ||
+        supabaseSub?.expires_at ||
+        supabaseSub?.subscription_expiry ||
+        supabaseSub?.subscription_end_date;
+
+      const explicitExpiryMs = explicitExpiry && !isNaN(new Date(explicitExpiry).getTime())
+        ? new Date(explicitExpiry).getTime()
+        : 0;
+
+      // If explicitExpiry exists and matches the plan duration scope, use it; otherwise compute from start time + durationMs
+      if (explicitExpiryMs > 0 && explicitExpiryMs > Date.now() + (durationDays - 15) * 86400000) {
+        targetTimestamp = explicitExpiryMs;
+      } else {
+        const calculatedFromStart = planStartTimeMs + durationMs;
+        targetTimestamp = calculatedFromStart > Date.now() ? calculatedFromStart : (Date.now() + durationMs);
+      }
+    } else {
+      // For free trial (30 days)
+      const trialExpiry =
+        merchant?.expires_at ||
+        (merchant as any)?.expiresAt ||
+        merchant?.trialEndsAt ||
+        supabaseSub?.expires_at ||
+        supabaseSub?.trial_ends_at;
+
+      if (trialExpiry && !isNaN(new Date(trialExpiry).getTime())) {
+        targetTimestamp = new Date(trialExpiry).getTime();
+      } else {
+        const rawStartTime =
+          merchant?.plan_started_at ||
+          (merchant as any)?.planStartedAt ||
+          merchant?.trialStartDate ||
+          merchant?.createdAt;
+
+        const trialStartTimeMs = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
+          ? new Date(rawStartTime).getTime()
+          : initialMountTimeRef.current;
+
+        targetTimestamp = trialStartTimeMs + (30 * 24 * 60 * 60 * 1000);
+      }
     }
 
     const computeTimeLeft = () => {
@@ -529,43 +603,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           <div className="flex items-center gap-2 shrink-0">
-            {platformSettings?.logoUrl ? (
-              <img
-                src={platformSettings.logoUrl}
-                alt={platformSettings?.siteTitle || 'Logo'}
-                className="w-8 h-8 rounded-lg object-contain"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center p-0.5 bg-gradient-to-tr from-[#BF953F] to-[#B38728]">
-                <div className={`w-full h-full rounded-[6px] ${isDarkMode ? 'bg-[#181B26]' : 'bg-white'} flex items-center justify-center`}>
-                  <svg viewBox="0 0 40 40" className="w-4 h-4" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                      d="M10 12 H30 L16 28 H30"
-                      stroke="#D4AF37"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-              </div>
-            )}
-            <div className="hidden sm:block">
-              <div className="flex items-center gap-1.5">
-                <span className={`text-sm font-extrabold ${isDarkMode ? 'text-white' : 'text-slate-900'} tracking-wide`}>
-                  {platformSettings?.siteTitle ? (
-                    platformSettings.siteTitle.split(' ')[0]
-                  ) : (
-                    'ZID'
-                  )}{' '}
-                  <span className="text-[#E6C587] text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-[#D4AF37]/10 border border-[#D4AF37]/20 shadow-xs">
-                    {platformSettings?.siteTitle && platformSettings.siteTitle.split(' ').length > 1
-                      ? platformSettings.siteTitle.split(' ').slice(1).join(' ')
-                      : 'SAAS'}
-                  </span>
-                </span>
-              </div>
-            </div>
+            <BrandLogo size="sm" showSubtitle={false} isDarkMode={isDarkMode} />
           </div>
 
           {/* "+ Add" Quick Action Button */}
