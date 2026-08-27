@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
 import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug } from '../../utils/catalogPayload';
+import { readZidStoreData } from '../../lib/storeData';
 import { 
   ArrowLeft, 
   Upload, 
@@ -152,44 +153,64 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const targetSlug = merchant?.storeSlug || merchant?.id || 'default'
+    const targetSlug = merchant?.storeSlug || merchant?.id || 'default';
 
-  // 1. LocalStorage থেকে ডাটা নেওয়া
-  const localCats = localStorage.getItem(`zid_categories_${targetSlug}`);
-  let parsedLocal: string[] = [];
-  if (localCats) {
-    try {
-      const parsed = JSON.parse(localCats);
-      if (Array.isArray(parsed)) {
-        parsedLocal = parsed.map((c: any) => c?.name || c?.title || c);
+    const parseNames = (arr: any[]): string[] => {
+      if (!Array.isArray(arr)) return [];
+      return arr.map((c: any) => (typeof c === 'string' ? c : c?.name || c?.title || '')).filter(Boolean);
+    };
+
+    let collected: string[] = [];
+
+    // 1. Storage Key: zid_store_categories_v2
+    const catsV2 = localStorage.getItem(`zid_store_categories_v2:${targetSlug}`);
+    if (catsV2) {
+      try {
+        collected.push(...parseNames(JSON.parse(catsV2)));
+      } catch (e) {
+        console.error(e);
       }
-    } catch (e) {
-      console.error(e);
     }
-  }
 
-  // 2. API থেকে ডাটা ফেচ করা
-  fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
-    .then((res) => (res.ok ? res.json() : []))
-    .then((data) => {
-      if (isMounted) {
-        const apiNames = Array.isArray(data)
-          ? data.map((c: any) => c?.name || c?.title).filter(Boolean)
-          : [];
-        const combined = Array.from(new Set([...apiNames, ...parsedLocal]));
-        setCustomCategories(combined);
+    // 2. Storage Key: zid_categories_
+    const catsOld = localStorage.getItem(`zid_categories_${targetSlug}`);
+    if (catsOld) {
+      try {
+        collected.push(...parseNames(JSON.parse(catsOld)));
+      } catch (e) {
+        console.error(e);
       }
-    })
-    .catch((err) => {
-      console.warn('Failed to fetch categories, using local data:', err);
-      if (isMounted) setCustomCategories(parsedLocal);
-    });
+    }
 
-  return () => {
-    isMounted = false;
-  };
-}, [merchant]);
+    // 3. StoreData JSON store
+    const storeCats = readZidStoreData(targetSlug)?.categories;
+    if (Array.isArray(storeCats)) {
+      collected.push(...parseNames(storeCats));
+    }
+
+    if (initialData?.category) {
+      collected.push(initialData.category);
+    }
+
+    const combinedLocal = Array.from(new Set(collected)).filter(Boolean);
+    if (isMounted) {
+      setCustomCategories(combinedLocal);
+    }
+
+    // 4. API Fetch
+    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
+      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : []))
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          const apiNames = parseNames(data);
+          const finalCombined = Array.from(new Set([...apiNames, ...combinedLocal])).filter(Boolean);
+          setCustomCategories(finalCombined);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch categories from API, using local data:', err);
       });
+
     return () => {
       isMounted = false;
     };
@@ -706,7 +727,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       type: 'single',
       sku,
       barcode,
-      category: category || 'Ethnic Wear',
+      category: category || '',
       priceBDT: numSellingPrice,
       costPriceBDT: numCostPrice,
       compareAtPriceBDT: hasDiscount ? numComparePrice : undefined,
