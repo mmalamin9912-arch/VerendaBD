@@ -198,18 +198,24 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
     }
 
     // 4. API Fetch
-    fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`)
-      .then((res) => (res.ok && res.headers.get('content-type')?.includes('application/json') ? res.json() : []))
-      .then((data) => {
+    const loadCategoriesFromApi = async () => {
+      try {
+        const res = await fetch(`/api/categories-by-slug/${encodeURIComponent(targetSlug)}`);
+        if (!res.ok) return;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) return;
+        const data = await res.json();
         if (isMounted && Array.isArray(data) && data.length > 0) {
           const apiNames = parseNames(data);
           const finalCombined = Array.from(new Set([...apiNames, ...combinedLocal])).filter(Boolean);
           setCustomCategories(finalCombined);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn('Failed to fetch categories from API, using local data:', err);
-      });
+      }
+    };
+
+    loadCategoriesFromApi();
 
     return () => {
       isMounted = false;
