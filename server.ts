@@ -132,9 +132,69 @@ async function writeStorePayload(payload: any) {
   await fs.writeFile(STORE_FILE, JSON.stringify(payload, null, 2));
 }
 
+// Subscription endpoint by store name or slug
+app.get('/api/subscription/by-store/:storeName', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  try {
+    const storeName = decodeURIComponent(req.params.storeName || '').trim();
+    if (!storeName) {
+      return res.status(200).json({ ok: false, subscription_plan: null, subscription_expiry: null });
+    }
+
+    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+      try {
+        const slug = storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?or=(store_name.ilike.${encodeURIComponent(storeName)},store_slug.eq.${encodeURIComponent(slug)})&select=*&limit=1`, {
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`
+          }
+        });
+        if (sbRes.ok) {
+          const rows = await sbRes.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            const m = rows[0];
+            return res.status(200).json({
+              ok: true,
+              subscription_plan: m.subscription_plan || m.subscriptionPlan || 'free_trial',
+              subscription_expiry: m.subscription_expiry || m.subscriptionExpiry || null,
+              duration_days: m.duration_days || 30,
+              plan_started_at: m.plan_started_at,
+              expires_at: m.expires_at
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Supabase subscription lookup warning:', e);
+      }
+    }
+
+    // In-memory check
+    const payload = await readStorePayload();
+    if (payload.merchant && (payload.merchant.storeName === storeName || payload.merchant.storeSlug === storeName.toLowerCase().replace(/[^a-z0-9]/g, ''))) {
+      return res.status(200).json({
+        ok: true,
+        subscription_plan: payload.merchant.subscriptionPlan || 'free_trial',
+        subscription_expiry: payload.merchant.subscriptionExpiry || null,
+        duration_days: payload.merchant.duration_days || 30
+      });
+    }
+
+    return res.status(200).json({ ok: true, subscription_plan: 'free_trial', subscription_expiry: null, duration_days: 30 });
+  } catch (err: any) {
+    return res.status(200).json({ ok: false, error: err?.message || 'Error fetching subscription', subscription_plan: 'free_trial' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', provider: 'Zid local store' });
+  res.setHeader('Content-Type', 'application/json');
+  res.json({ status: 'ok', provider: 'Supabase Data Layer' });
 });
 
 app.all('/api/categories', (req, res) => {
