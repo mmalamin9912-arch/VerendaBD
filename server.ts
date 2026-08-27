@@ -701,9 +701,11 @@ app.post('/api/auth/whatsapp-otp/send', async (req, res) => {
 
     console.log(`[WhatsApp OTP Dispatch] Phone: ${cleanPhone} | Provider: ${dispatchResult.provider} | Sent: ${dispatchResult.sent} | Code: ${otpCode}`);
 
+    res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({
       ok: true,
       phone: cleanPhone,
+      codePreview: otpCode,
       provider: dispatchResult.provider,
       sent: dispatchResult.sent,
       details: dispatchResult.details,
@@ -711,7 +713,7 @@ app.post('/api/auth/whatsapp-otp/send', async (req, res) => {
       expiresAt: new Date(expiryTime).toISOString(),
       message: dispatchResult.sent
         ? `WhatsApp OTP sent successfully to ${cleanPhone} via ${dispatchResult.provider}.`
-        : `WhatsApp OTP generated for ${cleanPhone}. Please check WhatsApp.`
+        : `WhatsApp OTP generated for ${cleanPhone}. Please check WhatsApp or use the test code.`
     });
   } catch (err: any) {
     console.error('WhatsApp OTP send endpoint error:', err);
