@@ -439,7 +439,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div>
                   <label className="block text-slate-300 font-bold mb-1.5">Store Slug URL Path</label>
                   <div className="flex">
-                    <span className="bg-[#1D2436] border border-r-0 border-[#2E3852] px-3 py-2.5 rounded-l-xl text-slate-400 text-xs font-mono">/store/</span>
+                    <span className="bg-[#1D2436] border border-r-0 border-[#2E3852] px-3 py-2.5 rounded-l-xl text-slate-400 text-xs font-mono">/e/</span>
                     <input
                       type="text"
                       value={storeSlug}

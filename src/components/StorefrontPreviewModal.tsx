@@ -140,7 +140,7 @@ export const StorefrontPreviewModal: React.FC<StorefrontPreviewModalProps> = ({
             )}
 
             <a
-              href={`/store/${merchant?.storeSlug || ''}`}
+              href={`/e/${merchant?.storeSlug || ''}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition"

@@ -391,6 +391,24 @@ app.get('/api/products-by-slug/:slug', async (req, res) => {
   return res.json(prods);
 });
 
+app.get('/api/products', async (req, res) => {
+  const storeSlug = (req.query.store_slug as string || '').trim().toLowerCase();
+  const merchantId = (req.query.merchant_id as string || '').trim();
+  const payload = await readStorePayload();
+  let prods = [];
+  if (storeSlug && productStore.has(storeSlug)) {
+    prods = productStore.get(storeSlug) || [];
+  }
+  if (prods.length === 0 && Array.isArray(payload.products)) {
+    prods = payload.products.filter((p: any) => {
+      const matchSlug = storeSlug && (p.storeSlug === storeSlug || p.store_slug === storeSlug);
+      const matchMerchant = merchantId && (p.merchantId === merchantId || p.merchant_id === merchantId);
+      return storeSlug ? matchSlug : matchMerchant;
+    });
+  }
+  return res.json(prods);
+});
+
 app.post('/api/products', async (req, res) => {
   const product = req.body;
   if (!product) return res.status(400).json({ ok: false, error: 'Product required' });

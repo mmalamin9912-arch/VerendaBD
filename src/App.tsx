@@ -138,7 +138,7 @@ export default function App() {
         return;
       }
 
-      if (path.startsWith('/store/')) {
+      if (path.startsWith('/store/') || path.startsWith('/e/')) {
         return;
       }
 
@@ -993,8 +993,9 @@ export default function App() {
     }
   };
 
-  if (currentPath.startsWith('/store/')) {
-    const storeSlug = currentPath.replace('/store/', '').split('/')[0];
+  if (currentPath.startsWith('/store/') || currentPath.startsWith('/e/')) {
+    const isE = currentPath.startsWith('/e/');
+    const storeSlug = currentPath.replace(isE ? '/e/' : '/store/', '').split('/')[0];
     
     // Retrieve direct custom tenant store configurations from database
     let targetMerchant = merchant;

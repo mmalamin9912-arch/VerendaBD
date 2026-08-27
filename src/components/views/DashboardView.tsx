@@ -148,12 +148,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="space-y-2">
             <div className="flex items-center gap-2 bg-[#15110E] border border-[#3E342B] px-3 py-2 rounded-xl text-[11px] font-mono text-[#FCF6BA] overflow-hidden">
               <Globe className="w-3.5 h-3.5 text-[#E6C587] shrink-0" />
-              <span className="truncate">{window.location.origin}/store/{merchant?.storeSlug || ''}</span>
+              <span className="truncate">{window.location.origin}/e/{merchant?.storeSlug || ''}</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/store/${merchant?.storeSlug || ''}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/e/${merchant?.storeSlug || ''}`);
                   alert('Customer Store URL copied to clipboard!');
                 }}
                 className="flex-1 px-3 py-2 bg-[#2E241D] hover:bg-[#3D3027] text-[#E6C587] border border-[#4E3E33] font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
@@ -162,7 +162,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span>Copy Customer Link</span>
               </button>
               <a
-                href={`/store/${merchant?.storeSlug || ''}`}
+                href={`/e/${merchant?.storeSlug || ''}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-3 py-2 bg-gradient-to-r from-[#BF953F] to-[#B38728] hover:from-[#FCF6BA] hover:to-[#BF953F] text-slate-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow"

@@ -61,24 +61,32 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     let active = true;
     const loadStorefront = async () => {
       try {
-        const response = await fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, {
-          cache: 'no-store',
-          headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-        });
-        if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return;
-        const payload = await response.json();
+        const [storefrontRes, productsRes] = await Promise.all([
+          fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+          }),
+          fetch(`/api/products?store_slug=${encodeURIComponent(storeSlug)}`, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+          })
+        ]);
+        
+        if (!storefrontRes.ok || !storefrontRes.headers.get('content-type')?.includes('application/json')) return;
+        const payload = await storefrontRes.json();
+        
+        let apiProducts = [];
+        if (productsRes.ok && productsRes.headers.get('content-type')?.includes('application/json')) {
+          apiProducts = await productsRes.json();
+        }
+
         if (active && payload?.storefront) {
           const server = payload.storefront as Record<string, unknown>;
-          // Merchant product listings live in the merchant store record
-          // (ZID_MERCHANT_STORE_DATA_*); the tenant storefront record keeps only
-          // categories/themes and returns an empty products array. Guard against
-          // letting that empty array clobber a populated local product list so the
-          // storefront catalog never renders "No products added yet" when products exist.
           const existing = readZidStoreData(storeSlug);
-          const serverProducts = Array.isArray(server.products) ? (server.products as unknown[]) : [];
+          
           const merged = {
             ...server,
-            products: serverProducts.length > 0 ? serverProducts : (Array.isArray(existing.products) ? existing.products : serverProducts),
+            products: Array.isArray(apiProducts) && apiProducts.length > 0 ? apiProducts : (Array.isArray(existing.products) ? existing.products : []),
           };
           writeZidStoreData(merged as ZidStoreData, storeSlug);
           setLiveStoreData(merged as ZidStoreData);
