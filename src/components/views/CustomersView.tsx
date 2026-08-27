@@ -134,6 +134,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   const [formType, setFormType] = useState<'Individual' | 'Company'>('Individual');
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
+  const [formCountryCode, setFormCountryCode] = useState<'+880' | '+966'>('+880');
   const [formMobileNumber, setFormMobileNumber] = useState('');
   const [formGender, setFormGender] = useState<'Male' | 'Female' | 'Other' | ''>('');
   const [formCountry, setFormCountry] = useState('Bangladesh');
@@ -184,6 +185,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setFormType('Individual');
     setFormName('');
     setFormEmail('');
+    setFormCountryCode('+880');
     setFormMobileNumber('');
     setFormGender('');
     setFormCountry('Bangladesh');
@@ -205,10 +207,22 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     setFormName(customer.name);
     setFormEmail(customer.email || '');
     
-    // Strip prefix if exists
-    let rawMobile = customer.phone;
-    if (rawMobile.startsWith('+880')) {
+    // Detect country code and strip prefix if exists
+    let rawMobile = customer.phone || '';
+    if (rawMobile.startsWith('+966')) {
+      setFormCountryCode('+966');
+      rawMobile = rawMobile.replace('+966', '').trim();
+    } else if (rawMobile.startsWith('966')) {
+      setFormCountryCode('+966');
+      rawMobile = rawMobile.slice(3).trim();
+    } else if (rawMobile.startsWith('+880')) {
+      setFormCountryCode('+880');
       rawMobile = rawMobile.replace('+880', '').trim();
+    } else if (rawMobile.startsWith('880')) {
+      setFormCountryCode('+880');
+      rawMobile = rawMobile.slice(3).trim();
+    } else {
+      setFormCountryCode('+880');
     }
     setFormMobileNumber(rawMobile);
     
@@ -235,9 +249,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     e.preventDefault();
     if (!formName.trim()) return;
 
-    // Format phone number with +880
+    // Format phone number with selected country code (+880 or +966)
     let cleanMobile = formMobileNumber.trim().replace(/^0+/, '');
-    const formattedPhone = cleanMobile ? `+880${cleanMobile}` : '+8801700000000';
+    const prefix = formCountryCode;
+    const formattedPhone = cleanMobile ? `${prefix}${cleanMobile}` : (prefix === '+966' ? '+966500000000' : '+8801700000000');
     const finalCity = formCity === 'Other' ? (formCustomCity.trim() || 'Dhaka') : formCity;
 
     if (editingCustomer && onUpdateCustomers) {
@@ -568,26 +583,35 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   />
                 </div>
 
-                {/* Field 3: Mobile (+880 Bangladesh support) */}
+                {/* Field 3: Mobile (Bangladesh +880 & Saudi Arabia +966 support) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-200 mb-1.5">
-                    Mobile Number (+880 Bangladesh) *
-                  </label>
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3 font-bold text-xs text-[#00D68F] bg-[#282E3F] px-2 py-1 rounded-md border border-[#00D68F]/30 pointer-events-none">
-                      +880
-                    </span>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-200">
+                      Mobile Number ({formCountryCode === '+880' ? 'Bangladesh +880' : 'Saudi Arabia +966'}) *
+                    </label>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={formCountryCode}
+                      onChange={(e) => setFormCountryCode(e.target.value as '+880' | '+966')}
+                      className="bg-[#282E3F] border border-[#00D68F]/30 rounded-xl px-2.5 py-2.5 text-xs font-bold text-[#00D68F] focus:outline-none cursor-pointer"
+                    >
+                      <option value="+880">🇧🇩 +880</option>
+                      <option value="+966">🇸🇦 +966</option>
+                    </select>
                     <input
                       type="tel"
                       required
                       value={formMobileNumber}
                       onChange={(e) => setFormMobileNumber(e.target.value.replace(/[^0-9]/g, ''))}
-                      placeholder="1755112233"
+                      placeholder={formCountryCode === '+880' ? '1755112233' : '501234567'}
                       maxLength={11}
-                      className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-18 pr-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-[#00D68F] placeholder:text-slate-500"
+                      className="flex-1 bg-[#181B26] border border-[#2E3548] rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-[#00D68F] placeholder:text-slate-500 font-mono"
                     />
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Format: 10 digits starting with 1 (e.g. 1755112233)</p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {formCountryCode === '+880' ? 'Format: 10 digits (e.g. 1755112233)' : 'Format: 9 digits (e.g. 501234567)'}
+                  </p>
                 </div>
 
                 {/* Field 4: Gender Optional */}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, Phone, MapPin, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { safeParseJson } from '../lib/safeFetch';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -46,20 +47,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(formData)
       });
       
-      const data = await res.json();
+      const data: any = await safeParseJson(res, { success: false, message: 'Server response error' });
       
-      if (data.success) {
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setSuccessMsg(data.message || (isSignUp ? 'সাইন আপ সফল হয়েছে!' : 'লগইন সফল হয়েছে!'));
+      if (data?.success) {
+        if (data?.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+        setSuccessMsg(data?.message || (isSignUp ? 'সাইন আপ সফল হয়েছে!' : 'লগইন সফল হয়েছে!'));
         setTimeout(() => {
           onClose();
         }, 1500);
       } else {
-        setErrorMsg(data.message || 'অনুরোধটি ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
+        setErrorMsg(data?.message || 'অনুরোধটি ব্যর্থ হয়েছে। আবার চেষ্টা করুন।');
       }
     } catch (err) {
       setErrorMsg('নেটওয়ার্ক সমস্যা! অনুগ্রহ করে ইন্টারনেট কানেকশন চেক করে আবার চেষ্টা করুন।');

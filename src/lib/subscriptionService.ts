@@ -9,6 +9,7 @@ import {
 } from '../utils/subscriptionUtils';
 import { initialMerchant } from '../data/initialData';
 import { writeZidStoreData } from './storeData';
+import { safeParseJson } from './safeFetch';
 
 export interface SubscriptionSyncOptions {
   merchant: MerchantProfile;
@@ -209,17 +210,17 @@ export async function fetchMerchantSubscriptionFromSupabase(
   if (!dbMerchant) {
     try {
       if (cleanEmail) {
-        const res = await fetch(`/api/merchants/check/${encodeURIComponent(cleanEmail)}`);
-        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-          const data = await res.json();
-          if (data) dbMerchant = data;
-        }
+        const res = await fetch(`/api/merchants/check/${encodeURIComponent(cleanEmail)}`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        const data = await safeParseJson(res, null);
+        if (data) dbMerchant = data;
       } else if (cleanSlug) {
-        const res = await fetch(`/api/merchants/by-slug?slug=${encodeURIComponent(cleanSlug)}`);
-        if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-          const data = await res.json();
-          if (data?.merchant) dbMerchant = data.merchant;
-        }
+        const res = await fetch(`/api/merchants/by-slug?slug=${encodeURIComponent(cleanSlug)}`, {
+          headers: { 'Accept': 'application/json' }
+        });
+        const data = await safeParseJson(res, null);
+        if (data?.merchant) dbMerchant = data.merchant;
       }
     } catch (err) {
       console.warn('[SubscriptionService] Backend API fetch warning:', err);

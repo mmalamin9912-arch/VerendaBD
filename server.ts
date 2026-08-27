@@ -224,17 +224,43 @@ app.all('/api/merchants/update', (req, res) => {
 });
 
 app.get('/api/merchants/check/:email', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
   const email = (req.params.email || '').trim().toLowerCase();
   if (!email) return res.json(null);
   
-  // Check in-memory merchantStore
+  // 1. Query Supabase REST if configured
+  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    try {
+      const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?email=ilike.${encodeURIComponent(email)}&select=*&limit=1`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
+        }
+      });
+      if (sbRes.ok) {
+        const rows = await sbRes.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          return res.json(sanitizeServerMerchant(rows[0]));
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase merchant email check warning:', e);
+    }
+  }
+
+  // 2. Check in-memory merchantStore
   for (const m of merchantStore.values()) {
     if (m && typeof m.email === 'string' && m.email.toLowerCase() === email) {
       return res.json(sanitizeServerMerchant(m));
     }
   }
   
-  // Check local-store.json
+  // 3. Check local-store.json
   const payload = await readStorePayload();
   if (payload.merchant && payload.merchant.email && String(payload.merchant.email).toLowerCase() === email) {
     return res.json(sanitizeServerMerchant(payload.merchant));
@@ -249,9 +275,35 @@ app.get('/api/merchants/check/:email', async (req, res) => {
 });
 
 app.get('/api/merchants/by-slug', async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
   const slug = (req.query.slug as string || '').trim().toLowerCase();
   if (!slug) return res.json({ ok: false, merchant: null });
   
+  // 1. Query Supabase REST if configured
+  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    try {
+      const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?store_slug=eq.${encodeURIComponent(slug)}&select=*&limit=1`, {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`
+        }
+      });
+      if (sbRes.ok) {
+        const rows = await sbRes.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          return res.json({ ok: true, merchant: sanitizeServerMerchant(rows[0]) });
+        }
+      }
+    } catch (e) {
+      console.warn('Supabase merchant slug check warning:', e);
+    }
+  }
+
   const inMemory = merchantStore.get(slug);
   if (inMemory) return res.json({ ok: true, merchant: sanitizeServerMerchant(inMemory) });
   

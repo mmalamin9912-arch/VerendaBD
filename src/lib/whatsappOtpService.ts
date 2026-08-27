@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { safeParseJson } from './safeFetch';
 
 export interface CountryCodeOption {
   code: string; // '+880' | '+966'
@@ -208,34 +209,40 @@ export async function sendWhatsAppOtp(
     }
 
     // 3. Trigger backend server proxy endpoint for WhatsApp dispatch & Supabase sync
-    const res = await fetch('/api/auth/whatsapp-otp/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: normalized,
-        code: otpCode,
-        userType,
-        expiresAt,
-        countryCode: validation.country === 'SA' ? '+966' : '+880'
-      })
-    });
+    let data: any = null;
+    try {
+      const res = await fetch('/api/auth/whatsapp-otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          phone: normalized,
+          code: otpCode,
+          userType,
+          expiresAt,
+          countryCode: validation.country === 'SA' ? '+966' : '+880'
+        })
+      });
 
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      return {
-        success: false,
-        message: data.error || 'Failed to dispatch WhatsApp OTP. Please try again.'
-      };
+      data = await safeParseJson(res, { ok: res.ok });
+      if (!res.ok || !data?.ok) {
+        return {
+          success: false,
+          message: data?.error || data?.message || 'Failed to dispatch WhatsApp OTP. Please try again.'
+        };
+      }
+    } catch (e: any) {
+      console.warn('Backend proxy fetch exception, proceeding with direct link fallback:', e);
+      data = { ok: true, provider: 'Direct WhatsApp Link', sent: false };
     }
 
     return {
       success: true,
-      message: data.message || `WhatsApp OTP sent successfully to ${normalized}. Please check your WhatsApp app.`,
-      expiresAt: data.expiresAt || expiresAt,
-      provider: data.provider,
-      sent: data.sent,
-      details: data.details,
-      directLink: data.directLink,
+      message: data?.message || `WhatsApp OTP sent successfully to ${normalized}. Please check your WhatsApp app.`,
+      expiresAt: data?.expiresAt || expiresAt,
+      provider: data?.provider,
+      sent: data?.sent,
+      details: data?.details,
+      directLink: data?.directLink,
       codePreview: otpCode
     };
   } catch (err: any) {
@@ -328,27 +335,27 @@ export async function verifyWhatsAppOtp(
     // 3. Fallback / Server proxy verification against persistent Supabase store
     const res = await fetch('/api/auth/whatsapp-otp/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
         phone: normalized,
         code: cleanCode
       })
     });
 
-    const data = await res.json();
-    if (res.ok && data.ok && data.verified) {
+    const data: any = await safeParseJson(res, { ok: res.ok, verified: false });
+    if (res.ok && data?.ok && data?.verified) {
       return {
         success: true,
         verified: true,
         message: 'Phone number successfully verified via WhatsApp!',
-        token: data.token || `wp_verified_${Date.now()}`
+        token: data?.token || `wp_verified_${Date.now()}`
       };
     }
 
     return {
       success: false,
       verified: false,
-      message: data.error || 'Invalid or expired WhatsApp verification code.'
+      message: data?.error || data?.message || 'Invalid or expired WhatsApp verification code.'
     };
   } catch (err: any) {
     console.error('Error verifying WhatsApp OTP:', err);
