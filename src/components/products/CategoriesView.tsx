@@ -1346,4 +1346,3 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     </form>
   );
 };
-s
