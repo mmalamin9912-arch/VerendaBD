@@ -23,8 +23,12 @@ import {
   Building2,
   Sparkles,
   ShieldAlert,
-  Upload
+  Upload,
+  MessageSquare
 } from 'lucide-react';
+import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../lib/whatsappOtpService';
+import { getPlanDurationInDays, calculatePlanTimestamps } from '../utils/subscriptionUtils';
+import { resolveMerchantSubscription, syncMerchantSubscription } from '../lib/subscriptionService';
 
 interface AuthFlowProps {
   onLoginSuccess: (userProfile: MerchantProfile) => void;
@@ -104,6 +108,53 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // WhatsApp OTP Phone Verification States
+  const [whatsappOtpInput, setWhatsappOtpInput] = useState('');
+  const [isWhatsappOtpSent, setIsWhatsappOtpSent] = useState(false);
+  const [isWhatsappPhoneVerified, setIsWhatsappPhoneVerified] = useState(false);
+  const [verifiedWhatsappPhone, setVerifiedWhatsappPhone] = useState('');
+  const [isSendingWhatsappOtp, setIsSendingWhatsappOtp] = useState(false);
+  const [isVerifyingWhatsappOtp, setIsVerifyingWhatsappOtp] = useState(false);
+
+  const handleSendMerchantWhatsappOtp = async () => {
+    setErrorMsg('');
+    setInfoNotice(null);
+    if (!phone || phone.trim().length < 9) {
+      setErrorMsg('Please enter a valid phone number before requesting WhatsApp OTP.');
+      return;
+    }
+    setIsSendingWhatsappOtp(true);
+    const res = await sendWhatsAppOtp(phone, 'merchant');
+    setIsSendingWhatsappOtp(false);
+    if (res.success) {
+      setIsWhatsappOtpSent(true);
+      setInfoNotice(res.message);
+      setToastMsg('WhatsApp verification code sent!');
+    } else {
+      setErrorMsg(res.message);
+    }
+  };
+
+  const handleVerifyMerchantWhatsappOtp = async () => {
+    setErrorMsg('');
+    if (!whatsappOtpInput || whatsappOtpInput.trim().length !== 6) {
+      setErrorMsg('Please enter the 6-digit WhatsApp verification code.');
+      return;
+    }
+    setIsVerifyingWhatsappOtp(true);
+    const res = await verifyWhatsAppOtp(phone, whatsappOtpInput);
+    setIsVerifyingWhatsappOtp(false);
+    if (res.success && res.verified) {
+      setIsWhatsappPhoneVerified(true);
+      setVerifiedWhatsappPhone(phone);
+      setIsWhatsappOtpSent(false);
+      setToastMsg('Phone verified successfully via WhatsApp!');
+      setInfoNotice('Phone number verified via Supabase WhatsApp OTP ✓');
+    } else {
+      setErrorMsg(res.message || 'Verification failed. Please check the OTP code.');
+    }
+  };
+
   // Auto-hide toast message after 6 seconds
   useEffect(() => {
     if (toastMsg) {
@@ -169,62 +220,15 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     } catch (e) {
       console.error(e);
     }
-    return [
-      {
-        email: (defaultMerchant.email || '').toLowerCase(),
-        ownerName: defaultMerchant.ownerName || '',
-        storeName: defaultMerchant.storeName,
-        phone: defaultMerchant.phone || '',
-        address: 'House 14, Road 5, Dhanmondi, Dhaka-1205',
-        password: 'password123',
-        registeredAt: new Date().toISOString(),
-      },
-      {
-        email: 'owner@dhakacraft.com',
-        ownerName: 'Tariq Al-Mansoor',
-        storeName: 'My Store & Muslin',
-        phone: '+880 1711-889900',
-        address: 'Gulshan 2, Dhaka',
-        password: 'password123',
-        registeredAt: new Date().toISOString(),
-      },
-      {
-        email: 'mmalamin9912@gmail.com',
-        ownerName: 'Al-Amin Hossain',
-        storeName: 'Amin Fashion BD',
-        phone: '+880 1812-345678',
-        address: 'Uttara Sector 7, Dhaka',
-        password: 'password123',
-        registeredAt: new Date().toISOString(),
-      }
-    ];
+    return [];
   };
 
   const normalizeMerchantRecord = (raw: any, cleanEmail: string): MerchantProfile => {
-    const storeName = raw?.storeName || raw?.store_name || 'My Store';
-    const storeSlug = raw?.storeSlug || raw?.store_slug || (storeName ? storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore');
-    const subscriptionPlan = raw?.subscriptionPlan || raw?.subscription_plan || raw?.planId || 'enterprise';
-    const subscriptionExpiry = raw?.subscriptionExpiry || raw?.subscription_expiry || null;
-    const ownerName = raw?.ownerName || raw?.owner_name || raw?.full_name || 'Merchant Owner';
-    const phone = raw?.phone || '+880 1700-000000';
-    const logoUrl = raw?.logoUrl || raw?.logo_url || defaultMerchant.logoUrl;
-    const trialEndsAt = raw?.trialEndsAt || raw?.trial_ends_at || null;
-    const trialDaysRemaining = raw?.trialDaysRemaining ?? raw?.trial_days_remaining ?? 30;
-
-    return {
+    return resolveMerchantSubscription({
       ...defaultMerchant,
       ...raw,
-      email: cleanEmail,
-      storeName,
-      storeSlug,
-      ownerName,
-      phone,
-      logoUrl,
-      subscriptionPlan,
-      subscriptionExpiry,
-      trialEndsAt,
-      trialDaysRemaining,
-    };
+      email: cleanEmail
+    });
   };
 
   const enhanceWithPrepayment = (profile: MerchantProfile): MerchantProfile => {
@@ -233,7 +237,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       try {
         const parsed = JSON.parse(prePayment);
         if (parsed.planId) {
-          return { ...profile, subscriptionPlan: parsed.planId };
+          return resolveMerchantSubscription({
+            ...profile,
+            subscriptionPlan: parsed.planId,
+            plan_started_at: new Date().toISOString()
+          });
         }
       } catch (e) {
         console.error('Error parsing pre_payment', e);
@@ -253,6 +261,13 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
     localStorage.removeItem('zid_pre_payment');
     localStorage.removeItem('zid_intended_plan');
+
+    // Asynchronously push synced subscription to Supabase and Backend
+    syncMerchantSubscription({
+      merchant: enrichedProfile,
+      planId: enrichedProfile.subscriptionPlan || 'free_trial',
+      startDate: new Date(enrichedProfile.plan_started_at || Date.now())
+    }).catch(err => console.warn('Background subscription sync notice:', err));
 
     onLoginSuccess(enrichedProfile);
   };
@@ -295,7 +310,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     let existingProfile: any = null;
     try {
       const response = await fetch(`/api/merchants/check/${encodeURIComponent(cleanEmail)}`);
-      if (response.ok) {
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
         const data = await response.json();
         if (data) existingProfile = data;
       }
@@ -323,18 +338,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
         if (!error && (data.user || data.session)) {
           setIsLoading(false);
+          const derivedName = (cleanEmail.split('@')[0] || 'My Store').replace(/[^a-zA-Z0-9]/g, ' ');
+          const derivedSlug = (cleanEmail.split('@')[0] || 'store').replace(/[^a-z0-9]/g, '');
           const userProfile: MerchantProfile = existingProfile
             ? normalizeMerchantRecord(existingProfile, cleanEmail)
-            : {
+            : resolveMerchantSubscription({
                 ...defaultMerchant,
                 email: cleanEmail,
-                ownerName: data.user?.user_metadata?.full_name || 'Merchant Owner',
-                storeName: data.user?.user_metadata?.store_name || 'Zid BD Online Shop',
-                phone: '+880 1700-000000',
-                storeSlug: 'zidshop',
-                subscriptionPlan: 'enterprise',
-                logoUrl: defaultMerchant.logoUrl,
-              };
+                ownerName: data.user?.user_metadata?.full_name || cleanEmail.split('@')[0] || 'Store Owner',
+                storeName: data.user?.user_metadata?.store_name || `${derivedName} Store`,
+                phone: defaultMerchant.phone || '',
+                storeSlug: derivedSlug,
+                subscriptionPlan: 'free_trial',
+                logoUrl: defaultMerchant.logoUrl || '',
+              });
 
           finishLogin(userProfile);
           return;
@@ -355,18 +372,20 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
       if (isPasswordValid) {
         setIsLoading(false);
+        const derivedName = (cleanEmail.split('@')[0] || 'My Store').replace(/[^a-zA-Z0-9]/g, ' ');
+        const derivedSlug = (cleanEmail.split('@')[0] || 'store').replace(/[^a-z0-9]/g, '');
         const userProfile: MerchantProfile = existingProfile
           ? normalizeMerchantRecord(existingProfile, cleanEmail)
-          : {
+          : resolveMerchantSubscription({
               ...defaultMerchant,
               email: cleanEmail,
-              ownerName: existingUser?.ownerName || 'Merchant Owner',
-              storeName: existingUser?.storeName || 'Zid BD Online Shop',
-              phone: existingUser?.phone || '+880 1700-000000',
-              storeSlug: existingUser?.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'zidshop',
-              subscriptionPlan: 'enterprise',
-              logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl,
-            };
+              ownerName: existingUser?.ownerName || cleanEmail.split('@')[0] || 'Store Owner',
+              storeName: existingUser?.storeName || `${derivedName} Store`,
+              phone: existingUser?.phone || defaultMerchant.phone || '',
+              storeSlug: existingUser?.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : derivedSlug,
+              subscriptionPlan: 'free_trial',
+              logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl || '',
+            });
         
         finishLogin(userProfile);
         return;
@@ -395,7 +414,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     let existingProfile: any = null;
     try {
       const response = await fetch(`/api/merchants/check/${encodeURIComponent(cleanEmail)}`);
-      if (response.ok) {
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
         const data = await response.json();
         if (data) existingProfile = data;
       }
@@ -414,29 +433,31 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
     const registeredList = getRegisteredUsers();
     const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
+    const derivedName = (cleanEmail.split('@')[0] || 'My Store').replace(/[^a-zA-Z0-9]/g, ' ');
+    const derivedSlug = (cleanEmail.split('@')[0] || 'store').replace(/[^a-z0-9]/g, '');
 
     const userProfile: MerchantProfile = existingProfile
       ? normalizeMerchantRecord(existingProfile, cleanEmail)
       : existingUser
-      ? {
+      ? resolveMerchantSubscription({
           ...defaultMerchant,
           email: existingUser.email,
-          ownerName: existingUser.ownerName || 'Merchant Owner',
-          storeName: existingUser.storeName || 'My Store',
+          ownerName: existingUser.ownerName || cleanEmail.split('@')[0] || 'Store Owner',
+          storeName: existingUser.storeName || `${derivedName} Store`,
           phone: existingUser.phone || '',
-          storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'mystore',
-          subscriptionPlan: 'enterprise',
+          storeSlug: existingUser.storeName ? existingUser.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : derivedSlug,
+          subscriptionPlan: 'free_trial',
           logoUrl: existingUser.logoUrl || defaultMerchant.logoUrl,
-        }
-      : {
+        })
+      : resolveMerchantSubscription({
           ...defaultMerchant,
           email: cleanEmail,
-          ownerName: cleanEmail.split('@')[0],
-          storeName: 'Google Merchant Store',
-          phone: '+880 1700-112233',
-          storeSlug: cleanEmail.split('@')[0].replace(/[^a-z0-9]/g, '') || 'store',
-          subscriptionPlan: 'enterprise',
-        };
+          ownerName: cleanEmail.split('@')[0] || 'Store Owner',
+          storeName: `${derivedName} Store`,
+          phone: defaultMerchant.phone || '',
+          storeSlug: derivedSlug,
+          subscriptionPlan: 'free_trial',
+        });
 
     setIsLoading(false);
     finishLogin(userProfile);
@@ -562,7 +583,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     let existingProfile: any = null;
     try {
       const response = await fetch(`/api/merchants/check/${encodeURIComponent(cleanedEmail)}`);
-      if (response.ok) {
+      if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
         const data = await response.json();
         if (data) existingProfile = data;
       }
@@ -682,6 +703,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       return;
     }
 
+    if (!isWhatsappPhoneVerified || verifiedWhatsappPhone !== phone) {
+      setErrorMsg('Please verify your phone number via WhatsApp before completing registration.');
+      return;
+    }
+
     if (nidNumber.trim().length < 10) {
       setErrorMsg('Please enter a valid National ID (NID) / Smart Card Number (at least 10 digits).');
       return;
@@ -707,8 +733,10 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     // Check for existing merchant profile in Supabase first
     let existingProfile = null;
     try {
-        const response = await fetch(`/api/merchants/check/${cleanEmail}`);
-        existingProfile = await response.json();
+        const response = await fetch(`/api/merchants/check/${encodeURIComponent(cleanEmail)}`);
+        if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+            existingProfile = await response.json();
+        }
     } catch (e) {
         console.error('Error checking for existing merchant:', e);
     }
@@ -1293,7 +1321,14 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-300 mb-1">Phone Number (+880 Bangladesh) *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-300">Phone Number (+880 Bangladesh) *</label>
+                    {isWhatsappPhoneVerified && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#25D366] bg-[#25D366]/10 px-2 py-0.5 rounded-md border border-[#25D366]/30">
+                        <Check className="w-3 h-3" /> WhatsApp Verified
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <div className="bg-[#252B3B] border border-[#3A435E] px-2.5 py-2 rounded-xl text-slate-300 font-mono font-bold shrink-0 flex items-center">
                       +880
@@ -1302,11 +1337,91 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                       type="text"
                       required
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (isWhatsappPhoneVerified && e.target.value !== verifiedWhatsappPhone) {
+                          setIsWhatsappPhoneVerified(false);
+                        }
+                      }}
                       placeholder="1700000000"
                       className="w-full bg-[#161923] border border-[#3A435E] focus:border-[#D4AF37] rounded-xl px-3 py-2 text-white font-mono outline-none"
                     />
+                    {!isWhatsappPhoneVerified ? (
+                      <button
+                        type="button"
+                        onClick={handleSendMerchantWhatsappOtp}
+                        disabled={isSendingWhatsappOtp || !phone.trim()}
+                        className="px-3 py-2 bg-[#25D366] hover:bg-[#20ba5a] disabled:opacity-50 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer shadow-md"
+                      >
+                        {isSendingWhatsappOtp ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Sending...</span>
+                          </>
+                        ) : (
+                          <>
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Verify via WhatsApp</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="px-3 py-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1 shrink-0">
+                        <Check className="w-4 h-4 text-emerald-400" />
+                        <span>Verified</span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Conditionally Revealed WhatsApp OTP Input */}
+                  {isWhatsappOtpSent && !isWhatsappPhoneVerified && (
+                    <div className="p-3 bg-[#131926] border border-[#25D366]/40 rounded-xl space-y-2.5 mt-2.5 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-200 font-bold flex items-center gap-1.5">
+                          <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" />
+                          Enter 6-Digit WhatsApp OTP Code
+                        </span>
+                        <span className="text-emerald-400 font-mono text-[10px] bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Supabase Connected</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={whatsappOtpInput}
+                          onChange={(e) => setWhatsappOtpInput(e.target.value.replace(/\D/g, ''))}
+                          placeholder="• • • • • •"
+                          className="flex-1 bg-[#161923] border border-[#3A435E] focus:border-[#25D366] text-center font-mono font-bold tracking-[0.3em] text-white rounded-xl px-3 py-2 text-sm outline-none"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={handleVerifyMerchantWhatsappOtp}
+                          disabled={isVerifyingWhatsappOtp || whatsappOtpInput.trim().length < 6}
+                          className="px-4 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black rounded-xl text-xs disabled:opacity-50 transition cursor-pointer shrink-0"
+                        >
+                          {isVerifyingWhatsappOtp ? (
+                            <span className="flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
+                            </span>
+                          ) : (
+                            'Confirm Code'
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                        <span>Check your WhatsApp app for the 6-digit verification code.</span>
+                        <button
+                          type="button"
+                          onClick={handleSendMerchantWhatsappOtp}
+                          disabled={isSendingWhatsappOtp}
+                          className="text-[#25D366] hover:underline font-bold"
+                        >
+                          Resend Code
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

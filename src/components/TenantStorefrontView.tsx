@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
-import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight } from 'lucide-react';
+import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, Loader2 } from 'lucide-react';
+import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../lib/whatsappOtpService';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
 import { LanguageToggle } from './LanguageToggle';
 import { useLanguage } from '../lib/i18n';
@@ -148,6 +149,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const [cart, setCart] = useState<{product: Product, quantity: number, variant: string}[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -156,6 +159,50 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [authNotice, setAuthNotice] = useState('');
+
+  // Customer WhatsApp OTP States
+  const [customerWhatsappOtpInput, setCustomerWhatsappOtpInput] = useState('');
+  const [isCustomerWhatsappOtpSent, setIsCustomerWhatsappOtpSent] = useState(false);
+  const [isCustomerPhoneVerified, setIsCustomerPhoneVerified] = useState(false);
+  const [verifiedCustomerPhone, setVerifiedCustomerPhone] = useState('');
+  const [isSendingCustomerWhatsappOtp, setIsSendingCustomerWhatsappOtp] = useState(false);
+  const [isVerifyingCustomerWhatsappOtp, setIsVerifyingCustomerWhatsappOtp] = useState(false);
+
+  const handleSendCustomerWhatsappOtp = async () => {
+    setAuthNotice('');
+    if (!authPhone || authPhone.trim().length < 9) {
+      setAuthNotice('Please enter a valid phone number before requesting WhatsApp verification.');
+      return;
+    }
+    setIsSendingCustomerWhatsappOtp(true);
+    const res = await sendWhatsAppOtp(authPhone, 'customer');
+    setIsSendingCustomerWhatsappOtp(false);
+    if (res.success) {
+      setIsCustomerWhatsappOtpSent(true);
+      setAuthNotice(res.message);
+    } else {
+      setAuthNotice(res.message);
+    }
+  };
+
+  const handleVerifyCustomerWhatsappOtp = async () => {
+    setAuthNotice('');
+    if (!customerWhatsappOtpInput || customerWhatsappOtpInput.trim().length !== 6) {
+      setAuthNotice('Please enter the 6-digit WhatsApp verification code.');
+      return;
+    }
+    setIsVerifyingCustomerWhatsappOtp(true);
+    const res = await verifyWhatsAppOtp(authPhone, customerWhatsappOtpInput);
+    setIsVerifyingCustomerWhatsappOtp(false);
+    if (res.success && res.verified) {
+      setIsCustomerPhoneVerified(true);
+      setVerifiedCustomerPhone(authPhone.trim());
+      setIsCustomerWhatsappOtpSent(false);
+      setAuthNotice('Phone number successfully verified via Supabase WhatsApp OTP ✓');
+    } else {
+      setAuthNotice(res.message || 'Failed to verify WhatsApp code. Please check and try again.');
+    }
+  };
   const [mobileTab, setMobileTab] = useState<'home' | 'orders' | 'profile'>('home');
   const [showOrderDashboard, setShowOrderDashboard] = useState(false);
   const [customerReturns, setCustomerReturns] = useState<CustomerReturnRequest[]>([]);
@@ -256,6 +303,13 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     if (!cleanEmail.includes('@') || !cleanPassword || !cleanPhone) {
       setAuthNotice('Please enter a valid email, password, and phone number to continue.');
       return;
+    }
+
+    if (authMode === 'signup') {
+      if (!isCustomerPhoneVerified || verifiedCustomerPhone !== cleanPhone) {
+        setAuthNotice('Please verify your phone number via WhatsApp before creating your account.');
+        return;
+      }
     }
 
     const savedAccounts = (() => {
@@ -465,163 +519,178 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   };
 
   // Ensure we have some products for the listing grid - include all active/published products from both sources
-  const displayProducts = (storefrontProducts || []).filter(p =>
-    p && (p.status === 'Active' || p.status === 'Published' || p.status === 'active' || p.status === 'published')
-  );
+  const displayProducts = (storefrontProducts || [])
+    .filter(p => p && (p.status === 'Active' || p.status === 'Published' || p.status === 'active' || p.status === 'published'))
+    .filter(p => !searchQuery.trim() || p.title.toLowerCase().includes(searchQuery.toLowerCase()) || (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase())));
 
   return (
     <div
-      className="min-h-screen font-sans bg-slate-50 text-slate-900 selection:text-white selection:bg-[var(--theme-primary)]"
+      className="min-h-screen font-sans bg-slate-950 flex justify-center items-start text-slate-900 selection:text-white selection:bg-[var(--theme-primary)]"
       style={{ ['--theme-primary' as string]: primaryColor } as React.CSSProperties}
     >
-      {isSplashVisible && (
-        <div className="fixed inset-0 z-[80] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4 text-center animate-pulse">
-            <div className="relative flex items-center justify-center w-24 h-24 rounded-[28px] bg-[#00D68F] shadow-[0_0_50px_rgba(0,214,143,0.45)]">
-              <span className="text-3xl font-black text-slate-950">Z</span>
-              <div className="absolute -inset-2 rounded-[32px] border border-[#00D68F]/70 animate-ping" />
-            </div>
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.35em] text-[#00D68F]">Zid BD</div>
-              <div className="mt-2 text-2xl font-black text-white">{t('sf_loading_storefront')}</div>
+      <div className="w-full max-w-[480px] min-h-screen bg-slate-50 shadow-2xl relative flex flex-col border-x border-slate-800/80 overflow-x-hidden pb-16">
+        {isSplashVisible && (
+          <div className="fixed inset-0 z-[80] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4 text-center animate-pulse">
+              <div className="relative flex items-center justify-center w-20 h-20 rounded-[24px] bg-[#00D68F] shadow-[0_0_40px_rgba(0,214,143,0.45)]">
+                <span className="text-2xl font-black text-slate-950">Z</span>
+                <div className="absolute -inset-2 rounded-[28px] border border-[#00D68F]/70 animate-ping" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[#00D68F]">Zid BD</div>
+                <div className="mt-2 text-xl font-black text-white">{t('sf_loading_storefront')}</div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        .animate-slide-in {
-          animation: slideInRight 0.3s ease-out;
-        }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up {
-          animation: fadeInUp 0.4s ease-out;
-        }
-        @keyframes zidMarqueeSlide {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .zid-marquee-track {
-          display: inline-flex;
-          width: max-content;
-          animation: zidMarqueeSlide 22s linear infinite;
-          will-change: transform;
-        }
-        .zid-marquee-track:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
+        <style>{`
+          @keyframes slideInRight {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+          }
+          .animate-slide-in {
+            animation: slideInRight 0.3s ease-out;
+          }
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fade-in-up {
+            animation: fadeInUp 0.4s ease-out;
+          }
+          @keyframes zidMarqueeSlide {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+          }
+          .zid-marquee-track {
+            display: inline-flex;
+            width: max-content;
+            animation: zidMarqueeSlide 22s linear infinite;
+            will-change: transform;
+          }
+          .zid-marquee-track:hover {
+            animation-play-state: paused;
+          }
+        `}</style>
 
-      {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-        {/* Top Announcement Bar - Marquee Ticker */}
-        <div className="bg-[#00D68F] text-slate-950 py-2.5 px-4 overflow-hidden whitespace-nowrap relative">
-          <div 
-            
-            className="inline-block text-xs font-bold tracking-wide"
-            style={{ willChange: 'transform' }}
-          >
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
-            <span className="mx-4">✦</span>
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
-            <span className="mx-4">✦</span>
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
-            <span className="mx-4">✦</span>
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
-            <span className="mx-4">✦</span>
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
-            <span className="mx-4">✦</span>
-            <span className="mx-4">Welcome to ZidSaaS BD</span>
+        {/* Top Header Bar (Mobile-Only) */}
+        <header className="sticky top-0 z-40 bg-white border-b border-slate-200/90 shadow-sm">
+          {/* Top Announcement Bar */}
+          <div className="bg-[#00D68F] text-slate-950 py-1.5 px-3 overflow-hidden whitespace-nowrap relative text-[11px] font-bold">
+            <div className="zid-marquee-track inline-flex items-center">
+              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+              <span className="mx-2">✦</span>
+              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+              <span className="mx-2">✦</span>
+              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+            </div>
           </div>
-        </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button className="md:hidden p-2 -ml-2 text-slate-600 hover:text-slate-900" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-              <Menu className="w-6 h-6" />
-            </button>
-            <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
-              <h1 className="text-xl font-black tracking-tight text-slate-900">
+          <div className="h-14 px-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
+              <button 
+                className="p-1.5 -ml-1 text-slate-700 hover:text-slate-900 rounded-lg"
+                onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(!isMobileMenuOpen); }}
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <h1 className="text-base font-black tracking-tight text-slate-900 truncate max-w-[150px]">
                 {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}
               </h1>
             </div>
-          </div>
 
-          {/* Navigation Links - Cleaned up */}
-          <nav className="hidden md:flex items-center gap-6">
-            <a href="#" onClick={(e) => e.preventDefault()} className="text-sm font-extrabold text-[#00D68F]">{t('sf_home')}</a>
-            <a href="#" onClick={(e) => e.preventDefault()} className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition">{t('sf_shop_all')}</a>
-            <a href="#" onClick={(e) => e.preventDefault()} className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition">{t('sf_track_order')}</a>
-          </nav>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className="p-1.5 text-slate-600 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+              >
+                <Search className="w-5 h-5" />
+              </button>
 
-          <div className="flex items-center gap-3">
-            <LanguageToggle compact />
-            <div className="hidden sm:flex relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder={t('sf_search_placeholder')}
-                className="w-48 lg:w-64 rounded-full pl-9 pr-4 py-2 text-sm bg-slate-100 border-transparent focus:bg-white focus:border-[#00D68F] focus:ring-2 focus:ring-[#00D68F]/20 transition outline-none"
-              />
-            </div>
-            {customerSession ? (
-              <>
-                <button
-                  onClick={() => { setIsCartOpen(false); setMobileTab('orders'); }}
-                  className="hidden sm:inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-[#00D68F] hover:text-slate-950 transition"
-                >
-                  <PackageCheck className="w-4 h-4" />
-                  {t('sf_my_orders')}
-                </button>
+              <LanguageToggle compact />
+
+              {customerSession ? (
                 <button
                   onClick={handleCustomerSignOut}
-                  className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 transition"
+                  className="p-1.5 text-slate-700 hover:text-red-500 transition rounded-lg hover:bg-slate-100"
+                  title={t('sf_sign_out')}
                 >
-                  <LogOut className="w-4 h-4" />
-                  {t('sf_sign_out')}
+                  <LogOut className="w-5 h-5" />
                 </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setIsAuthOpen(true)}
-                className="inline-flex items-center gap-1 rounded-full bg-[#00D68F] px-3 py-2 text-xs font-black text-slate-950 hover:bg-[#00E699] transition shadow"
-              >
-                <User className="w-4 h-4" />
-                {t('sf_customer_sign_in')}
-              </button>
-            )}
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="relative p-2 text-slate-600 hover:text-[#00D68F] transition"
-            >
-              <ShoppingBag className="w-6 h-6" />
-              {cart.length > 0 && (
-                <span className="absolute top-0 right-0 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center bg-[#00D68F] shadow">
-                  {cart.reduce((s, i) => s + i.quantity, 0)}
-                </span>
+              ) : (
+                <button
+                  onClick={() => setIsAuthOpen(true)}
+                  className="p-1.5 text-slate-700 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+                  title={t('sf_customer_sign_in')}
+                >
+                  <User className="w-5 h-5" />
+                </button>
               )}
-            </button>
+
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="relative p-1.5 text-slate-700 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                {cart.length > 0 && (
+                  <span className="absolute top-0.5 right-0.5 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center bg-[#00D68F] shadow">
+                    {cart.reduce((s, i) => s + i.quantity, 0)}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
-        
-        {/* Mobile Menu Dropdown */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-100 bg-white absolute w-full left-0 shadow-lg">
-            <nav className="flex flex-col p-4 gap-4">
-              <a href="#" className="text-sm font-extrabold text-[#00D68F]">{t('sf_home')}</a>
-              <a href="#" className="text-sm font-semibold text-slate-600">{t('sf_shop_all')}</a>
-              <a href="#" className="text-sm font-semibold text-slate-600">{t('sf_track_order')}</a>
-            </nav>
-          </div>
-        )}
-      </header>
+
+          {/* Search Input Popup */}
+          {isSearchOpen && (
+            <div className="p-2.5 bg-slate-50 border-t border-slate-200">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('sf_search_placeholder')}
+                  className="w-full rounded-xl pl-9 pr-8 py-2 text-xs bg-white border border-slate-200 focus:border-[#00D68F] outline-none shadow-sm"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Menu Dropdown */}
+          {isMobileMenuOpen && (
+            <div className="border-t border-slate-100 bg-white shadow-xl p-3 space-y-1 animate-fade-in-up">
+              <button
+                onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); setIsMobileMenuOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'home' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+              >
+                <Home className="w-4 h-4" /> {t('sf_home')}
+              </button>
+              <button
+                onClick={() => { setCheckoutStep('catalog'); setMobileTab('orders'); setIsMobileMenuOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'orders' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+              >
+                <PackageCheck className="w-4 h-4" /> {t('sf_my_orders')}
+              </button>
+              <button
+                onClick={() => { setCheckoutStep('catalog'); setMobileTab('profile'); setIsMobileMenuOpen(false); }}
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'profile' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+              >
+                <User className="w-4 h-4" /> {t('sf_tab_profile')}
+              </button>
+            </div>
+          )}
+        </header>
 
       {/* Main Content Area */}
       <main className="w-full">
@@ -630,48 +699,42 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         {checkoutStep === 'catalog' && (
           <>
             {mobileTab === 'home' && (
-            <div className="space-y-0">
+            <div className="space-y-4 pb-6">
             
-            {/* Image Carousel Hero Section */}
-            <div className="w-full h-[320px] md:h-[450px] relative overflow-hidden bg-slate-900 group">
+            {/* Hero Banner (Mobile Height) */}
+            <div className="w-full h-[210px] relative overflow-hidden bg-slate-900">
               <img 
-                src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=1200&q=80"} 
+                src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"} 
                 alt="Hero Banner" 
-                className="w-full h-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105"
+                className="w-full h-full object-cover opacity-60"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 to-transparent flex items-center">
-                <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="max-w-xl space-y-4">
-                    <span className="inline-block bg-[#00D68F] text-slate-950 text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full">
-                      {t('sf_new_arrivals')}
-                    </span>
-                    <h2 className="text-4xl md:text-5xl font-black text-white leading-tight">
-                      {storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
-                    </h2>
-                    <p className="text-sm md:text-base text-slate-300">
-                      {storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
-                    </p>
-                    <button className="bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-black px-6 py-3 rounded-xl transition shadow-lg mt-2 inline-flex items-center gap-2">
-                      {t('sf_shop_collection')} <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex items-end p-4">
+                <div className="space-y-2">
+                  <span className="inline-block bg-[#00D68F] text-slate-950 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full">
+                    {t('sf_new_arrivals')}
+                  </span>
+                  <h2 className="text-xl font-black text-white leading-tight">
+                    {storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
+                  </h2>
+                  <p className="text-xs text-slate-300 line-clamp-2">
+                    {storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-16">
+            <div className="px-3.5 space-y-6">
               
-              {/* Popular Categories Bento Grid */}
-              <section className="space-y-6">
-                <div className="flex justify-between items-end border-b border-slate-200 pb-4">
+              {/* Popular Categories Grid (2-Column Mobile) */}
+              <section className="space-y-3">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                   <div>
-                    <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">{t('sf_popular_categories')}</h2>
-                    <p className="text-sm text-slate-500 mt-1">{t('sf_shop_by_category')}</p>
+                    <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{t('sf_popular_categories')}</h2>
+                    <p className="text-[11px] text-slate-500">{t('sf_shop_by_category')}</p>
                   </div>
-                  <button className="text-sm font-bold text-[#00D68F] hover:underline cursor-pointer">{t('sf_view_all')}</button>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 gap-2.5">
                   {(storefrontCategories.length
                     ? storefrontCategories
                     : (Array.from(new Set(displayProducts.map(p => p.category))) as string[]).map(name => ({ name, image: '' }) as { name: string; status?: string; image?: string; coverImage?: string })
@@ -681,17 +744,17 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     const firstProductImage = displayProducts.find(p => p.category === catName)?.image || '';
                     const image = catName ? (catImage || firstProductImage) : '';
                     return (
-                      <div key={catName || `cat-${i}`} className={`aspect-square animate-fade-in-up bg-slate-100 rounded-2xl relative overflow-hidden group cursor-pointer border border-slate-200 shadow-sm ${i === 2 && (storefrontCategories.length || (Array.from(new Set(displayProducts.map(p => p.category))) as string[]).length) === 3 ? 'md:col-span-2' : ''}`}>
+                      <div key={catName || `cat-${i}`} className="aspect-[4/3] bg-slate-100 rounded-xl relative overflow-hidden group cursor-pointer border border-slate-200 shadow-sm">
                         {image ? (
-                          <img src={image} alt={catName} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
+                          <img src={image} alt={catName} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                         ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#00D68F]/25 via-slate-200 to-[#D4AF37]/20">
-                            <span className="text-5xl font-black text-slate-900/70">{catName.charAt(0) || 'Z'}</span>
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#00D68F]/20 via-slate-200 to-[#D4AF37]/20">
+                            <span className="text-3xl font-black text-slate-800">{catName.charAt(0) || 'Z'}</span>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent" />
-                        <div className="absolute bottom-0 left-0 p-4">
-                          <h3 className="text-white font-bold text-base md:text-lg">{catName || t('sf_products')}</h3>
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
+                        <div className="absolute bottom-0 left-0 p-2.5">
+                          <h3 className="text-white font-bold text-xs truncate max-w-[140px]">{catName || t('sf_products')}</h3>
                         </div>
                       </div>
                     );
@@ -699,63 +762,60 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 </div>
               </section>
 
-              {/* Trending In Dhaka Product Grid */}
-              <section className="space-y-6">
-                <div className="flex justify-between items-end border-b border-slate-200 pb-4">
+              {/* Product Grid (2-Column Mobile) */}
+              <section className="space-y-3">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                   <div>
-                    <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">{t('sf_products')}</h2>
-                    <p className="text-sm text-slate-500 mt-1">{t('sf_discover_collection')}</p>
+                    <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{t('sf_products')}</h2>
+                    <p className="text-[11px] text-slate-500">{t('sf_discover_collection')}</p>
                   </div>
-                  <button className="text-sm font-bold text-[#00D68F] hover:underline cursor-pointer">{t('sf_see_more')}</button>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                <div className="grid grid-cols-2 gap-2.5">
                   {displayProducts.length === 0 ? (
-                    <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-                      <ShoppingBag className="mx-auto h-10 w-10 text-slate-300" />
-                      <h3 className="mt-4 text-lg font-extrabold text-slate-900">{t('sf_no_products')}</h3>
-                      <p className="mt-2 text-sm text-slate-500">{t('sf_no_products_desc')}</p>
+                    <div className="col-span-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
+                      <ShoppingBag className="mx-auto h-8 w-8 text-slate-300" />
+                      <h3 className="mt-2 text-sm font-extrabold text-slate-900">{t('sf_no_products')}</h3>
+                      <p className="mt-1 text-xs text-slate-500">{t('sf_no_products_desc')}</p>
                     </div>
                   ) : displayProducts.map(p => (
                     <div 
                       key={p.id}
-                      className="group animate-fade-in-up flex flex-col justify-between bg-white rounded-2xl overflow-hidden border border-slate-200 hover:shadow-xl transition-all duration-300 relative"
+                      className="group flex flex-col justify-between bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm relative"
                     >
-                      {/* Optional Badge */}
                       {(p.status === 'Active' || p.status === 'active') && (
-                        <div className="absolute top-3 left-3 z-10 bg-[#00D68F]/90 backdrop-blur-sm text-slate-950 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md">
-                          Hot Sale
+                        <div className="absolute top-2 left-2 z-10 bg-[#00D68F] text-slate-950 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded">
+                          Hot
                         </div>
                       )}
 
-                      <div className="relative aspect-[4/5] bg-slate-100 overflow-hidden cursor-pointer" onClick={() => {
+                      <div className="relative aspect-square bg-slate-100 overflow-hidden cursor-pointer" onClick={() => {
                         setSelectedProduct(p);
                         setCheckoutStep('checkout');
                       }}>
                         <img 
                           src={p.image} 
                           alt={p.title} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300" 
                         />
                       </div>
 
-                      <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                      <div className="p-2.5 space-y-2 flex-1 flex flex-col justify-between">
                         <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{p.category}</p>
-                          <h4 className="font-semibold text-sm md:text-base text-slate-900 line-clamp-2 leading-snug cursor-pointer hover:text-[#00D68F] transition"
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{p.category}</p>
+                          <h4 className="font-bold text-xs text-slate-900 line-clamp-2 leading-tight cursor-pointer hover:text-[#00D68F] transition"
                               onClick={() => { setSelectedProduct(p); setCheckoutStep('checkout'); }}>
                             {p.title}
                           </h4>
-                          {p.titleBn && <p className="text-xs text-slate-500 mt-1">{p.titleBn}</p>}
                         </div>
                         
-                        <div className="pt-2 flex items-center justify-between">
+                        <div className="pt-1 flex items-center justify-between">
                           <div className="space-y-0.5">
-                            <div className="text-lg font-black text-[#00D68F] tracking-tight">
+                            <div className="text-sm font-black text-[#00D68F] tracking-tight">
                               ৳{(p.priceBDT ?? 0).toLocaleString()}
                             </div>
                             {p.compareAtPriceBDT && (
-                              <div className="text-xs text-slate-400 line-through decoration-slate-300">
+                              <div className="text-[10px] text-slate-400 line-through">
                                 ৳{(p.compareAtPriceBDT ?? 0).toLocaleString()}
                               </div>
                             )}
@@ -763,9 +823,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                           
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
-                            className="bg-slate-100 hover:bg-[#00D68F] hover:text-white text-slate-700 w-10 h-10 rounded-full flex items-center justify-center transition cursor-pointer shadow-sm"
+                            className="bg-slate-100 hover:bg-[#00D68F] hover:text-white text-slate-800 w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer"
                           >
-                            <ShoppingBag className="w-4 h-4" />
+                            <ShoppingBag className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -774,43 +834,35 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 </div>
               </section>
 
-              {/* Store Benefits Section */}
-              <section className="bg-white rounded-3xl border border-slate-200 p-6 md:p-10 grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 text-center shadow-sm">
-                <div className="space-y-3">
-                  <div className="w-12 h-12 bg-emerald-50 text-[#00D68F] rounded-2xl flex items-center justify-center mx-auto">
-                    <Building2 className="w-6 h-6" />
+              {/* Store Benefits Section (Mobile Grid) */}
+              <section className="bg-white rounded-2xl border border-slate-200 p-3.5 grid grid-cols-2 gap-3 text-center shadow-sm">
+                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                    <Building2 className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900">Cash On Delivery</h4>
-                    <p className="text-xs text-slate-500 mt-1">Available everywhere</p>
-                  </div>
+                  <h4 className="font-extrabold text-xs text-slate-900">Cash On Delivery</h4>
+                  <p className="text-[10px] text-slate-500">Everywhere BD</p>
                 </div>
-                <div className="space-y-3">
-                  <div className="w-12 h-12 bg-emerald-50 text-[#00D68F] rounded-2xl flex items-center justify-center mx-auto">
-                    <Smartphone className="w-6 h-6" />
+                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                    <Smartphone className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900">bKash Payment</h4>
-                    <p className="text-xs text-slate-500 mt-1">Fast & secure gateway</p>
-                  </div>
+                  <h4 className="font-extrabold text-xs text-slate-900">bKash Payment</h4>
+                  <p className="text-[10px] text-slate-500">Instant gateway</p>
                 </div>
-                <div className="space-y-3">
-                  <div className="w-12 h-12 bg-emerald-50 text-[#00D68F] rounded-2xl flex items-center justify-center mx-auto">
-                    <ShieldCheck className="w-6 h-6" />
+                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                    <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900">Authentic Products</h4>
-                    <p className="text-xs text-slate-500 mt-1">100% genuine quality</p>
-                  </div>
+                  <h4 className="font-extrabold text-xs text-slate-900">Authentic Items</h4>
+                  <p className="text-[10px] text-slate-500">100% Genuine</p>
                 </div>
-                <div className="space-y-3">
-                  <div className="w-12 h-12 bg-emerald-50 text-[#00D68F] rounded-2xl flex items-center justify-center mx-auto">
-                    <Clock className="w-6 h-6" />
+                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
+                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                    <Clock className="w-4 h-4" />
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900">Fast Shipping</h4>
-                    <p className="text-xs text-slate-500 mt-1">Within 48 hours</p>
-                  </div>
+                  <h4 className="font-extrabold text-xs text-slate-900">Fast Shipping</h4>
+                  <p className="text-[10px] text-slate-500">Within 48 hours</p>
                 </div>
               </section>
             </div>
@@ -1274,83 +1326,83 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
         {/* Checkout Flow */}
         {checkoutStep === 'checkout' && (
-           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+           <div className="w-full px-3.5 py-6 space-y-6">
             <button
               onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}
-              className="text-sm flex items-center gap-2 cursor-pointer text-slate-500 hover:text-slate-900 font-bold transition"
+              className="text-xs flex items-center gap-1.5 cursor-pointer text-slate-500 hover:text-slate-900 font-bold transition"
             >
-              <ArrowLeft className="w-4 h-4" /> Return to Catalog
+              <ArrowLeft className="w-3.5 h-3.5" /> Return to Catalog
             </button>
             
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-sm space-y-8">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-6">
               
               <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Checkout</h3>
-                <p className="text-sm mt-1 text-slate-500">Please provide your delivery details below.</p>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Checkout</h3>
+                <p className="text-xs mt-0.5 text-slate-500">Provide your delivery details below.</p>
               </div>
 
               {/* Order Summary Items */}
-              <div className="bg-slate-50 rounded-2xl p-4 sm:p-6 border border-slate-100 space-y-4">
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Order Summary</h4>
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-3">
+                <h4 className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Order Summary</h4>
                 
                 {cart.length > 0 ? (
                   cart.map((item, idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center gap-4 py-2">
-                      <img src={item.product.image} alt={item.product.title} className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-sm text-slate-900">{item.product.title}</h4>
-                        <div className="text-xs text-slate-500">Qty: {item.quantity} | Variant: {item.variant}</div>
+                    <div key={idx} className="flex items-center gap-3 py-1">
+                      <img src={item.product.image} alt={item.product.title} className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-xs text-slate-900 truncate">{item.product.title}</h4>
+                        <div className="text-[10px] text-slate-500">Qty: {item.quantity} | Variant: {item.variant}</div>
                       </div>
-                      <div className="text-sm font-black text-[#00D68F]">৳{((item.product.priceBDT ?? 0) * item.quantity).toLocaleString()}</div>
+                      <div className="text-xs font-black text-[#00D68F] shrink-0">৳{((item.product.priceBDT ?? 0) * item.quantity).toLocaleString()}</div>
                     </div>
                   ))
                 ) : selectedProduct ? (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 py-2">
-                    <img src={selectedProduct.image} alt={selectedProduct.title} className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900">{selectedProduct.title}</h4>
+                  <div className="flex items-center gap-3 py-1">
+                    <img src={selectedProduct.image} alt={selectedProduct.title} className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-xs text-slate-900 truncate">{selectedProduct.title}</h4>
                     </div>
-                    <div className="text-sm font-black text-[#00D68F]">৳{(selectedProduct.priceBDT ?? 0).toLocaleString()}</div>
+                    <div className="text-xs font-black text-[#00D68F] shrink-0">৳{(selectedProduct.priceBDT ?? 0).toLocaleString()}</div>
                   </div>
                 ) : null}
                 
-                <div className="border-t border-slate-200 pt-4 flex justify-between items-center">
+                <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-600">Total Payable:</span>
-                  <span className="text-xl font-black text-[#00D68F]">৳{totalAmount.toLocaleString()}</span>
+                  <span className="text-base font-black text-[#00D68F]">৳{totalAmount.toLocaleString()}</span>
                 </div>
               </div>
 
-              <form onSubmit={handleCheckoutSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <form onSubmit={handleCheckoutSubmit} className="space-y-4">
+                <div className="space-y-3">
                   <div>
-                    <label className="block mb-1.5 font-bold text-sm text-slate-700">Full Name</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-700">Full Name</label>
                     <input
                       type="text"
                       required
                       value={custName}
                       onChange={(e) => setCustName(e.target.value)}
-                      className="w-full rounded-xl px-4 py-3 bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] focus:border-transparent transition"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
                     />
                   </div>
                   <div>
-                    <label className="block mb-1.5 font-bold text-sm text-slate-700">Phone Number</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-700">Phone Number</label>
                     <input
                       type="text"
                       required
                       value={custPhone}
                       onChange={(e) => setCustPhone(e.target.value)}
-                      className="w-full font-mono rounded-xl px-4 py-3 bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] focus:border-transparent transition"
+                      className="w-full font-mono rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="space-y-3">
                   <div>
-                    <label className="block mb-1.5 font-bold text-sm text-slate-700">City / District</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-700">City / District</label>
                     <select
                       value={custCity}
                       onChange={(e) => setCustCity(e.target.value)}
-                      className="w-full rounded-xl px-4 py-3 bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] focus:border-transparent transition font-medium"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] font-medium"
                     >
                       <option value="Dhaka">Dhaka (Inside Dhaka - ৳80)</option>
                       <option value="Chittagong">Chittagong (Outside Dhaka - ৳150)</option>
@@ -1358,44 +1410,44 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block mb-1.5 font-bold text-sm text-slate-700">Detailed Address</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-700">Detailed Address</label>
                     <input
                       type="text"
                       required
                       value={custAddress}
                       onChange={(e) => setCustAddress(e.target.value)}
-                      className="w-full rounded-xl px-4 py-3 bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] focus:border-transparent transition"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
                     />
                   </div>
                 </div>
 
                 {/* Payment Options */}
-                <div className="pt-6 border-t border-slate-100">
-                  <label className="block mb-3 font-bold text-sm text-slate-900">Select Payment Method</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="pt-3 border-t border-slate-100">
+                  <label className="block mb-2 font-bold text-xs text-slate-900">Select Payment Method</label>
+                  <div className="grid grid-cols-1 gap-2">
                     {enabledMobileMethods.map((method) => (
                       <button
                         key={method.id}
                         type="button"
                         onClick={() => setPayMethod(method.provider)}
-                        className={`p-4 rounded-xl border text-sm font-bold transition flex items-center gap-3 cursor-pointer ${
+                        className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
                           payMethod === method.provider ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <Smartphone className="w-5 h-5 text-pink-500" />
+                        <Smartphone className="w-4 h-4 text-pink-500 shrink-0" />
                         <span>{method.displayName}</span>
                       </button>
                     ))}
-                    {visibleBankAccount && <button type="button" onClick={() => setPayMethod('bank')} className={`p-4 rounded-xl border text-sm font-bold transition flex items-center gap-3 ${payMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}><Building2 className="w-5 h-5" /><span>Bank transfer</span></button>}
+                    {visibleBankAccount && <button type="button" onClick={() => setPayMethod('bank')} className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 ${payMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}><Building2 className="w-4 h-4 shrink-0" /><span>Bank transfer</span></button>}
                     {storefrontMerchant.paymentMethods?.cod && (
                       <button
                         type="button"
                         onClick={() => setPayMethod('cod')}
-                        className={`p-4 rounded-xl border text-sm font-bold transition flex items-center gap-3 cursor-pointer ${
+                        className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
                           payMethod === 'cod' ? 'border-[#00D68F] bg-emerald-50 text-[#00A16B]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <Building2 className={`w-5 h-5 ${payMethod === 'cod' ? 'text-[#00D68F]' : 'text-slate-400'}`} />
+                        <Building2 className={`w-4 h-4 shrink-0 ${payMethod === 'cod' ? 'text-[#00D68F]' : 'text-slate-400'}`} />
                         <span>Cash on Delivery</span>
                       </button>
                     )}
@@ -1403,12 +1455,12 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 </div>
 
                 {payMethod === 'bkash' && (
-                  <div className="border border-pink-200 p-5 rounded-2xl bg-pink-50/50 space-y-3">
-                    <div className="text-xs font-bold text-pink-600 uppercase tracking-wider flex items-center gap-2">
-                      <Smartphone className="w-4 h-4" /> Send Money Instructions
+                  <div className="border border-pink-200 p-3.5 rounded-xl bg-pink-50/50 space-y-2">
+                    <div className="text-[10px] font-bold text-pink-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <Smartphone className="w-3.5 h-3.5" /> Send Money Instructions
                     </div>
-                    <p className="text-sm text-slate-700">
-                      Send exactly <strong className="text-slate-900">৳{totalAmount}</strong> to merchant bKash number <strong className="text-pink-600">01844990011</strong>. Paste the TrxID below:
+                    <p className="text-xs text-slate-700">
+                      Send exactly <strong className="text-slate-900">৳{totalAmount}</strong> to merchant bKash number <strong className="text-pink-600">01844990011</strong>. Paste TrxID below:
                     </p>
                     <input
                       type="text"
@@ -1416,15 +1468,15 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       placeholder="e.g. BK9X2810L9"
                       value={custTxId}
                       onChange={(e) => setCustTxId(e.target.value)}
-                      className="w-full border border-pink-300 rounded-xl px-4 py-3 font-mono text-sm uppercase bg-white focus:outline-none focus:border-pink-500 focus:ring-2 focus:ring-pink-200 transition"
+                      className="w-full border border-pink-300 rounded-xl px-3 py-2 font-mono text-xs uppercase bg-white focus:outline-none focus:border-pink-500"
                     />
                   </div>
                 )}
 
-                <div className="pt-4">
+                <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-4 bg-[#00D68F] text-slate-950 font-black rounded-xl text-base hover:bg-[#00E699] transition cursor-pointer shadow-lg hover:shadow-xl"
+                    className="w-full py-3.5 bg-[#00D68F] text-slate-950 font-black rounded-xl text-sm hover:bg-[#00E699] transition cursor-pointer shadow-lg"
                   >
                     Confirm Order • ৳{totalAmount.toLocaleString()}
                   </button>
@@ -1436,20 +1488,20 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
         {/* Success View */}
         {checkoutStep === 'success' && (
-          <div className="max-w-lg mx-auto px-4 py-24 text-center">
-            <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-emerald-100">
-              <Check className="w-12 h-12 text-[#00D68F]" />
+          <div className="w-full px-4 py-16 text-center">
+            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+              <Check className="w-8 h-8 text-[#00D68F]" />
             </div>
             
-            <h3 className="text-3xl font-black text-slate-900 tracking-tight mb-4">Order Placed Successfully!</h3>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Order Placed Successfully!</h3>
             
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4 mb-8">
-              <p className="text-sm text-slate-600">
+            <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3 mb-6">
+              <p className="text-xs text-slate-600">
                 Thank you <strong className="text-slate-900">{custName}</strong>. Your order has been placed.
               </p>
-              <div className="flex justify-center items-center gap-2 text-xs font-mono">
-                <span className="text-slate-500">ORDER NUMBER:</span>
-                <span className="bg-[#00D68F] text-white px-2 py-1 rounded font-bold">{confirmedOrderNum}</span>
+              <div className="flex justify-center items-center gap-1.5 text-xs font-mono">
+                <span className="text-slate-500">ORDER:</span>
+                <span className="bg-[#00D68F] text-white px-2 py-0.5 rounded font-bold">{confirmedOrderNum}</span>
               </div>
             </div>
 
@@ -1459,7 +1511,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 setSelectedProduct(null);
                 setMobileTab('home');
               }}
-              className="px-8 py-3 bg-[#00D68F] text-slate-950 font-bold rounded-xl text-sm transition cursor-pointer shadow-lg hover:bg-[#00E699]"
+              className="px-6 py-3 bg-[#00D68F] text-slate-950 font-bold rounded-xl text-xs transition cursor-pointer shadow-md hover:bg-[#00E699]"
             >
               Continue Shopping
             </button>
@@ -1467,10 +1519,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         )}
       </main>
 
-      {/* Mobile App Bottom Navigation (Home / Orders / Profile) */}
+      {/* Mobile App Bottom Navigation (Fixed inside standard frame) */}
       {checkoutStep === 'catalog' && (
-        <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-          <div className="max-w-lg mx-auto grid grid-cols-3 h-16">
+        <nav className="absolute bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+          <div className="grid grid-cols-3 h-14">
             {([
               { id: 'home', label: t('sf_tab_home'), icon: Home },
               { id: 'orders', label: t('sf_tab_orders'), icon: ShoppingBag },
@@ -1483,12 +1535,12 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 <button
                   key={tabItem.id}
                   onClick={() => setMobileTab(tabItem.id)}
-                  className={`relative flex flex-col items-center justify-center gap-0.5 text-[11px] font-black transition cursor-pointer ${active ? 'text-[#00D68F]' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-black transition cursor-pointer ${active ? 'text-[#00D68F]' : 'text-slate-400 hover:text-slate-600'}`}
                 >
                   <span className="relative">
-                    <TabIcon className={`w-5 h-5 ${active ? 'text-[#00D68F]' : 'text-slate-400'}`} />
+                    <TabIcon className={`w-4 h-4 ${active ? 'text-[#00D68F]' : 'text-slate-400'}`} />
                     {count > 0 && (
-                      <span className="absolute -top-1.5 -right-2 bg-[#00D68F] text-slate-950 text-[9px] font-black min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">
+                      <span className="absolute -top-1.5 -right-2 bg-[#00D68F] text-slate-950 text-[9px] font-black min-w-[14px] h-3.5 px-1 rounded-full flex items-center justify-center">
                         {count}
                       </span>
                     )}
@@ -1561,13 +1613,97 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-300">{t('sf_auth_phone')}</label>
-                <input
-                  value={authPhone}
-                  onChange={(e) => setAuthPhone(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
-                  placeholder="01711000000"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-300">{t('sf_auth_phone')}</label>
+                  {isCustomerPhoneVerified && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#25D366] bg-[#25D366]/10 px-2 py-0.5 rounded-md border border-[#25D366]/30">
+                      <Check className="w-3 h-3" /> WhatsApp Verified
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={authPhone}
+                    onChange={(e) => {
+                      setAuthPhone(e.target.value);
+                      if (isCustomerPhoneVerified && e.target.value !== verifiedCustomerPhone) {
+                        setIsCustomerPhoneVerified(false);
+                      }
+                    }}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
+                    placeholder="01711000000"
+                  />
+                  {authMode === 'signup' && !isCustomerPhoneVerified && (
+                    <button
+                      type="button"
+                      onClick={handleSendCustomerWhatsappOtp}
+                      disabled={isSendingCustomerWhatsappOtp || !authPhone.trim()}
+                      className="px-3 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shrink-0 transition cursor-pointer disabled:opacity-50 shadow-md"
+                    >
+                      {isSendingCustomerWhatsappOtp ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Verify via WhatsApp</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* Conditionally Revealed Customer WhatsApp OTP Field */}
+                {authMode === 'signup' && isCustomerWhatsappOtpSent && !isCustomerPhoneVerified && (
+                  <div className="mt-2.5 p-3 rounded-2xl border border-[#25D366]/40 bg-slate-900/90 space-y-2 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-[#25D366]" />
+                        Enter 6-Digit WhatsApp Code
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Supabase DB</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={customerWhatsappOtpInput}
+                        onChange={(e) => setCustomerWhatsappOtpInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="• • • • • •"
+                        className="flex-1 bg-slate-950 border border-slate-700 focus:border-[#25D366] text-center font-mono font-bold tracking-[0.3em] text-white rounded-xl px-3 py-2 text-sm outline-none"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyCustomerWhatsappOtp}
+                        disabled={isVerifyingCustomerWhatsappOtp || customerWhatsappOtpInput.trim().length < 6}
+                        className="px-4 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black rounded-xl text-xs disabled:opacity-50 transition cursor-pointer shrink-0"
+                      >
+                        {isVerifyingCustomerWhatsappOtp ? (
+                          <span className="flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
+                          </span>
+                        ) : (
+                          'Confirm Code'
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                      <span>Code sent to WhatsApp app</span>
+                      <button
+                        type="button"
+                        onClick={handleSendCustomerWhatsappOtp}
+                        disabled={isSendingCustomerWhatsappOtp}
+                        className="text-[#25D366] font-bold hover:underline"
+                      >
+                        Resend
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1703,42 +1839,23 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       )}
 
       {/* Store Footer */}
-      <footer className="bg-slate-900 text-slate-400 py-16 text-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="md:col-span-2 space-y-4">
-            <h4 className="text-white text-xl font-black">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
-            <p className="text-xs leading-relaxed max-w-sm">
-              Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by Zid Multi-Tenant SaaS Engine.
-            </p>
-            <div className="flex items-center gap-2 pt-2">
-              <ShieldCheck className="w-5 h-5 text-[#00D68F]" />
-              <span className="text-xs font-bold text-white">Secure 256-bit SSL Checkout</span>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <h4 className="text-white font-bold">Quick Links</h4>
-            <ul className="space-y-2 text-xs">
-              <li><a href="#" className="hover:text-[#00D68F] transition">About Us</a></li>
-              <li><a href="#" className="hover:text-[#00D68F] transition">Shipping Policy</a></li>
-              <li><a href="#" className="hover:text-[#00D68F] transition">Return Policy</a></li>
-              <li><a href="#" className="hover:text-[#00D68F] transition">Track Order</a></li>
-            </ul>
-          </div>
-          
-          <div className="space-y-4">
-            <h4 className="text-white font-bold">Contact</h4>
-            <ul className="space-y-2 text-xs">
-              <li className="flex items-center gap-2"><Phone className="w-4 h-4" /> 01711-000000</li>
-              <li className="flex items-center gap-2"><MapPin className="w-4 h-4" /> Banani, Dhaka</li>
-            </ul>
+      <footer className="bg-slate-900 text-slate-400 py-8 px-4 text-xs mt-6 border-t border-slate-800 space-y-6">
+        <div className="space-y-3 text-center">
+          <h4 className="text-white text-base font-black">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
+          <p className="text-[11px] leading-relaxed text-slate-400 max-w-xs mx-auto">
+            Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by Zid Multi-Tenant SaaS Engine.
+          </p>
+          <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-300 pt-1">
+            <ShieldCheck className="w-4 h-4 text-[#00D68F]" />
+            <span>Secure 256-bit SSL Checkout</span>
           </div>
         </div>
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 pt-8 border-t border-slate-800 text-center text-xs">
+
+        <div className="pt-4 border-t border-slate-800/80 text-center text-[10px] text-slate-500">
           © {new Date().getFullYear()} {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}. All rights reserved.
         </div>
       </footer>
+      </div>
     </div>
   );
 };

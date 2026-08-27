@@ -162,6 +162,15 @@ export interface MerchantProfile {
   trialDaysTotal?: number;
   trialDaysRemaining?: number;
   trialEndsAt?: string; // ISO date string
+  plan_started_at?: string; // ISO timestamp string
+  expires_at?: string; // ISO timestamp string
+  planStartedAt?: string;
+  expiresAt?: string;
+  selectedPlanDays?: number;
+  duration_days?: number;
+  durationDays?: number;
+  subscriptionStartDate?: string;
+  subscriptionEndDate?: string;
   subscriptionPlan?: SubscriptionPlanId;
   subscriptionExpiry?: string;
   isLocked?: boolean;

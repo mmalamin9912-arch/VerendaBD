@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MerchantProfile, SubscriptionRequest } from '../types';
-import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
+import { calculateRemainingDays, getPlanDisplayName, getPlanDurationInDays, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
+import { supabase } from '../lib/supabase';
 import { 
   Sparkles, 
   ExternalLink, 
@@ -121,13 +122,170 @@ export const Header: React.FC<HeaderProps> = ({
   );
 
   const isPaid = isPaidSubscriptionActive(merchant);
-  const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
-  
-  const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
-  const trialDaysRemaining = trialEndsAtDate 
-    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : (merchant?.trialDaysRemaining ?? 30);
-  const trialDaysTotal = merchant?.trialDaysTotal ?? 30;
+
+  // Supabase fetched active subscription record
+  const [supabaseSub, setSupabaseSub] = useState<{
+    plan_started_at?: string;
+    expires_at?: string;
+    plan_start_date?: string;
+    subscription_start_date?: string;
+    created_at?: string;
+    duration_days?: number;
+    selected_plan_days?: number;
+    subscription_plan?: string;
+    subscription_expiry?: string;
+    subscription_end_date?: string;
+    trial_ends_at?: string;
+  } | null>(null);
+
+  // 1. Connect to Supabase: Fetch active merchant's real subscription record directly from Supabase
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSupabaseSubRecord = async () => {
+      if (!supabase || !merchant) return;
+      const email = (merchant.email || '').trim().toLowerCase();
+      const storeSlug = (merchant.storeSlug || '').trim().toLowerCase();
+
+      try {
+        // Query 'subscriptions' table in Supabase
+        const { data: subData } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .or(`merchant_email.ilike.${email},store_slug.ilike.${storeSlug}`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (subData && isMounted) {
+          setSupabaseSub(subData);
+          return;
+        }
+
+        // Fallback: Query 'merchants' table in Supabase
+        const { data: mData } = await supabase
+          .from('merchants')
+          .select('*')
+          .or(`email.ilike.${email},store_slug.ilike.${storeSlug}`)
+          .maybeSingle();
+
+        if (mData && isMounted) {
+          setSupabaseSub(mData);
+        }
+      } catch (err) {
+        console.warn('Supabase subscription fetch notice:', err);
+      }
+    };
+
+    fetchSupabaseSubRecord();
+    return () => { isMounted = false; };
+  }, [merchant?.email, merchant?.storeSlug]);
+
+  // Stable fallback start time ref initialized ONCE per component instance
+  const initialMountTimeRef = useRef<number>(Date.now());
+
+  // Real-time ticking countdown clock state
+  const [timeLeft, setTimeLeft] = useState<{
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    totalSeconds: number;
+    totalDaysFloat: number;
+  }>({ days: 0, hours: 0, minutes: 0, seconds: 0, totalSeconds: 0, totalDaysFloat: 99 });
+
+  // 2. Real-Time Dynamic Clock: 1-second interval calculating Remaining Time = expires_at - Date.now()
+  useEffect(() => {
+    // Determine Duration in Days (30, 90, 180, 365, etc)
+    const durationDays =
+      supabaseSub?.duration_days ||
+      supabaseSub?.selected_plan_days ||
+      (merchant as any)?.duration_days ||
+      (merchant as any)?.durationDays ||
+      merchant?.selectedPlanDays ||
+      merchant?.trialDaysTotal ||
+      getPlanDurationInDays(supabaseSub?.subscription_plan || merchant?.subscriptionPlan);
+
+    const durationMs = durationDays * 24 * 60 * 60 * 1000;
+
+    // Check for absolute expiration timestamp (expires_at / subscription_expiry / etc)
+    const explicitExpiry =
+      supabaseSub?.expires_at ||
+      supabaseSub?.subscription_expiry ||
+      supabaseSub?.subscription_end_date ||
+      supabaseSub?.trial_ends_at ||
+      merchant?.expires_at ||
+      (merchant as any)?.expiresAt ||
+      merchant?.subscriptionExpiry ||
+      merchant?.subscriptionEndDate ||
+      merchant?.trialEndsAt;
+
+    let targetTimestamp: number;
+
+    if (explicitExpiry && !isNaN(new Date(explicitExpiry).getTime())) {
+      targetTimestamp = new Date(explicitExpiry).getTime();
+    } else {
+      // If no explicit expiry, derive from absolute plan start timestamp + duration
+      const rawStartTime =
+        supabaseSub?.plan_started_at ||
+        supabaseSub?.plan_start_date ||
+        supabaseSub?.subscription_start_date ||
+        supabaseSub?.created_at ||
+        merchant?.plan_started_at ||
+        (merchant as any)?.planStartedAt ||
+        merchant?.subscriptionStartDate ||
+        merchant?.trialStartDate ||
+        merchant?.createdAt;
+
+      const planStartTimeMs = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
+        ? new Date(rawStartTime).getTime()
+        : initialMountTimeRef.current;
+
+      targetTimestamp = planStartTimeMs + durationMs;
+    }
+
+    const computeTimeLeft = () => {
+      // Offline Continuous Calculation: Remaining Time = expires_at - Date.now()
+      const now = Date.now();
+      const diffMs = Math.max(0, targetTimestamp - now);
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const totalDaysFloat = diffMs / (1000 * 60 * 60 * 24);
+
+      const days = Math.floor(totalSeconds / (24 * 3600));
+      const hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      return { days, hours, minutes, seconds, totalSeconds, totalDaysFloat };
+    };
+
+    // Calculate immediately
+    setTimeLeft(computeTimeLeft());
+
+    // 3. Live Decrement every 1 second (1000ms)
+    const timer = setInterval(() => {
+      setTimeLeft(computeTimeLeft());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    supabaseSub,
+    merchant?.expires_at,
+    (merchant as any)?.expiresAt,
+    merchant?.plan_started_at,
+    (merchant as any)?.planStartedAt,
+    merchant?.subscriptionStartDate,
+    merchant?.subscriptionEndDate,
+    merchant?.subscriptionExpiry,
+    merchant?.trialStartDate,
+    merchant?.trialEndsAt,
+    merchant?.createdAt,
+    merchant?.selectedPlanDays,
+    merchant?.subscriptionPlan
+  ]);
+
+  const paidDaysRemaining = timeLeft.days;
+  const trialDaysRemaining = timeLeft.days;
+  const trialDaysTotal = merchant?.trialDaysTotal ?? merchant?.selectedPlanDays ?? 30;
   const trialPercentage = Math.min(100, Math.max(0, Math.round(((trialDaysTotal - trialDaysRemaining) / trialDaysTotal) * 100)));
 
   const notificationsList = [
@@ -158,6 +316,27 @@ export const Header: React.FC<HeaderProps> = ({
     <header className={`border-b sticky top-0 z-30 px-4 lg:px-6 py-3 space-y-3 transition-colors ${
       isDarkMode ? 'bg-[#1D212E] border-[#2E3548] text-slate-100' : 'bg-white border-slate-200 text-slate-900'
     }`}>
+      {/* FULL-WIDTH RED WARNING BANNER WHEN <= 10 DAYS REMAINING */}
+      {timeLeft.totalDaysFloat <= 10 && (
+        <div className="w-full bg-red-600 border-b border-red-700 text-white font-bold py-2.5 px-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-2 shadow-lg animate-pulse">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-center sm:text-left">
+            <ShieldAlert className="w-5 h-5 text-white shrink-0 animate-bounce" />
+            <span>
+              ⚠️ Super Admin Notice: Your subscription plan expires in{' '}
+              <span className="font-mono font-black underline bg-red-700/60 px-1.5 py-0.5 rounded">
+                {timeLeft.days}d : {String(timeLeft.hours).padStart(2, '0')}h : {String(timeLeft.minutes).padStart(2, '0')}m : {String(timeLeft.seconds).padStart(2, '0')}s
+              </span>! Please renew your plan immediately.
+            </span>
+          </div>
+          <button
+            onClick={onOpenSubscriptionModal}
+            className="bg-white text-red-700 hover:bg-red-50 text-xs px-3.5 py-1.5 rounded-lg font-extrabold transition shadow shrink-0 cursor-pointer"
+          >
+            Renew Plan Now
+          </button>
+        </div>
+      )}
+
       {/* Subscription / Trial Status Banner */}
       {pendingRequest ? (
         // PENDING APPROVAL BANNER
@@ -205,7 +384,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       ) : isPaid ? (
-        // ACTIVE PAID SUBSCRIPTION BANNER
+        // ACTIVE PAID SUBSCRIPTION BANNER WITH TICKING COUNTDOWN CLOCK
         <div className="bg-gradient-to-r from-[#142328] via-[#1A2E35] to-[#142328] border border-[#00D68F]/30 rounded-xl p-3 shadow-md">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center space-x-3">
@@ -222,12 +401,23 @@ export const Header: React.FC<HeaderProps> = ({
                     • Pure SaaS — 0% Order Fees
                   </span>
                 </div>
-                <p className="text-xs text-slate-200 font-medium mt-0.5">
-                  Subscription Status: <span className="text-[#00D68F] font-bold">{paidDaysRemaining} Days Remaining</span>
-                  {merchant?.subscriptionExpiry && (
-                    <span className="text-slate-400 text-[11px] ml-1.5">(Valid until {merchant.subscriptionExpiry})</span>
-                  )}
-                </p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs text-slate-200 font-medium">Remaining Time:</span>
+                  <div className="flex items-center gap-1 bg-slate-900/90 border border-[#00D68F]/40 px-2.5 py-1 rounded-lg font-mono text-xs font-bold text-white shadow-inner">
+                    <Clock className="w-3.5 h-3.5 text-[#00D68F] animate-spin" style={{ animationDuration: '6s' }} />
+                    <span className="text-[#00D68F]">{String(timeLeft.days).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">d</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#00D68F]">{String(timeLeft.hours).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">h</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#00D68F]">{String(timeLeft.minutes).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">m</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#00D68F]">{String(timeLeft.seconds).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">s</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -252,7 +442,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       ) : (
-        // FREE TRIAL BANNER
+        // FREE TRIAL BANNER WITH TICKING COUNTDOWN CLOCK
         <div className="bg-gradient-to-r from-[#202636] via-[#2A3146] to-[#202636] border border-[#3A435E] rounded-xl p-3 shadow-md">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center space-x-3">
@@ -268,9 +458,23 @@ export const Header: React.FC<HeaderProps> = ({
                     • 0% Platform Order Fees
                   </span>
                 </div>
-                <p className="text-xs text-slate-200 font-medium mt-0.5">
-                  Trial Status: <span className="text-[#E6C587] font-bold">{trialDaysRemaining} Days Remaining</span>
-                </p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="text-xs text-slate-200 font-medium">Trial Countdown:</span>
+                  <div className="flex items-center gap-1 bg-slate-900/90 border border-[#D4AF37]/40 px-2.5 py-1 rounded-lg font-mono text-xs font-bold text-white shadow-inner">
+                    <Clock className="w-3.5 h-3.5 text-[#E6C587] animate-spin" style={{ animationDuration: '6s' }} />
+                    <span className="text-[#E6C587]">{String(timeLeft.days).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">d</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#E6C587]">{String(timeLeft.hours).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">h</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#E6C587]">{String(timeLeft.minutes).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">m</span>
+                    <span className="text-slate-500">:</span>
+                    <span className="text-[#E6C587]">{String(timeLeft.seconds).padStart(2, '0')}</span>
+                    <span className="text-slate-400 text-[10px]">s</span>
+                  </div>
+                </div>
               </div>
             </div>
 

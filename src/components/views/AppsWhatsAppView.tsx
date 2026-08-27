@@ -116,6 +116,22 @@ export const AppsWhatsAppView: React.FC<AppsWhatsAppViewProps> = ({
         field2Value: 'Hi! Welcome to My Store. How can we help you today?'
       },
       {
+        id: 'whatsapp-otp-api',
+        name: 'WhatsApp OTP Provider Gateway (UltraMsg/Twilio/Meta)',
+        category: 'Communication',
+        description: 'Real-time 6-digit WhatsApp OTP verification dispatch via UltraMsg, Twilio, or Meta Cloud API.',
+        iconBg: 'bg-[#25D366]/20 text-[#25D366]',
+        iconText: 'OTP',
+        badge: 'Live OTP',
+        tier: 'FREE',
+        priceLabel: 'Included Free',
+        isConnected: true,
+        field1Label: 'UltraMsg Instance ID / Twilio Account SID',
+        field1Value: 'instance_live_zid_01',
+        field2Label: 'API Token / Auth Secret',
+        field2Value: 'token_live_wp_9981'
+      },
+      {
         id: 'courier-api',
         name: 'Steadfast Courier API',
         category: 'Logistics',

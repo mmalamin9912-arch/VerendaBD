@@ -52,6 +52,7 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   MapPin,
   Coins,
   Percent,
@@ -61,6 +62,7 @@ import {
 } from 'lucide-react';
 import { MerchantProfile, SubscriptionRequest, AdminPaymentGatewayConfig, AdminCustomGateway, ThemePurchaseRequest, SubscriptionPlanId, PlatformSettings, PlatformAnnouncement, SubscriptionPlan, PlatformTheme, SupportTicket, TicketMessage, PlatformAddon, AuditLog, PlatformSecuritySettings, BroadcastMessage, PlatformAutomationSettings, AdminTeamMember, AdminRolePermission } from '../types';
 import { calculateSubscriptionExpiry, getPlanDurationInDays, calculateRemainingDays, getPlanDisplayName } from '../utils/subscriptionUtils';
+import { supabase } from '../lib/supabase';
 
 interface SuperAdminPortalViewProps {
   currentMerchant: MerchantProfile;
@@ -140,6 +142,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
   onUpdateRolePermissions
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'analytics' | 'gateways' | 'approvals' | 'merchants' | 'settings' | 'announcements' | 'plans' | 'themes' | 'support' | 'addons' | 'security' | 'broadcast' | 'team'>('analytics');
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
   
   // New modal state for creating merchant
   const [isCreateMerchantModalOpen, setIsCreateMerchantModalOpen] = useState(false);
@@ -523,17 +526,25 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     e.preventDefault();
     const slug = (newMerchantForm?.storeName || '').toLowerCase().replace(/\s+/g, '-');
     const isPaid = newMerchantForm.plan !== 'free_trial';
-    const dynamicExpiry = new Date(Date.now() + (newMerchantForm.expiryDays || getPlanDurationInDays(newMerchantForm.plan)) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const { expiryDate, durationDays, plan_started_at, expires_at } = calculateSubscriptionExpiry(
+      newMerchantForm.plan,
+      new Date()
+    );
 
     const newMerchant: MerchantProfile = {
       storeName: newMerchantForm?.storeName || 'New Store',
       storeSlug: slug || 'new-store',
       email: newMerchantForm.email,
       subscriptionPlan: newMerchantForm.plan,
-      subscriptionExpiry: isPaid ? dynamicExpiry : undefined,
-      trialEndsAt: isPaid ? undefined : new Date(Date.now() + newMerchantForm.expiryDays * 24 * 60 * 60 * 1000).toISOString(),
-      trialDaysRemaining: isPaid ? 0 : newMerchantForm.expiryDays,
-      trialDaysTotal: newMerchantForm.expiryDays,
+      subscriptionExpiry: isPaid ? expiryDate : undefined,
+      plan_started_at: isPaid ? plan_started_at : undefined,
+      expires_at: isPaid ? expires_at : undefined,
+      planStartedAt: isPaid ? plan_started_at : undefined,
+      expiresAt: isPaid ? expires_at : undefined,
+      selectedPlanDays: isPaid ? durationDays : undefined,
+      trialEndsAt: isPaid ? undefined : expires_at,
+      trialDaysRemaining: isPaid ? 0 : 30,
+      trialDaysTotal: isPaid ? 0 : 30,
       isLocked: false,
       logoUrl: '',
       currency: 'BDT',
@@ -544,6 +555,27 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       themeConfig: {}
     };
     onUpdateAllMerchants(prev => [...prev, newMerchant]);
+
+    // Asynchronously push to Supabase if client exists
+    if (supabase) {
+      (async () => {
+        try {
+          await supabase.from('merchants').insert([{
+            store_name: newMerchant.storeName,
+            store_slug: newMerchant.storeSlug,
+            email: newMerchant.email,
+            subscription_plan: newMerchant.subscriptionPlan,
+            subscription_expiry: newMerchant.subscriptionExpiry,
+            plan_started_at: newMerchant.plan_started_at,
+            expires_at: newMerchant.expires_at,
+            duration_days: durationDays
+          }]);
+        } catch (err) {
+          console.warn('Notice: Supabase insert merchant sync notice', err);
+        }
+      })();
+    }
+
     setIsCreateMerchantModalOpen(false);
     setNewMerchantForm({ storeName: '', email: '', plan: 'free_trial', expiryDays: 30 });
     setSaveSuccess(`Store "${newMerchantForm?.storeName || 'New Store'}" created successfully!`);
@@ -617,7 +649,7 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     if (!req) return;
 
     // Calculate dynamic expiration date starting from TODAY based ONLY on the purchased plan duration (no leftover trial days added)
-    const { expiryDate, durationDays } = calculateSubscriptionExpiry(req.planId, new Date());
+    const { expiryDate, durationDays, plan_started_at, expires_at } = calculateSubscriptionExpiry(req.planId, new Date());
     const planName = getPlanDisplayName(req.planId);
 
     // Update request status
@@ -640,6 +672,11 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
           trialDaysRemaining: 0,
           trialEndsAt: undefined,
           subscriptionExpiry: expiryDate,
+          plan_started_at: plan_started_at,
+          expires_at: expires_at,
+          planStartedAt: plan_started_at,
+          expiresAt: expires_at,
+          selectedPlanDays: durationDays,
           isLocked: false
         };
         // Also update merchant store database if slug exists
@@ -666,6 +703,36 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       console.error(e);
     }
 
+    // Direct sync to Supabase database for the approved merchant
+    if (supabase) {
+      (async () => {
+        try {
+          const updatePayload = {
+            subscription_plan: req.planId,
+            subscription_expiry: expiryDate,
+            plan_started_at: plan_started_at,
+            expires_at: expires_at,
+            duration_days: durationDays
+          };
+
+          if (req.email) {
+            await supabase.from('merchants').update(updatePayload).ilike('email', req.email.trim());
+            await supabase.from('subscriptions').upsert([{
+              merchant_email: req.email.trim().toLowerCase(),
+              store_slug: (req.storeName || '').toLowerCase().replace(/\s+/g, '-'),
+              subscription_plan: req.planId,
+              plan_started_at: plan_started_at,
+              expires_at: expires_at,
+              duration_days: durationDays,
+              status: 'active'
+            }]);
+          }
+        } catch (err) {
+          console.warn('Notice: Supabase approve sync notice', err);
+        }
+      })();
+    }
+
     // Check if the current logged-in merchant matches
     const isCurrentMatch = (req?.email && currentMerchant?.email && req.email.toLowerCase() === currentMerchant.email.toLowerCase()) ||
       (req?.storeName && currentMerchant?.storeName && req.storeName.toLowerCase() === currentMerchant.storeName.toLowerCase());
@@ -677,6 +744,11 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
         trialDaysRemaining: 0,
         trialEndsAt: undefined,
         subscriptionExpiry: expiryDate,
+        plan_started_at: plan_started_at,
+        expires_at: expires_at,
+        planStartedAt: plan_started_at,
+        expiresAt: expires_at,
+        selectedPlanDays: durationDays,
         isLocked: false
       };
       onUpdateMerchant(updatedCurrent);
@@ -925,9 +997,9 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
     const nextPlan = plans[nextIndex];
 
     const isNowTrial = nextPlan === 'free_trial';
-    const { expiryDate } = calculateSubscriptionExpiry(nextPlan);
+    const { expiryDate, durationDays, plan_started_at, expires_at } = calculateSubscriptionExpiry(nextPlan, new Date());
     const newExpiry = isNowTrial ? undefined : expiryDate;
-    const newTrialEndsAt = isNowTrial ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined;
+    const newTrialEndsAt = isNowTrial ? expires_at : undefined;
     const newTrialDaysRemaining = isNowTrial ? 30 : 0;
 
     const updatedMerchants = allMerchants.map(x => {
@@ -936,6 +1008,11 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
           ...x,
           subscriptionPlan: nextPlan,
           subscriptionExpiry: newExpiry,
+          plan_started_at: isNowTrial ? undefined : plan_started_at,
+          expires_at: isNowTrial ? undefined : expires_at,
+          planStartedAt: isNowTrial ? undefined : plan_started_at,
+          expiresAt: isNowTrial ? undefined : expires_at,
+          selectedPlanDays: isNowTrial ? undefined : durationDays,
           trialEndsAt: newTrialEndsAt,
           trialDaysRemaining: newTrialDaysRemaining
         };
@@ -965,6 +1042,11 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
         ...currentMerchant,
         subscriptionPlan: nextPlan,
         subscriptionExpiry: newExpiry,
+        plan_started_at: isNowTrial ? undefined : plan_started_at,
+        expires_at: isNowTrial ? undefined : expires_at,
+        planStartedAt: isNowTrial ? undefined : plan_started_at,
+        expiresAt: isNowTrial ? undefined : expires_at,
+        selectedPlanDays: isNowTrial ? undefined : durationDays,
         trialEndsAt: newTrialEndsAt,
         trialDaysRemaining: newTrialDaysRemaining
       };
@@ -1046,174 +1128,158 @@ export const SuperAdminPortalView: React.FC<SuperAdminPortalViewProps> = ({
       {/* Main Admin Body */}
       <div className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
 
-        {/* Sub-tab Navigation */}
-        <div className="flex items-center border-b border-[#2E3548] gap-8 overflow-x-auto no-scrollbar pb-1">
-          <button
-            onClick={() => setActiveSubTab('analytics')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'analytics'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <DollarSign className="w-4 h-4" />
-            <span>Global Analytics & Sales</span>
-          </button>
+        {/* Sub-tab Navigation - Grouped Category Dropdowns */}
+        {(() => {
+          const pendingApprovalsCount = pendingRequests.filter(r => r.status === 'pending').length;
+          const unresolvedSupportCount = supportTickets.filter(t => t.status !== 'Resolved').length;
 
-          <button
-            onClick={() => setActiveSubTab('approvals')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition relative cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'approvals'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            <span>Pending Subscriptions</span>
-            {pendingRequests.filter(r => r.status === 'pending').length > 0 && (
-              <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.5 rounded-full">
-                {pendingRequests.filter(r => r.status === 'pending').length}
-              </span>
-            )}
-          </button>
+          type SubTabKey = 'analytics' | 'gateways' | 'approvals' | 'merchants' | 'settings' | 'announcements' | 'plans' | 'themes' | 'support' | 'addons' | 'security' | 'broadcast' | 'team';
 
-          <button
-            onClick={() => setActiveSubTab('team')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'team'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Admin Team</span>
-          </button>
+          interface NavSubItem {
+            id: SubTabKey;
+            label: string;
+            icon: React.ComponentType<{ className?: string }>;
+            badge?: number;
+            badgeColor?: string;
+          }
 
-          <button
-            onClick={() => setActiveSubTab('gateways')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'gateways'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            <span>Live Payment Gateways</span>
-          </button>
+          interface NavCategory {
+            id: string;
+            title: string;
+            icon: React.ComponentType<{ className?: string }>;
+            items: NavSubItem[];
+          }
 
-          <button
-            onClick={() => setActiveSubTab('merchants')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'merchants'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Merchant Accounts ({allMerchants.length})</span>
-          </button>
+          const navCategories: NavCategory[] = [
+            {
+              id: 'analytics_merchants',
+              title: 'Analytics & Merchants',
+              icon: DollarSign,
+              items: [
+                { id: 'analytics', label: 'Global Analytics & Sales', icon: DollarSign },
+                { id: 'merchants', label: `Merchant Accounts (${allMerchants.length})`, icon: Users },
+                { id: 'approvals', label: 'Pending Subscriptions', icon: Clock, badge: pendingApprovalsCount, badgeColor: 'bg-amber-500 text-slate-950 font-black' },
+              ]
+            },
+            {
+              id: 'plans_features',
+              title: 'Plans & Features',
+              icon: ShoppingBag,
+              items: [
+                { id: 'plans', label: 'Subscription Plans', icon: ShoppingBag },
+                { id: 'themes', label: 'Theme Manager', icon: Palette },
+                { id: 'addons', label: 'Add-ons Manager', icon: Box },
+              ]
+            },
+            {
+              id: 'system_gateways',
+              title: 'System & Gateways',
+              icon: Settings,
+              items: [
+                { id: 'gateways', label: 'Live Payment Gateways', icon: CreditCard },
+                { id: 'security', label: 'Security & Logs', icon: ShieldCheck },
+                { id: 'settings', label: 'Platform Settings', icon: Settings },
+              ]
+            },
+            {
+              id: 'support_comm',
+              title: 'Support & Communication',
+              icon: LifeBuoy,
+              items: [
+                { id: 'support', label: 'Support Tickets', icon: LifeBuoy, badge: unresolvedSupportCount, badgeColor: 'bg-red-500 text-white font-black' },
+                { id: 'broadcast', label: 'Broadcast & Emails', icon: Bell },
+                { id: 'announcements', label: 'Notice Banner', icon: AlertCircle },
+              ]
+            },
+            {
+              id: 'admin_access',
+              title: 'Admin Access',
+              icon: UserCog,
+              items: [
+                { id: 'team', label: 'Admin Team', icon: Users },
+              ]
+            }
+          ];
 
-          <button
-            onClick={() => setActiveSubTab('plans')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'plans'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Subscription Plans</span>
-          </button>
+          return (
+            <div className="flex items-center border-b border-[#2E3548] gap-3 pb-3 flex-wrap">
+              {navCategories.map((cat) => {
+                const isCategoryActive = cat.items.some(item => item.id === activeSubTab);
+                const catBadgeTotal = cat.items.reduce((acc, item) => acc + (item.badge || 0), 0);
+                const CatIcon = cat.icon;
+                const isOpen = openCategory === cat.id;
 
-          <button
-            onClick={() => setActiveSubTab('themes')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'themes'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Palette className="w-4 h-4" />
-            <span>Theme Manager</span>
-          </button>
+                return (
+                  <div
+                    key={cat.id}
+                    className="relative group"
+                    onMouseEnter={() => setOpenCategory(cat.id)}
+                    onMouseLeave={() => setOpenCategory(null)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenCategory(isOpen ? null : cat.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                        isCategoryActive
+                          ? 'bg-[#252B3B] text-[#D4AF37] border-[#D4AF37]/50 shadow-md shadow-[#D4AF37]/10'
+                          : 'bg-[#181B26] text-slate-300 border-[#2E3548] hover:bg-[#202533] hover:text-white hover:border-slate-600'
+                      }`}
+                    >
+                      <CatIcon className={`w-4 h-4 ${isCategoryActive ? 'text-[#D4AF37]' : 'text-slate-400'}`} />
+                      <span>{cat.title}</span>
+                      {catBadgeTotal > 0 && (
+                        <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-1.5 py-0.2 rounded-full">
+                          {catBadgeTotal}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180 text-[#D4AF37]' : 'text-slate-400 group-hover:text-white'
+                      }`} />
+                    </button>
 
-          <button
-            onClick={() => setActiveSubTab('addons')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'addons'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Box className="w-4 h-4" />
-            <span>Add-ons Manager</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveSubTab('security')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'security'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Security & Logs</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('broadcast')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'broadcast'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            <span>Broadcast & Emails</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('support')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'support'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <LifeBuoy className="w-4 h-4" />
-            <span>Support Tickets</span>
-            {supportTickets.filter(t => t.status !== 'Resolved').length > 0 && (
-              <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black">
-                {supportTickets.filter(t => t.status !== 'Resolved').length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('announcements')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'announcements'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <AlertCircle className="w-4 h-4" />
-            <span>Notice Banner</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('settings')}
-            className={`pb-3 text-sm font-bold flex items-center gap-2 border-b-2 transition cursor-pointer whitespace-nowrap ${
-              activeSubTab === 'settings'
-                ? 'border-[#D4AF37] text-[#D4AF37]'
-                : 'border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            <span>Platform Settings</span>
-          </button>
-        </div>
+                    {/* Sub-menu Dropdown */}
+                    <div className={`absolute top-full left-0 mt-1.5 w-64 bg-[#181B26] border border-[#2E3548] rounded-xl shadow-2xl p-2 z-50 transition-all duration-150 ${
+                      isOpen
+                        ? 'opacity-100 visible translate-y-0'
+                        : 'opacity-0 invisible -translate-y-1 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0'
+                    }`}>
+                      <div className="space-y-1">
+                        {cat.items.map((sub) => {
+                          const isSubActive = activeSubTab === sub.id;
+                          const SubIcon = sub.icon;
+                          return (
+                            <button
+                              key={sub.id}
+                              onClick={() => {
+                                setActiveSubTab(sub.id);
+                                setOpenCategory(null);
+                              }}
+                              className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+                                isSubActive
+                                  ? 'bg-[#D4AF37]/20 text-[#D4AF37] font-bold border border-[#D4AF37]/40 shadow-sm'
+                                  : 'text-slate-300 hover:bg-[#222838] hover:text-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <SubIcon className={`w-4 h-4 ${isSubActive ? 'text-[#D4AF37]' : 'text-slate-400'}`} />
+                                <span>{sub.label}</span>
+                              </div>
+                              {!!sub.badge && sub.badge > 0 && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${sub.badgeColor || 'bg-amber-500 text-slate-950'}`}>
+                                  {sub.badge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* 1. ANALYTICS & GLOBAL SALES TAB */}
         {activeSubTab === 'analytics' && (

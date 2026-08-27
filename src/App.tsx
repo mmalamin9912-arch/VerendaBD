@@ -55,6 +55,13 @@ import { GrowthView } from './components/views/GrowthView';
 import { ChannelsView } from './components/views/ChannelsView';
 import { SettingsView } from './components/views/SettingsView';
 
+import { calculatePlanTimestamps, getPlanDurationInDays } from './utils/subscriptionUtils';
+import { 
+  resolveMerchantSubscription, 
+  fetchMerchantSubscriptionFromSupabase, 
+  syncMerchantSubscription,
+  subscribeToMerchantSubscription 
+} from './lib/subscriptionService';
 import { Menu, ShieldAlert, Clock, ArrowUpRight } from 'lucide-react';
 
 export default function App() {
@@ -167,22 +174,26 @@ export default function App() {
     checkAuthAndRoute();
   }, []);
 
+  const sanitizeMerchantProfile = (raw: any): MerchantProfile => {
+    return resolveMerchantSubscription(raw);
+  };
+
   const [merchant, setMerchant] = useState<MerchantProfile>(() => {
     try {
       const savedSession = localStorage.getItem('zid_auth_session');
       if (savedSession) {
         const parsed = JSON.parse(savedSession);
-        if (parsed?.userProfile) return parsed.userProfile;
+        if (parsed?.userProfile) return resolveMerchantSubscription(parsed.userProfile);
       }
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
       if (saved) {
         const storeMerchant = JSON.parse(saved).merchant;
-        if (storeMerchant) return storeMerchant;
+        if (storeMerchant) return resolveMerchantSubscription(storeMerchant);
       }
     } catch (e) {
       console.error(e);
     }
-    return initialMerchant;
+    return resolveMerchantSubscription(initialMerchant);
   });
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -216,45 +227,26 @@ export default function App() {
 
   const fetchMerchantProfile = async (userId: string, userEmail?: string) => {
     try {
-      let rawData: any = null;
+      let resolved: MerchantProfile | null = null;
+
       if (userEmail) {
+        resolved = await fetchMerchantSubscriptionFromSupabase({ email: userEmail });
+      }
+
+      if (!resolved && supabase && userId) {
         try {
-          const res = await fetch(`/api/merchants/check/${encodeURIComponent(userEmail.toLowerCase())}`);
-          if (res.ok) {
-            rawData = await res.json();
+          const { data } = await supabase.from('merchants').select('*').eq('auth_user_id', userId).maybeSingle();
+          if (data) {
+            resolved = resolveMerchantSubscription(data);
           }
         } catch (e) {
-          console.warn('Error checking backend merchant:', e);
+          console.warn('Error querying Supabase by auth ID:', e);
         }
       }
 
-      if (!rawData && supabase) {
-        let query = supabase.from('merchants').select('*');
-        if (userId) {
-          query = query.or(`auth_user_id.eq.${userId},email.eq.${userEmail || ''}`);
-        }
-        const { data } = await query.maybeSingle();
-        if (data) rawData = data;
-      }
-      
-      if (rawData) {
-        const plan = rawData.subscription_plan || rawData.subscriptionPlan || 'enterprise';
-        const slug = rawData.store_slug || rawData.storeSlug || 'mystore';
-        const name = rawData.store_name || rawData.storeName || 'My Store';
-        const owner = rawData.owner_name || rawData.ownerName || 'Merchant Owner';
-        const logo = rawData.logo_url || rawData.logoUrl || '';
-        const expiry = rawData.subscription_expiry || rawData.subscriptionExpiry;
-
-        setMerchant(prev => ({
-          ...prev,
-          ...rawData,
-          subscriptionPlan: plan,
-          storeSlug: slug,
-          storeName: name,
-          ownerName: owner,
-          logoUrl: logo,
-          subscriptionExpiry: expiry,
-        }));
+      if (resolved) {
+        const slug = resolved.storeSlug || (resolved.storeName ? resolved.storeName.toLowerCase().replace(/[^a-z0-9]/g, '') : 'store');
+        setMerchant(resolved);
 
         if (slug && (window.location.pathname === '/' || window.location.pathname.startsWith('/dashboard'))) {
           window.history.replaceState({}, '', `/dashboard/${slug}`);
@@ -381,36 +373,40 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [merchant]);
 
-  // Subscription Fetching
+  // Realtime Supabase Subscription Listener & Live Status Sync
   React.useEffect(() => {
-    if (merchant && merchant.storeName) {
-      let isMounted = true;
-      const safeFetch = async (url: string) => {
-        try {
-          const res = await fetch(url);
-          if (!res.ok) return null;
-          const text = await res.text();
-          return text ? JSON.parse(text) : null;
-        } catch (err) {
-          return null;
-        }
-      };
+    if (!merchant) return;
+    let isMounted = true;
 
-      safeFetch(`/api/subscription/by-store/${encodeURIComponent(merchant.storeName)}`).then(data => {
-        if (isMounted && data && data.subscription_plan) {
-          setMerchant(prev => ({
-            ...prev,
-            subscriptionPlan: data.subscription_plan,
-            subscriptionExpiry: data.subscription_expiry
-          }));
-        }
-      });
+    // 1. Initial live fetch from Supabase
+    fetchMerchantSubscriptionFromSupabase({
+      email: merchant.email,
+      slug: merchant.storeSlug,
+      userId: merchant.id
+    }).then(liveProfile => {
+      if (isMounted && liveProfile) {
+        setMerchant(prev => ({
+          ...prev,
+          ...liveProfile
+        }));
+      }
+    }).catch(err => console.warn('Live subscription fetch notice:', err));
 
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [merchant?.storeName]);
+    // 2. Connect native Supabase Realtime channel for postgres_changes
+    const unsubscribe = subscribeToMerchantSubscription(merchant, (updatedMerchant, source) => {
+      if (!isMounted) return;
+      console.log(`[App Realtime] Active subscription updated from ${source}:`, updatedMerchant.subscriptionPlan);
+      setMerchant(prev => ({
+        ...prev,
+        ...updatedMerchant
+      }));
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [merchant?.email, merchant?.storeSlug, merchant?.id]);
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
     try {
@@ -930,10 +926,9 @@ export default function App() {
   const handleConfirmSubscription = async (planId: string, paymentMethod: string, txId: string) => {
     const plan = subscriptionPlans.find(p => p.id === planId) || subscriptionPlans[1];
     
-    // Calculate expiry
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + plan.durationDays);
-    const expiryDateStr = expiryDate.toISOString().split('T')[0];
+    // Calculate exact start and expiry timestamps dynamically based on chosen plan
+    const { plan_started_at, expires_at, expiryDate, durationDays } = calculatePlanTimestamps(planId, new Date());
+    const expiryDateStr = expiryDate;
 
     const newReq: SubscriptionRequest = {
       id: `req-${Date.now()}`,
@@ -950,28 +945,18 @@ export default function App() {
 
     setPendingRequests(prev => [newReq, ...prev]);
 
-    // Update DB (e.g. status) - actually user only asked to persist when upgraded.
-    // For now, let's keep the pending request flow as it is, but also
-    // update subscriptionPlan and expiryDate in DB when approved.
-    // Wait, the user asked to persist when they purchase/upgrade.
-    // So I should do this upon submission as well? 
-    // The request said: "When a merchant purchases/upgrades... Persist...".
-    // I will do it here, assuming 'pending' approval is how upgrades are processed.
-
     try {
-        await fetch('/api/subscription/update', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                storeName: merchant?.storeName,
-                planId,
-                expiryDate: expiryDateStr
-            })
-        });
-        // Update local state
-        setMerchant(prev => ({...prev, subscriptionPlan: planId as any, subscriptionExpiry: expiryDateStr}));
+      const { updatedProfile } = await syncMerchantSubscription({
+        merchant,
+        planId,
+        startDate: new Date(),
+        transactionId: txId,
+        paymentMethod,
+        status: 'pending'
+      });
+      setMerchant(updatedProfile);
     } catch (e) {
-        console.error('Failed to update subscription in DB', e);
+      console.error('Failed to update subscription in DB', e);
     }
     
     alert(`Subscription request submitted successfully! Your Transaction ID (${txId}) is pending Super Admin verification.`);

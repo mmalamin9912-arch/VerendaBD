@@ -28,31 +28,38 @@ import {
 
 export const initialMerchant: MerchantProfile = {
   storeName: 'My Store',
-  storeSlug: 'my-store',
+  storeSlug: 'mystore',
   ownerName: 'Store Owner',
-  email: 'owner@example.com',
-  phone: '+8801711223344',
+  email: '',
+  phone: '',
   currency: 'BDT',
   exchangeRateBDT: 120, // 1 USD = 120 BDT
   trialDaysTotal: 30,
   trialDaysRemaining: 30,
-  trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  plan_started_at: new Date().toISOString(),
+  expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  planStartedAt: new Date().toISOString(),
+  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+  selectedPlanDays: 30,
+  duration_days: 30,
+  durationDays: 30,
   subscriptionPlan: 'free_trial',
+  subscriptionExpiry: null,
   isLocked: false,
   onboardingProgress: 0,
   logoUrl: '',
   totalSalesBDT: 0,
   activeThemeId: 'theme-1',
-  heroTitle: 'Welcome to My Store',
-  heroSubtitle: 'Discover our new collections.',
-  announcementText: 'Welcome to our store!',
+  heroTitle: 'Welcome to Our Store',
+  heroSubtitle: 'Discover our premium collections.',
+  announcementText: 'Welcome to our store! Enjoy fast delivery.',
   shippingConfig: {
     type: 'flat',
     fee: 60
   },
   paymentMethods: {
     cod: true,
-    bkash: false,
+    bkash: true,
     cards: false
   },
   tracking: {
@@ -75,7 +82,7 @@ export const initialMerchant: MerchantProfile = {
     footerAboutText: 'A simple store powered by Zid Multi-Tenant SaaS Engine.',
     footerLinksTitle: 'Quick Links',
     footerLinks: ['About Us', 'Shipping Policy', 'Return Policy', 'Track Order'],
-    contactPhone: '+8801711223344',
+    contactPhone: '+8801700000000',
     dhakaAddress: 'Dhaka, Bangladesh',
     announcementText: 'Welcome to our store!'
   }
@@ -523,8 +530,8 @@ export const initialAutomationSettings: PlatformAutomationSettings = {
 export const initialAdminTeam: AdminTeamMember[] = [
   {
     id: 'adm-1',
-    fullName: 'Mohammad Al Amin',
-    email: 'mmalamin9912@gmail.com',
+    fullName: 'System Administrator',
+    email: 'admin@zid.com',
     role: 'Super Admin',
     lastActive: new Date().toISOString(),
     status: 'Active'
