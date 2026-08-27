@@ -15,7 +15,7 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST') {
     const merchant = req.body?.merchant;
     if (!merchant || typeof merchant !== 'object' || Array.isArray(merchant)) return send(res, 400, { ok: false, error: 'merchant must be an object', merchant: null });
-    merchantStore.set(storeSlug, merchant);
+    merchantStore.set(storeSlug, merchant as Record<string, any>);
     return send(res, 200, { ok: true, store_slug: storeSlug, merchant });
   }
 

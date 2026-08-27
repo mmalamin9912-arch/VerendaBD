@@ -384,29 +384,48 @@ const productStore = new Map<string, any[]>();
 app.get('/api/products-by-slug/:slug', async (req, res) => {
   const slug = (req.params.slug || '').trim().toLowerCase();
   const payload = await readStorePayload();
-  let prods = productStore.get(slug) || [];
-  if (prods.length === 0 && Array.isArray(payload.products)) {
-    prods = payload.products.filter((p: any) => p.storeSlug === slug || p.store_slug === slug);
+  
+  let fileProds = [];
+  if (Array.isArray(payload.products)) {
+    fileProds = payload.products.filter((p: any) => p.storeSlug === slug || p.store_slug === slug);
   }
-  return res.json(prods);
+  
+  let memProds = productStore.get(slug) || [];
+  
+  const mergedMap = new Map();
+  for (const p of fileProds) mergedMap.set(p.id, p);
+  for (const p of memProds) mergedMap.set(p.id, p);
+
+  return res.json(Array.from(mergedMap.values()));
 });
 
 app.get('/api/products', async (req, res) => {
   const storeSlug = (req.query.store_slug as string || '').trim().toLowerCase();
   const merchantId = (req.query.merchant_id as string || '').trim();
   const payload = await readStorePayload();
-  let prods = [];
-  if (storeSlug && productStore.has(storeSlug)) {
-    prods = productStore.get(storeSlug) || [];
-  }
-  if (prods.length === 0 && Array.isArray(payload.products)) {
-    prods = payload.products.filter((p: any) => {
+  
+  // Get from payload first
+  let fileProds = [];
+  if (Array.isArray(payload.products)) {
+    fileProds = payload.products.filter((p: any) => {
       const matchSlug = storeSlug && (p.storeSlug === storeSlug || p.store_slug === storeSlug);
       const matchMerchant = merchantId && (p.merchantId === merchantId || p.merchant_id === merchantId);
       return storeSlug ? matchSlug : matchMerchant;
     });
   }
-  return res.json(prods);
+
+  // Get from memory
+  let memProds = [];
+  if (storeSlug && productStore.has(storeSlug)) {
+    memProds = productStore.get(storeSlug) || [];
+  }
+
+  // Merge, preferring memory (more recent)
+  const mergedMap = new Map();
+  for (const p of fileProds) mergedMap.set(p.id, p);
+  for (const p of memProds) mergedMap.set(p.id, p);
+
+  return res.json(Array.from(mergedMap.values()));
 });
 
 app.post('/api/products', async (req, res) => {

@@ -623,7 +623,21 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
             <td className="p-3.5 font-extrabold text-xs text-slate-200">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#181B26] border border-[#2E3548] rounded-lg">
                 <Package className="w-3.5 h-3.5 text-[#00D68F]" />
-                <span>{cat.productCount} Products</span>
+                <span>
+                  {(() => {
+                    const catNameLower = cat.name.toLowerCase();
+                    return products.filter(p => {
+                      const status = (p.status || 'active').toLowerCase();
+                      if (status !== 'active' && status !== 'published') return false;
+                      const pCatLower = (p.category || '').toLowerCase();
+                      const pCatId = p.categoryId || p.category_id;
+                      if (pCatId && cat.id && pCatId === cat.id) return true;
+                      if (pCatLower === catNameLower) return true;
+                      if (catNameLower === 'home' && (!pCatLower || pCatLower === 'home' || pCatLower === 'general')) return true;
+                      return false;
+                    }).length;
+                  })()} Products
+                </span>
               </span>
             </td>
 
@@ -1332,3 +1346,4 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     </form>
   );
 };
+s
