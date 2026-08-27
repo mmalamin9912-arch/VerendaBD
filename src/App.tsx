@@ -823,7 +823,7 @@ export default function App() {
 
   // Dynamic Site Title and Favicon Synchronization
   React.useEffect(() => {
-    const title = platformSettings?.siteTitle ? `${platformSettings.siteTitle} BD` : 'ZID SAAS BD';
+    const title = platformSettings?.siteTitle ? platformSettings.siteTitle : 'Zid SaaS BD';
     document.title = title;
 
     const faviconEl = document.getElementById('app-favicon') as HTMLLinkElement;
