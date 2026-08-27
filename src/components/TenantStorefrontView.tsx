@@ -86,7 +86,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           
           const merged = {
             ...server,
-            products: Array.isArray(apiProducts) && apiProducts.length > 0 ? apiProducts : (Array.isArray(existing.products) ? existing.products : []),
+            products: Array.isArray(apiProducts) ? apiProducts : [],
           };
           writeZidStoreData(merged as ZidStoreData, storeSlug);
           setLiveStoreData(merged as ZidStoreData);
@@ -151,7 +151,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const visibleBankAccount = (storefrontBankAccounts || []).find((account) => account?.isVisibleAtCheckout);
   const rawStorefrontCategories = Array.isArray(liveStoreData.categories)
     ? liveStoreData.categories
-        .filter((category): category is { name: string; status?: string; image?: string; coverImage?: string; productCount?: number } => !!category && typeof category === 'object' && typeof (category as { name?: unknown }).name === 'string')
+        .filter((category): category is { id?: string; name: string; status?: string; image?: string; coverImage?: string; productCount?: number } => !!category && typeof category === 'object' && typeof (category as { name?: unknown }).name === 'string')
         .filter((category) => category.status !== 'hidden')
     : [];
     
@@ -161,7 +161,19 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   });
 
   const storefrontCategories = rawStorefrontCategories.map(cat => {
-    const count = allActiveProducts.filter(p => p.category && p.category.toLowerCase() === cat.name.toLowerCase()).length;
+    const catNameLower = cat.name.toLowerCase();
+    const count = allActiveProducts.filter(p => {
+      const pCatLower = (p.category || '').toLowerCase();
+      const pCatId = p.categoryId || p.category_id;
+      
+      if (pCatId && cat.id && pCatId === cat.id) return true;
+      if (pCatLower === catNameLower) return true;
+      
+      // Match 'home' or root category items (items with 'home', 'general', or empty category to 'Home' category)
+      if (catNameLower === 'home' && (!pCatLower || pCatLower === 'home' || pCatLower === 'general')) return true;
+      
+      return false;
+    }).length;
     return { ...cat, productCount: count };
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -544,7 +556,23 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       const status = (p.status || 'active').toLowerCase();
       return status === 'active' || status === 'published';
     })
-    .filter(p => !searchQuery.trim() || p.title.toLowerCase().includes(searchQuery.toLowerCase()) || (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase())));
+    .filter(p => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      if (p.title.toLowerCase().includes(q)) return true;
+      
+      const pCatLower = (p.category || '').toLowerCase();
+      if (pCatLower.includes(q)) return true;
+      
+      const matchedCat = rawStorefrontCategories.find(c => c.name.toLowerCase() === q);
+      if (matchedCat) {
+        const pCatId = p.categoryId || p.category_id;
+        if (pCatId && matchedCat.id && pCatId === matchedCat.id) return true;
+        if (q === 'home' && (!pCatLower || pCatLower === 'home' || pCatLower === 'general')) return true;
+      }
+      
+      return false;
+    });
 
   return (
     <div
