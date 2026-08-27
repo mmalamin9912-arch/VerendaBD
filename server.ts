@@ -197,7 +197,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', provider: 'Supabase Data Layer' });
 });
 
-app.all('/api/categories', (req, res) => {
+app.all('/api/categories', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   try {
     const storeSlug = typeof req.query.store_slug === 'string' 
@@ -206,25 +206,54 @@ app.all('/api/categories', (req, res) => {
         ? req.body.store_slug.trim().toLowerCase() 
         : '';
         
-    if (!storeSlug || storeSlug === 'bd') {
-      if (req.method === 'GET') {
-        return res.status(200).json({ ok: true, store_slug: storeSlug || 'bd', categories: [] });
+    const categories = Array.isArray(req.body?.categories) ? req.body.categories : (req.body ? [req.body] : []);
+
+    if (req.method === 'POST' || req.method === 'PUT') {
+      if (storeSlug) {
+        categoryStore.set(storeSlug, categories);
       }
-      if (req.method === 'POST' || req.method === 'PUT') {
-        const categories = Array.isArray(req.body?.categories) ? req.body.categories : [];
-        return res.status(200).json({ ok: true, store_slug: storeSlug || 'bd', categories });
+
+      const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+      const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+      const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+      const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+      if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl) && categories.length > 0) {
+        try {
+          const records = categories.map((cat: any) => ({
+            id: String(cat.id),
+            store_slug: storeSlug || cat.store_slug || cat.storeSlug || 'bd',
+            title: String(cat.name || cat.title || 'Category'),
+            name: String(cat.name || cat.title || 'Category'),
+            image_url: String(cat.image || cat.coverImage || cat.image_url || ''),
+            image: String(cat.image || cat.coverImage || cat.image_url || ''),
+            category_id: String(cat.id),
+            status: cat.status || 'active',
+            is_published: cat.status !== 'hidden',
+            parent_id: cat.parentId || cat.parent_id || null,
+            slug: cat.slug || '',
+          }));
+          await fetch(`${supabaseUrl}/rest/v1/categories`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Prefer': 'resolution=merge-duplicates',
+            },
+            body: JSON.stringify(records),
+          }).catch(err => console.warn('Supabase category REST upsert error:', err));
+        } catch (sbErr) {
+          console.warn('Supabase category REST upsert warning:', sbErr);
+        }
       }
+
+      return res.status(200).json({ ok: true, store_slug: storeSlug || 'bd', categories });
     }
 
     if (req.method === 'GET') {
       const cats = categoryStore.get(storeSlug) || [];
       return res.status(200).json({ ok: true, store_slug: storeSlug, categories: cats });
-    }
-    
-    if (req.method === 'POST' || req.method === 'PUT') {
-      const categories = Array.isArray(req.body?.categories) ? req.body.categories : [];
-      categoryStore.set(storeSlug, categories);
-      return res.status(200).json({ ok: true, store_slug: storeSlug, categories });
     }
     
     res.setHeader('Allow', 'GET, POST, PUT');
@@ -488,6 +517,42 @@ app.post('/api/products', async (req, res) => {
   }
 
   await writeStorePayload(payload);
+
+  // 4. Supabase direct REST upsert
+  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    try {
+      const sbRecord = {
+        id: String(product.id),
+        store_slug: slug,
+        title: String(product.title || product.name || 'Untitled Product'),
+        name: String(product.title || product.name || 'Untitled Product'),
+        price: Number(product.priceBDT ?? product.price ?? 0),
+        image_url: String(product.image || product.image_url || ''),
+        image: String(product.image || product.image_url || ''),
+        category_id: String(product.categoryId || product.category_id || product.category || ''),
+        category: String(product.category || ''),
+        status: 'active',
+        is_published: true,
+      };
+      await fetch(`${supabaseUrl}/rest/v1/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Prefer': 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(sbRecord),
+      }).catch(err => console.warn('Server Supabase product upsert error:', err));
+    } catch (sbErr) {
+      console.warn('Server Supabase product error:', sbErr);
+    }
+  }
 
   return res.json({ ok: true, success: true, product });
 });

@@ -4,7 +4,49 @@ import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, 
 import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../lib/whatsappOtpService';
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
+import { supabase } from '../lib/supabase';
 import { LanguageToggle } from './LanguageToggle';
+
+function mapSupabaseProduct(p: any): Product {
+  const title = p.title || p.name || 'Untitled Product';
+  return {
+    id: String(p.id || `prod-${Math.random()}`),
+    title,
+    priceBDT: Number(p.price ?? p.priceBDT ?? 0),
+    compareAtPriceBDT: p.compare_at_price != null ? Number(p.compare_at_price) : (p.compareAtPriceBDT != null ? Number(p.compareAtPriceBDT) : undefined),
+    image: p.image_url || p.image || '',
+    additionalImages: Array.isArray(p.additional_images) ? p.additional_images : (Array.isArray(p.additionalImages) ? p.additionalImages : []),
+    category: p.category || p.category_name || 'General',
+    categoryId: String(p.category_id || p.categoryId || ''),
+    category_id: String(p.category_id || p.categoryId || ''),
+    descriptionEn: p.description || p.descriptionEn || '',
+    sku: p.sku || '',
+    stock: p.stock !== undefined ? Number(p.stock) : 99,
+    status: p.status || 'active',
+    is_published: p.is_published !== false,
+    storeSlug: p.store_slug || p.storeSlug || '',
+    store_slug: p.store_slug || p.storeSlug || '',
+    variants: Array.isArray(p.variants) ? p.variants : [],
+    variantsCount: Array.isArray(p.variants) ? p.variants.length : (p.variantsCount ?? 0),
+    salesCount: p.salesCount ?? 0,
+  };
+}
+
+function mapSupabaseCategory(c: any) {
+  const name = c.name || c.title || 'Category';
+  return {
+    id: String(c.id || c.category_id || `cat-${Math.random()}`),
+    name,
+    title: name,
+    image: c.image_url || c.image || c.coverImage || '',
+    coverImage: c.cover_image || c.coverImage || '',
+    status: c.status || (c.is_published !== false ? 'published' : 'hidden'),
+    parentId: c.parent_id || c.parentId || null,
+    slug: c.slug || '',
+    description: c.description || '',
+    productCount: Number(c.product_count ?? c.productCount ?? 0),
+  };
+}
 import { BrandLogo } from './BrandLogo';
 import { useLanguage } from '../lib/i18n';
 
@@ -143,6 +185,68 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     activeTheme?.primaryColor ||
     '#00D68F'
   );
+  // Direct Supabase State & Query Hook
+  const [supabaseProducts, setSupabaseProducts] = useState<Product[]>([]);
+  const [supabaseCategories, setSupabaseCategories] = useState<any[]>([]);
+  const [isLoadingSupabase, setIsLoadingSupabase] = useState<boolean>(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchDirectFromSupabase = async () => {
+      let catData: any[] = [];
+      let prodData: any[] = [];
+
+      try {
+        if (supabase) {
+          const [catRes, prodRes] = await Promise.all([
+            supabase.from('categories').select('*').eq('store_slug', storeSlug),
+            supabase.from('products').select('*').eq('store_slug', storeSlug).eq('status', 'active')
+          ]);
+
+          if (catRes.data && Array.isArray(catRes.data)) catData = catRes.data;
+          if (prodRes.data && Array.isArray(prodRes.data)) prodData = prodRes.data;
+        }
+      } catch (e) {
+        console.warn('Supabase client query warning:', e);
+      }
+
+      // REST Fallback query if client returned no data or is uninitialized
+      if (catData.length === 0 || prodData.length === 0) {
+        try {
+          const { supabaseUrl, supabaseAnonKey } = await import('../lib/supabase');
+          if (supabaseUrl && supabaseAnonKey) {
+            const headers = { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` };
+            const [cRes, pRes] = await Promise.all([
+              fetch(`${supabaseUrl}/rest/v1/categories?store_slug=eq.${encodeURIComponent(storeSlug)}&select=*`, { headers }).catch(() => null),
+              fetch(`${supabaseUrl}/rest/v1/products?store_slug=eq.${encodeURIComponent(storeSlug)}&status=eq.active&select=*`, { headers }).catch(() => null)
+            ]);
+
+            if (cRes && cRes.ok) {
+              const cJson = await cRes.json().catch(() => []);
+              if (Array.isArray(cJson) && cJson.length > 0) catData = cJson;
+            }
+            if (pRes && pRes.ok) {
+              const pJson = await pRes.json().catch(() => []);
+              if (Array.isArray(pJson) && pJson.length > 0) prodData = pJson;
+            }
+          }
+        } catch (e) {
+          console.warn('Supabase REST query warning:', e);
+        }
+      }
+
+      if (active) {
+        setSupabaseProducts(prodData.map(mapSupabaseProduct));
+        setSupabaseCategories(catData.map(mapSupabaseCategory));
+        setIsLoadingSupabase(false);
+      }
+    };
+
+    void fetchDirectFromSupabase();
+    const interval = setInterval(fetchDirectFromSupabase, 4000);
+    return () => { active = false; clearInterval(interval); };
+  }, [storeSlug]);
+
   const combinedRawProducts = [
     ...(Array.isArray(liveStoreData?.products) ? liveStoreData.products : []),
     ...(Array.isArray(products) ? products : []),
@@ -153,7 +257,17 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       prodMap.set(p.id, p);
     }
   }
-  const storefrontProducts = Array.from(prodMap.values());
+
+  // Bypass local state/mock arrays completely in public storefront view (`/e/:storeSlug`)
+  const isPublicStorefrontRoute = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/e/') || 
+    window.location.pathname.startsWith('/store/')
+  );
+
+  const storefrontProducts = isPublicStorefrontRoute
+    ? supabaseProducts
+    : (supabaseProducts.length > 0 ? supabaseProducts : Array.from(prodMap.values()));
+
   const storefrontMobileBanking = Array.isArray(liveStoreData.mobileBanking)
     ? liveStoreData.mobileBanking as MobileBankingConfig[]
     : (Array.isArray(mobileBanking) ? mobileBanking : []);
@@ -162,29 +276,28 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     : (Array.isArray(bankAccounts) ? bankAccounts : []);
   const enabledMobileMethods = (storefrontMobileBanking || []).filter((method) => method?.isEnabled && method?.number?.trim());
   const visibleBankAccount = (storefrontBankAccounts || []).find((account) => account?.isVisibleAtCheckout);
-  const rawStorefrontCategories = Array.isArray(liveStoreData.categories)
-    ? liveStoreData.categories
-        .filter((category): category is { id?: string; name: string; status?: string; image?: string; coverImage?: string; productCount?: number } => !!category && typeof category === 'object' && typeof (category as { name?: unknown }).name === 'string')
-        .filter((category) => category.status !== 'hidden')
-    : [];
-    
+
+  const rawStorefrontCategories = isPublicStorefrontRoute
+    ? supabaseCategories
+    : (supabaseCategories.length > 0
+        ? supabaseCategories
+        : (Array.isArray(liveStoreData.categories) ? liveStoreData.categories : []));
+
   const allActiveProducts = (storefrontProducts || []).filter(p => {
     const status = (p.status || 'active').toLowerCase();
     return status === 'active' || status === 'published';
   });
 
+  // Dynamically compute category product counts based on retrieved Supabase products
   const storefrontCategories = rawStorefrontCategories.map(cat => {
-    const catNameLower = cat.name.toLowerCase();
+    const catId = cat.id || cat.category_id;
+    const catNameLower = (cat.name || cat.title || '').toLowerCase().trim();
     const count = allActiveProducts.filter(p => {
-      const pCatLower = (p.category || '').toLowerCase();
       const pCatId = p.categoryId || p.category_id;
-      
-      if (pCatId && cat.id && pCatId === cat.id) return true;
-      if (pCatLower === catNameLower) return true;
-      
-      // Match 'home' or root category items (items with 'home', 'general', or empty category to 'Home' category)
+      if (pCatId && catId && String(pCatId) === String(catId)) return true;
+      const pCatLower = (p.category || '').toLowerCase().trim();
+      if (pCatLower && catNameLower && pCatLower === catNameLower) return true;
       if (catNameLower === 'home' && (!pCatLower || pCatLower === 'home' || pCatLower === 'general')) return true;
-      
       return false;
     }).length;
     return { ...cat, productCount: count };

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
-import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug } from '../../utils/catalogPayload';
+import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug, upsertCategoryToSupabase } from '../../utils/catalogPayload';
 import { readZidStoreData } from '../../lib/storeData';
 import { 
   ArrowLeft, 
@@ -714,6 +714,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
           parentId: null,
         }, merchant);
         postCatalogJson('/api/categories', newCat).catch(err => console.error('Error syncing new category to backend:', err));
+        void upsertCategoryToSupabase(newCat, merchant?.storeSlug || 'bd');
       } catch (err) {
         console.error('Error auto-saving new category:', err);
       }

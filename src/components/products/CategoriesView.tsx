@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product } from '../../types';
 import { readZidStoreData, writeZidStoreData } from '../../lib/storeData';
+import { upsertCategoryToSupabase } from '../../utils/catalogPayload';
 import { 
   FolderTree, 
   Plus, 
@@ -207,7 +208,7 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     return () => controller.abort();
   }, [storeSlug]);
 
-  // Persist reordered categories sequence to localStorage
+  // Persist reordered categories sequence to localStorage and direct Supabase upsert
   useEffect(() => {
     localStorage.setItem(`zid_store_categories_v2:${storeSlug}`, JSON.stringify(categories));
     writeZidStoreData({ categories }, storeSlug);
@@ -217,6 +218,13 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, {
       method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, body: JSON.stringify({ categories }),
     }).catch(() => undefined);
+
+    // Upsert each category directly to Supabase table
+    if (Array.isArray(categories)) {
+      for (const cat of categories) {
+        void upsertCategoryToSupabase(cat, storeSlug);
+      }
+    }
   }, [categories]);
 
   // Tree View State & Navigation Controls

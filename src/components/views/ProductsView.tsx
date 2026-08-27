@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Product, ProductSubTab, ProductType, MerchantProfile } from '../../types';
-import { buildProductDbPayload, mapApiProduct, postCatalogJson } from '../../utils/catalogPayload';
+import { buildProductDbPayload, mapApiProduct, postCatalogJson, upsertProductToSupabase } from '../../utils/catalogPayload';
 import { 
   Boxes, 
   Clock, 
@@ -136,6 +136,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       if (!ok || data?.success === false) {
         console.warn('Product save did not confirm persistence:', data);
       }
+
+      // Upsert directly to Supabase table
+      void upsertProductToSupabase(fullSavedProduct, merchant?.storeSlug || 'bd');
 
       try {
         const targetId = merchant?.storeSlug || merchant?.id || 'default';

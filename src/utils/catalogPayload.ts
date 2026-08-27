@@ -157,3 +157,98 @@ export async function postCatalogJson(url: string, body: unknown): Promise<{ ok:
   }
   return { ok: res.ok, data };
 }
+
+export async function upsertProductToSupabase(product: any, storeSlugInput?: string) {
+  const slug = String(storeSlugInput || product.storeSlug || product.store_slug || 'bd').toLowerCase().trim();
+  const title = String(product.title || product.name || 'Untitled Product').trim();
+  const payload = {
+    id: String(product.id),
+    store_slug: slug,
+    title,
+    name: title,
+    price: Number(product.priceBDT ?? product.price ?? 0),
+    image_url: String(product.image || product.imageUrl || product.image_url || ''),
+    image: String(product.image || product.imageUrl || product.image_url || ''),
+    category_id: String(product.categoryId || product.category_id || product.category || ''),
+    category: String(product.category || ''),
+    status: 'active',
+    is_published: true,
+    description: String(product.description || product.descriptionEn || ''),
+    sku: String(product.sku || ''),
+    stock: Number(product.stock ?? 0),
+  };
+
+  try {
+    const { supabase } = await import('../lib/supabase');
+    if (supabase) {
+      const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
+      if (error) console.warn('Supabase product client upsert notice:', error.message);
+    }
+  } catch (e) {
+    console.warn('Supabase product client upsert error:', e);
+  }
+
+  try {
+    const { supabaseUrl, supabaseAnonKey } = await import('../lib/supabase');
+    if (supabaseUrl && supabaseAnonKey) {
+      await fetch(`${supabaseUrl}/rest/v1/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Prefer': 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(payload),
+      }).catch(err => console.warn('Supabase product REST upsert error:', err));
+    }
+  } catch (e) {
+    console.warn('Supabase product REST upsert warning:', e);
+  }
+}
+
+export async function upsertCategoryToSupabase(category: any, storeSlugInput?: string) {
+  const slug = String(storeSlugInput || category.storeSlug || category.store_slug || 'bd').toLowerCase().trim();
+  const name = String(category.name || category.title || 'Category').trim();
+  const payload = {
+    id: String(category.id),
+    store_slug: slug,
+    title: name,
+    name,
+    image_url: String(category.image || category.coverImage || category.image_url || ''),
+    image: String(category.image || category.coverImage || category.image_url || ''),
+    category_id: String(category.id),
+    status: category.status || 'active',
+    is_published: category.status !== 'hidden',
+    parent_id: category.parentId || category.parent_id || null,
+    slug: category.slug || '',
+  };
+
+  try {
+    const { supabase } = await import('../lib/supabase');
+    if (supabase) {
+      const { error } = await supabase.from('categories').upsert(payload, { onConflict: 'id' });
+      if (error) console.warn('Supabase category client upsert notice:', error.message);
+    }
+  } catch (e) {
+    console.warn('Supabase category client upsert error:', e);
+  }
+
+  try {
+    const { supabaseUrl, supabaseAnonKey } = await import('../lib/supabase');
+    if (supabaseUrl && supabaseAnonKey) {
+      await fetch(`${supabaseUrl}/rest/v1/categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Prefer': 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(payload),
+      }).catch(err => console.warn('Supabase category REST upsert error:', err));
+    }
+  } catch (e) {
+    console.warn('Supabase category REST upsert warning:', e);
+  }
+}
