@@ -108,13 +108,18 @@ export interface Product {
   sku: string;
   barcode?: string;
   category: string;
+  categoryId?: string;
+  category_id?: string;
   priceBDT: number;
   costPriceBDT?: number;
   compareAtPriceBDT?: number;
   weightKg?: number;
   stock: number;
   warehouseStocks?: WarehouseStock[];
-  status: 'Active' | 'Draft' | 'Out of Stock' | 'Published';
+  status: 'Active' | 'Draft' | 'Out of Stock' | 'Published' | 'active' | 'published' | string;
+  is_published?: boolean;
+  storeSlug?: string;
+  store_slug?: string;
   image: string;
   additionalImages?: string[];
   youtubeUrl?: string;
@@ -140,8 +145,6 @@ export interface Product {
   isTaxExempt?: boolean;
   hasDiscount?: boolean;
   merchantId?: string;
-  storeSlug?: string;
-  categoryId?: string;
   customFields?: ProductCustomField[];
   colorImages?: Record<string, string>;
   deliveryRates?: { zoneName: string; fee: number }[];

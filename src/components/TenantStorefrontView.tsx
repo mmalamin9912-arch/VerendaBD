@@ -72,21 +72,26 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           })
         ]);
         
-        if (!storefrontRes.ok || !storefrontRes.headers.get('content-type')?.includes('application/json')) return;
-        const payload = await storefrontRes.json();
-        
-        let apiProducts = [];
+        let apiProducts: any[] = [];
         if (productsRes.ok && productsRes.headers.get('content-type')?.includes('application/json')) {
-          apiProducts = await productsRes.json();
+          const fetched = await productsRes.json();
+          if (Array.isArray(fetched)) {
+            apiProducts = fetched;
+          }
         }
 
-        if (active && payload?.storefront) {
-          const server = payload.storefront as Record<string, unknown>;
+        let serverData: Record<string, unknown> = {};
+        if (storefrontRes.ok && storefrontRes.headers.get('content-type')?.includes('application/json')) {
+          const payload = await storefrontRes.json();
+          serverData = (payload?.storefront || payload?.tenant || payload || {}) as Record<string, unknown>;
+        }
+
+        if (active) {
           const existing = readZidStoreData(storeSlug);
-          
           const merged = {
-            ...server,
-            products: Array.isArray(apiProducts) ? apiProducts : [],
+            ...existing,
+            ...serverData,
+            products: Array.isArray(apiProducts) ? apiProducts : (existing?.products || []),
           };
           writeZidStoreData(merged as ZidStoreData, storeSlug);
           setLiveStoreData(merged as ZidStoreData);
@@ -94,7 +99,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       } catch { /* local slug-scoped cache remains the offline fallback */ }
     };
     void loadStorefront();
-    const poll = window.setInterval(() => void loadStorefront(), 5000);
+    const poll = window.setInterval(() => void loadStorefront(), 3000);
     return () => { active = false; window.clearInterval(poll); };
   }, [storeSlug]);
 
@@ -138,9 +143,17 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     activeTheme?.primaryColor ||
     '#00D68F'
   );
-  const storefrontProducts = Array.isArray(liveStoreData.products) && liveStoreData.products.length > 0
-    ? liveStoreData.products
-    : (Array.isArray(products) && products.length > 0 ? products : (Array.isArray(liveStoreData.products) ? liveStoreData.products : []));
+  const combinedRawProducts = [
+    ...(Array.isArray(liveStoreData?.products) ? liveStoreData.products : []),
+    ...(Array.isArray(products) ? products : []),
+  ];
+  const prodMap = new Map<string, Product>();
+  for (const p of combinedRawProducts) {
+    if (p && p.id) {
+      prodMap.set(p.id, p);
+    }
+  }
+  const storefrontProducts = Array.from(prodMap.values());
   const storefrontMobileBanking = Array.isArray(liveStoreData.mobileBanking)
     ? liveStoreData.mobileBanking as MobileBankingConfig[]
     : (Array.isArray(mobileBanking) ? mobileBanking : []);
@@ -550,16 +563,17 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     }
   };
 
-  // Ensure we have some products for the listing grid - include all active/published products from both sources
+  // Ensure all active created products render under Products section regardless of sub-category assignment
   const displayProducts = (storefrontProducts || [])
     .filter(p => {
-      const status = (p.status || 'active').toLowerCase();
-      return status === 'active' || status === 'published';
+      const status = (p?.status || 'active').toLowerCase();
+      const isPublished = p?.is_published !== false;
+      return status !== 'archived' && status !== 'hidden' && isPublished;
     })
     .filter(p => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
-      if (p.title.toLowerCase().includes(q)) return true;
+      if ((p.title || '').toLowerCase().includes(q) || ((p as any).name || '').toLowerCase().includes(q)) return true;
       
       const pCatLower = (p.category || '').toLowerCase();
       if (pCatLower.includes(q)) return true;

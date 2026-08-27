@@ -384,56 +384,74 @@ const productStore = new Map<string, any[]>();
 app.get('/api/products-by-slug/:slug', async (req, res) => {
   const slug = (req.params.slug || '').trim().toLowerCase();
   const payload = await readStorePayload();
-  
-  let fileProds = [];
-  if (Array.isArray(payload.products)) {
-    fileProds = payload.products.filter((p: any) => p.storeSlug === slug || p.store_slug === slug);
-  }
-  
-  let memProds = productStore.get(slug) || [];
-  
-  const mergedMap = new Map();
-  for (const p of fileProds) mergedMap.set(p.id, p);
-  for (const p of memProds) mergedMap.set(p.id, p);
-
-  return res.json(Array.from(mergedMap.values()));
+  const prods = getMergedProductsForStore(slug, '', payload);
+  return res.json(prods);
 });
 
-app.get('/api/products', async (req, res) => {
-  const storeSlug = (req.query.store_slug as string || '').trim().toLowerCase();
-  const merchantId = (req.query.merchant_id as string || '').trim();
-  const payload = await readStorePayload();
-  
-  // Get from payload first
-  let fileProds = [];
-  if (Array.isArray(payload.products)) {
-    fileProds = payload.products.filter((p: any) => {
-      const matchSlug = storeSlug && (p.storeSlug === storeSlug || p.store_slug === storeSlug);
-      const matchMerchant = merchantId && (p.merchantId === merchantId || p.merchant_id === merchantId);
-      return storeSlug ? matchSlug : matchMerchant;
+function getMergedProductsForStore(storeSlug: string, merchantId: string, payload: Record<string, any>): any[] {
+  const targetSlug = (storeSlug || 'bd').toLowerCase().trim();
+  const fileProds = Array.isArray(payload.products) ? payload.products : [];
+  const storeProds = (targetSlug && payload.stores?.[targetSlug]?.products && Array.isArray(payload.stores[targetSlug].products))
+    ? payload.stores[targetSlug].products
+    : [];
+  const memProds = (targetSlug && productStore.has(targetSlug)) ? (productStore.get(targetSlug) || []) : [];
+
+  const mergedMap = new Map<string, any>();
+  for (const p of fileProds) {
+    if (p && p.id) mergedMap.set(p.id, p);
+  }
+  for (const p of storeProds) {
+    if (p && p.id) mergedMap.set(p.id, p);
+  }
+  for (const p of memProds) {
+    if (p && p.id) mergedMap.set(p.id, p);
+  }
+
+  let results = Array.from(mergedMap.values());
+
+  if (targetSlug || merchantId) {
+    results = results.filter(p => {
+      const pSlug = (p.storeSlug || p.store_slug || '').toString().trim().toLowerCase();
+      const pMerchant = (p.merchantId || p.merchant_id || '').toString().trim();
+
+      if (targetSlug) {
+        if (pSlug === targetSlug) return true;
+        if ((targetSlug === 'bd' || targetSlug === 'default') && (!pSlug || pSlug === 'bd' || pSlug === 'default')) return true;
+      }
+      if (merchantId && pMerchant === merchantId) {
+        return true;
+      }
+      return false;
     });
   }
 
-  // Get from memory
-  let memProds = [];
-  if (storeSlug && productStore.has(storeSlug)) {
-    memProds = productStore.get(storeSlug) || [];
-  }
+  return results.filter(p => {
+    const status = (p.status || 'active').toLowerCase();
+    const isPublished = p.is_published !== false;
+    return status !== 'archived' && status !== 'hidden' && isPublished;
+  });
+}
 
-  // Merge, preferring memory (more recent)
-  const mergedMap = new Map();
-  for (const p of fileProds) mergedMap.set(p.id, p);
-  for (const p of memProds) mergedMap.set(p.id, p);
-
-  return res.json(Array.from(mergedMap.values()));
+app.get('/api/products', async (req, res) => {
+  const storeSlug = (req.query.store_slug as string || req.query.storeSlug as string || '').trim().toLowerCase();
+  const merchantId = (req.query.merchant_id as string || req.query.merchantId as string || '').trim();
+  const payload = await readStorePayload();
+  const prods = getMergedProductsForStore(storeSlug, merchantId, payload);
+  return res.json(prods);
 });
 
 app.post('/api/products', async (req, res) => {
   const product = req.body;
   if (!product) return res.status(400).json({ ok: false, error: 'Product required' });
+  if (!product.id) product.id = `prod-${Date.now()}`;
   const slug = (product.storeSlug || product.store_slug || 'bd').trim().toLowerCase();
+  product.storeSlug = slug;
+  product.store_slug = slug;
+  product.status = 'active';
+  product.is_published = true;
+
+  // 1. Memory store
   const prods = productStore.get(slug) || [];
-  
   const existingIdx = prods.findIndex(p => p.id === product.id);
   if (existingIdx >= 0) {
     prods[existingIdx] = product;
@@ -441,18 +459,36 @@ app.post('/api/products', async (req, res) => {
     prods.unshift(product);
   }
   productStore.set(slug, prods);
-  
+
+  // 2. Main payload database file
   const payload = await readStorePayload();
-  if (Array.isArray(payload.products)) {
-    const pIdx = payload.products.findIndex((p: any) => p.id === product.id);
-    if (pIdx >= 0) {
-      payload.products[pIdx] = product;
-    } else {
-      payload.products.unshift(product);
-    }
-    await writeStorePayload(payload);
+  if (!Array.isArray(payload.products)) {
+    payload.products = [];
   }
-  
+  const pIdx = payload.products.findIndex((p: any) => p.id === product.id);
+  if (pIdx >= 0) {
+    payload.products[pIdx] = product;
+  } else {
+    payload.products.unshift(product);
+  }
+
+  // 3. Storefront store object if exists
+  if (!payload.stores) payload.stores = {};
+  if (!payload.stores[slug]) {
+    payload.stores[slug] = { storeSlug: slug, products: [] };
+  }
+  if (!Array.isArray(payload.stores[slug].products)) {
+    payload.stores[slug].products = [];
+  }
+  const storePIdx = payload.stores[slug].products.findIndex((p: any) => p.id === product.id);
+  if (storePIdx >= 0) {
+    payload.stores[slug].products[storePIdx] = product;
+  } else {
+    payload.stores[slug].products.unshift(product);
+  }
+
+  await writeStorePayload(payload);
+
   return res.json({ ok: true, success: true, product });
 });
 
