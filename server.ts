@@ -251,12 +251,55 @@ app.all('/api/categories', async (req, res) => {
       return res.status(200).json({ ok: true, store_slug: storeSlug || 'bd', categories });
     }
 
+    if (req.method === 'DELETE') {
+      const catId = typeof req.query.id === 'string' ? req.query.id.trim() : typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+      if (catId) {
+        const cats = categoryStore.get(storeSlug) || [];
+        const updatedCats = cats
+          .filter(c => String(c.id) !== catId)
+          .map(c => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
+        categoryStore.set(storeSlug, updatedCats);
+
+        const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+        const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+        const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+        const supabaseKey = cleanEnvKey(rawSupabaseKey);
+        if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+          try {
+            await fetch(`${supabaseUrl}/rest/v1/categories?parent_id=eq.${encodeURIComponent(catId)}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Prefer': 'return=minimal',
+              },
+              body: JSON.stringify({ parent_id: null }),
+            }).catch(() => {});
+
+            await fetch(`${supabaseUrl}/rest/v1/categories?id=eq.${encodeURIComponent(catId)}`, {
+              method: 'DELETE',
+              headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Prefer': 'return=minimal',
+              },
+            }).catch(() => {});
+          } catch (e) {
+            console.warn('Server Supabase category delete error:', e);
+          }
+        }
+        return res.status(200).json({ ok: true, deleted_id: catId });
+      }
+      return res.status(400).json({ ok: false, error: 'Category id required' });
+    }
+
     if (req.method === 'GET') {
       const cats = categoryStore.get(storeSlug) || [];
       return res.status(200).json({ ok: true, store_slug: storeSlug, categories: cats });
     }
     
-    res.setHeader('Allow', 'GET, POST, PUT');
+    res.setHeader('Allow', 'GET, POST, PUT, DELETE');
     return res.status(405).json({ ok: false, error: `Method ${req.method} is not allowed` });
   } catch (err: any) {
     console.error('Categories API error:', err);
@@ -555,6 +598,84 @@ app.post('/api/products', async (req, res) => {
   }
 
   return res.json({ ok: true, success: true, product });
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  const prodId = req.params.id;
+  if (!prodId) return res.status(400).json({ ok: false, error: 'Product id required' });
+
+  for (const [slug, prods] of productStore.entries()) {
+    productStore.set(slug, prods.filter(p => String(p.id) !== prodId));
+  }
+
+  const payload = await readStorePayload();
+  if (Array.isArray(payload.products)) {
+    payload.products = payload.products.filter((p: any) => String(p.id) !== prodId);
+  }
+  if (payload.stores) {
+    for (const sKey of Object.keys(payload.stores)) {
+      if (Array.isArray(payload.stores[sKey].products)) {
+        payload.stores[sKey].products = payload.stores[sKey].products.filter((p: any) => String(p.id) !== prodId);
+      }
+    }
+  }
+  await writeStorePayload(payload);
+
+  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(prodId)}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=minimal',
+      },
+    }).catch(() => {});
+  }
+
+  return res.json({ ok: true, deleted_id: prodId });
+});
+
+app.delete('/api/products', async (req, res) => {
+  const prodId = typeof req.query.id === 'string' ? req.query.id.trim() : typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+  if (!prodId) return res.status(400).json({ ok: false, error: 'Product id required' });
+
+  for (const [slug, prods] of productStore.entries()) {
+    productStore.set(slug, prods.filter(p => String(p.id) !== prodId));
+  }
+
+  const payload = await readStorePayload();
+  if (Array.isArray(payload.products)) {
+    payload.products = payload.products.filter((p: any) => String(p.id) !== prodId);
+  }
+  if (payload.stores) {
+    for (const sKey of Object.keys(payload.stores)) {
+      if (Array.isArray(payload.stores[sKey].products)) {
+        payload.stores[sKey].products = payload.stores[sKey].products.filter((p: any) => String(p.id) !== prodId);
+      }
+    }
+  }
+  await writeStorePayload(payload);
+
+  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(prodId)}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=minimal',
+      },
+    }).catch(() => {});
+  }
+
+  return res.json({ ok: true, deleted_id: prodId });
 });
 
 app.all('/api/tenant-store', async (req, res) => {

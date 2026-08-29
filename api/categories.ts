@@ -312,7 +312,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    res.setHeader('Allow', 'GET, POST, PUT, OPTIONS');
+    // 5. DELETE /api/categories
+    if (req.method === 'DELETE') {
+      let catId = (typeof req.query?.id === 'string' ? req.query.id : '').trim();
+      if (!catId && req.body && typeof req.body === 'object') {
+        catId = String((req.body as any).id || (req.body as any).category_id || '').trim();
+      }
+      if (!catId && req.url) {
+        try {
+          const u = new URL(req.url, 'http://localhost');
+          catId = (u.searchParams.get('id') || u.searchParams.get('category_id') || '').trim();
+        } catch {}
+      }
+
+      if (catId) {
+        // Update KV / tenant store
+        try {
+          const tenant = (await getTenant(storeSlug)) || {};
+          if (Array.isArray(tenant.categories)) {
+            const updatedCats = tenant.categories
+              .filter((c: any) => String(c.id) !== catId)
+              .map((c: any) => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
+            await saveTenant(storeSlug, { ...tenant, categories: updatedCats });
+          }
+        } catch (kvDelErr) {
+          console.warn('[Vercel Serverless] KV category delete error:', kvDelErr);
+        }
+
+        // Supabase DELETE
+        const supabase = getDatabaseClient();
+        if (supabase) {
+          try {
+            await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
+            await supabase.from('categories').delete().eq('id', catId);
+          } catch (sbDelErr) {
+            console.warn('[Vercel Serverless] Supabase category delete warning:', sbDelErr);
+          }
+        }
+
+        return res.status(200).json({ ok: true, deleted_id: catId });
+      }
+
+      return res.status(400).json({ ok: false, error: 'Category id required for deletion' });
+    }
+
+    res.setHeader('Allow', 'GET, POST, PUT, DELETE, OPTIONS');
     return res.status(200).json({
       ok: false,
       store_slug: storeSlug,

@@ -413,10 +413,30 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   };
 
   // Delete Category Handler
-  const handleDeleteCategoryConfirm = () => {
+  const handleDeleteCategoryConfirm = async () => {
     if (!deletingCategory) return;
     const catId = deletingCategory.id;
-    // Remove category and assign children to null parent
+    const storeSlug = merchant?.storeSlug || 'bd';
+
+    try {
+      await fetch(`/api/categories?id=${encodeURIComponent(catId)}&store_slug=${encodeURIComponent(storeSlug)}`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.warn('Delete category API warning:', e);
+    }
+
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      if (supabase) {
+        await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
+        await supabase.from('categories').delete().eq('id', catId);
+      }
+    } catch (sbErr) {
+      console.warn('Supabase category direct delete warning:', sbErr);
+    }
+
+    // Remove category and assign children to null parent in UI state immediately
     setCategories(prev => 
       prev
         .filter(c => c.id !== catId)

@@ -166,8 +166,17 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       onUpdateProducts(updatedList);
       try {
         await fetch(`/api/products/${id}`, { method: 'DELETE' });
+        await fetch(`/api/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
       } catch (e) {
         console.warn('Delete product sync warning:', e);
+      }
+      try {
+        const { supabase } = await import('../../lib/supabase');
+        if (supabase) {
+          await supabase.from('products').delete().eq('id', id);
+        }
+      } catch (sbErr) {
+        console.warn('Supabase product direct delete warning:', sbErr);
       }
     }
   };
