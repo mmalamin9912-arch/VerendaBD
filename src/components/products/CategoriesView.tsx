@@ -418,10 +418,17 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     const catId = deletingCategory.id;
     const storeSlug = merchant?.storeSlug || 'bd';
 
+    let apiConfirmed = false;
     try {
-      await fetch(`/api/categories?id=${encodeURIComponent(catId)}&store_slug=${encodeURIComponent(storeSlug)}`, {
+      const res = await fetch(`/api/categories?id=${encodeURIComponent(catId)}&store_slug=${encodeURIComponent(storeSlug)}`, {
         method: 'DELETE',
       });
+      apiConfirmed = res.ok;
+      const data = await res.json().catch(() => null);
+      if (data && data.ok === false) {
+        console.warn('Category delete rejected by backend:', data?.error);
+        apiConfirmed = false;
+      }
     } catch (e) {
       console.warn('Delete category API warning:', e);
     }
@@ -429,19 +436,24 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     try {
       const { supabase } = await import('../../lib/supabase');
       if (supabase) {
-        await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
-        await supabase.from('categories').delete().eq('id', catId);
+        await supabase.from('categories').update({ parent_id: null }).eq('parent_id', catId);
+        const { error: delError } = await supabase.from('categories').delete().eq('id', catId);
+        if (!delError) apiConfirmed = true;
+        else console.warn('Supabase category direct delete error:', delError.message);
       }
     } catch (sbErr) {
       console.warn('Supabase category direct delete warning:', sbErr);
     }
 
-    // Remove category and assign children to null parent in UI state immediately
-    setCategories(prev => 
-      prev
-        .filter(c => c.id !== catId)
-        .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
-    );
+    // Only update UI state after successful API/DB confirmation so deleted
+    // categories cannot reappear on the next data refresh.
+    if (apiConfirmed) {
+      setCategories(prev =>
+        prev
+          .filter(c => c.id !== catId)
+          .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
+      );
+    }
     setDeletingCategory(null);
   };
 

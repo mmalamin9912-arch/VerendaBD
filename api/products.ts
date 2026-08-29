@@ -193,42 +193,93 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Upsert to Supabase
       const supabase = getDatabaseClient();
+      let persisted = false;
+      let dbError: string | null = null;
       if (supabase) {
+        const title = String(product.title || product.name || 'Untitled Product');
+        const price = Number(product.priceBDT ?? product.price ?? 0);
+        const image = String(product.image || product.image_url || '');
+
+        // Full record — may fail if the table lacks optional columns.
+        const sbRecord: Record<string, any> = {
+          id: String(product.id),
+          store_slug: slug,
+          title,
+          price,
+          image_url: image,
+        };
+        // Optional columns added only when present in the payload;
+        // they are retried separately if the table rejects them.
+        const optionalColumns: Record<string, any> = {
+          name: title,
+          image,
+          category_id: String(product.categoryId || product.category_id || product.category || ''),
+          category: String(product.category || 'General'),
+          status: 'active',
+          is_published: true,
+          sku: String(product.sku || ''),
+          stock: Number(product.stock ?? 0),
+          description: String(product.description || product.descriptionEn || ''),
+        };
+
         try {
-          const title = String(product.title || product.name || 'Untitled Product');
-          const sbRecord = {
-            id: String(product.id),
-            store_slug: slug,
-            title,
-            name: title,
-            price: Number(product.priceBDT ?? product.price ?? 0),
-            image_url: String(product.image || product.image_url || ''),
-            image: String(product.image || product.image_url || ''),
-            category_id: String(product.categoryId || product.category_id || product.category || ''),
-            category: String(product.category || 'General'),
-            status: 'active',
-            is_published: true,
-            sku: String(product.sku || ''),
-            stock: Number(product.stock ?? 0),
-            description: String(product.description || product.descriptionEn || ''),
-          };
-          await supabase.from('products').upsert(sbRecord, { onConflict: 'id' }).catch(async (err) => {
-            console.warn('[Vercel Serverless] Product upsert warning, trying minimal:', err?.message);
-            await supabase.from('products').upsert({
-              id: sbRecord.id,
-              store_slug: sbRecord.store_slug,
-              title: sbRecord.title,
-              price: sbRecord.price,
-              image: sbRecord.image,
-              status: 'active',
-            }, { onConflict: 'id' }).catch(() => {});
-          });
-        } catch (sbErr) {
+          // Attempt full upsert first
+          const { error: fullErr } = await supabase
+            .from('products')
+            .upsert({ ...sbRecord, ...optionalColumns }, { onConflict: 'id' });
+
+          if (!fullErr) {
+            persisted = true;
+          } else {
+            console.warn('[Vercel Serverless] Full product upsert rejected, falling back to minimal:', fullErr.message);
+            dbError = fullErr.message;
+
+            // Tier 2: core columns only (id, store_slug, title, price, image_url)
+            const { error: coreErr } = await supabase
+              .from('products')
+              .upsert(sbRecord, { onConflict: 'id' });
+
+            if (!coreErr) {
+              persisted = true;
+              // Tier 3: retry optional columns individually so a single bad
+              // column does not silently reject the entire product row.
+              for (const [col, value] of Object.entries(optionalColumns)) {
+                const { error: colErr } = await supabase
+                  .from('products')
+                  .upsert({ id: sbRecord.id, store_slug: sbRecord.store_slug, [col]: value }, { onConflict: 'id' });
+                if (colErr) {
+                  console.warn(`[Vercel Serverless] Optional column "${col}" rejected by products table:`, colErr.message);
+                }
+              }
+            } else {
+              // Tier 4: absolute minimal guaranteed insert
+              const { error: minErr } = await supabase
+                .from('products')
+                .upsert(
+                  { id: sbRecord.id, store_slug: sbRecord.store_slug, title: sbRecord.title, price: sbRecord.price },
+                  { onConflict: 'id' }
+                );
+              if (!minErr) {
+                persisted = true;
+              } else {
+                dbError = minErr.message || dbError;
+                console.error('[Vercel Serverless] Supabase product insert failed completely:', minErr);
+              }
+            }
+          }
+        } catch (sbErr: any) {
+          dbError = sbErr?.message || 'Supabase product upsert exception';
           console.warn('[Vercel Serverless] Supabase product error:', sbErr);
         }
       }
 
-      return res.status(200).json({ ok: true, success: true, product });
+      return res.status(200).json({
+        ok: true,
+        success: true,
+        persisted,
+        db_error: dbError,
+        product
+      });
     }
 
     if (req.method === 'DELETE') {

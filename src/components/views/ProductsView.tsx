@@ -136,6 +136,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
       if (!ok || data?.success === false) {
         console.warn('Product save did not confirm persistence:', data);
       }
+      if (data?.persisted === false && data?.db_error) {
+        console.error('Product was NOT written to Supabase:', data.db_error);
+      }
 
       // Upsert directly to Supabase table
       void upsertProductToSupabase(fullSavedProduct, merchant?.storeSlug || 'bd');

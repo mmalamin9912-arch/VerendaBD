@@ -341,16 +341,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Supabase DELETE
         const supabase = getDatabaseClient();
+        let dbDeleted = false;
+        let dbError: string | null = null;
         if (supabase) {
           try {
-            await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
-            await supabase.from('categories').delete().eq('id', catId);
-          } catch (sbDelErr) {
+            // 1. Detach child categories first (only real column: parent_id).
+            //    Note: `parentId` is NOT a database column and would make the
+            //    whole update fail silently, leaving dangling FK references.
+            const { error: childErr } = await supabase
+              .from('categories')
+              .update({ parent_id: null })
+              .eq('parent_id', catId);
+            if (childErr) {
+              console.warn('[Vercel Serverless] Supabase detach child categories warning:', childErr.message);
+            }
+
+            // 2. Attempt the actual DELETE by primary key.
+            const { error: delErr } = await supabase
+              .from('categories')
+              .delete()
+              .eq('id', catId);
+
+            if (!delErr) {
+              dbDeleted = true;
+            } else if (delErr.code === '23503' || /foreign key|violates/i.test(delErr.message || '')) {
+              // 3. Foreign key constraint: detach dependent products, then retry.
+              console.warn('[Vercel Serverless] Category FK violation, detaching products then retrying delete:', delErr.message);
+              const { error: prodDetachErr } = await supabase
+                .from('products')
+                .update({ category_id: null })
+                .eq('category_id', catId);
+              if (prodDetachErr) {
+                console.warn('[Vercel Serverless] Supabase detach products warning:', prodDetachErr.message);
+              }
+
+              const { error: retryErr } = await supabase
+                .from('categories')
+                .delete()
+                .eq('id', catId);
+              if (!retryErr) {
+                dbDeleted = true;
+              } else {
+                dbError = retryErr.message || 'Foreign key constraint prevented category deletion';
+                console.error('[Vercel Serverless] Supabase category delete failed after FK retry:', retryErr);
+              }
+            } else {
+              dbError = delErr.message || 'Unknown Supabase delete error';
+              console.error('[Vercel Serverless] Supabase category delete error:', delErr);
+            }
+          } catch (sbDelErr: any) {
+            dbError = sbDelErr?.message || 'Supabase category delete exception';
             console.warn('[Vercel Serverless] Supabase category delete warning:', sbDelErr);
           }
         }
 
-        return res.status(200).json({ ok: true, deleted_id: catId });
+        return res.status(200).json({
+          ok: dbDeleted || !supabase,
+          deleted_id: catId,
+          db_deleted: dbDeleted,
+          error: dbError
+        });
       }
 
       return res.status(400).json({ ok: false, error: 'Category id required for deletion' });
