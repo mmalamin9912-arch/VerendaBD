@@ -40,7 +40,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Globe,
-  Tag
+  Tag,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react';
 
 interface CustomersViewProps {
@@ -106,6 +108,31 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   // List & Form State
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'edit'>('list');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
+  // Steadfast Fraud Check Cache for Customers
+  const [fraudCheckCache, setFraudCheckCache] = useState<{ [phone: string]: any }>({});
+
+  useEffect(() => {
+    customers.forEach(c => {
+      if (c.phone) {
+        const cleanPhone = c.phone.replace(/[^0-9]/g, '');
+        if (cleanPhone && !fraudCheckCache[cleanPhone]) {
+          fetch('/api/courier/steadfast/fraud-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: cleanPhone })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              setFraudCheckCache(prev => ({ ...prev, [cleanPhone]: data }));
+            }
+          })
+          .catch(() => {});
+        }
+      }
+    });
+  }, [customers]);
 
   // Status Filter Tabs ('All', 'Active', 'Banned')
   const [statusTab, setStatusTab] = useState<'All' | 'Active' | 'Banned'>('All');
@@ -1505,6 +1532,30 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                           <Phone className="w-3.5 h-3.5 text-[#00D68F] shrink-0" />
                           <span>{c.phone}</span>
                         </div>
+                        {(() => {
+                          const fc = fraudCheckCache[(c.phone || '').replace(/[^0-9]/g, '')];
+                          if (!fc) return null;
+                          return (
+                            <div className="mt-0.5">
+                              {fc.risk_level === 'low' ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded">
+                                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+                                  <span>{fc.risk_label}</span>
+                                </span>
+                              ) : fc.risk_level === 'medium' ? (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                                  <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
+                                  <span>{fc.risk_label}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 px-1.5 py-0.5 rounded">
+                                  <ShieldAlert className="w-2.5 h-2.5 text-rose-400" />
+                                  <span>{fc.risk_label}</span>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-300">
                           <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className={c.email ? 'text-slate-200' : 'text-slate-500 italic'}>

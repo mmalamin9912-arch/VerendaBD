@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MerchantProfile, Product, BankAccount, MobileBankingConfig, Order, OrderItem, ThemeConfig } from '../types';
-import { ShoppingBag, X, Check, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, Loader2 } from 'lucide-react';
+import { MerchantProfile, Product, BankAccount, MobileBankingConfig, CodConfig, Order, OrderItem, ThemeConfig } from '../types';
+import { ShoppingBag, X, Check, Copy, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, Loader2 } from 'lucide-react';
 import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../lib/whatsappOtpService';
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
@@ -268,12 +268,12 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         if (supabase) {
           const slugsToQuery = Array.from(new Set([storeSlug, storeSlug?.toLowerCase?.(), 'bd', 'verandabd', 'default'])).filter(Boolean);
           const [catRes, prodRes] = await Promise.all([
-            supabase.from('categories').select('*').in('store_slug', slugsToQuery).catch(() => ({ data: null })),
-            supabase.from('products').select('*').in('store_slug', slugsToQuery).eq('status', 'active').catch(() => ({ data: null }))
+            supabase.from('categories').select('*').in('store_slug', slugsToQuery),
+            supabase.from('products').select('*').in('store_slug', slugsToQuery).eq('status', 'active')
           ]);
 
-          if (catRes.data && Array.isArray(catRes.data)) catData.push(...catRes.data);
-          if (prodRes.data && Array.isArray(prodRes.data)) prodData.push(...prodRes.data);
+          if (catRes && catRes.data && Array.isArray(catRes.data)) catData.push(...catRes.data);
+          if (prodRes && prodRes.data && Array.isArray(prodRes.data)) prodData.push(...prodRes.data);
         }
       } catch (e) {
         // silent
@@ -468,10 +468,19 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [payMethod, setPayMethod] = useState<'bkash' | 'nagad' | 'bank' | 'cod'>('bkash');
-  const [custCity, setCustCity] = useState('');
+  const [custCity, setCustCity] = useState('Dhaka');
   const [custAddress, setCustAddress] = useState('');
   const [custTxId, setCustTxId] = useState('');
   const [confirmedOrderNum, setConfirmedOrderNum] = useState('');
+  const [codAdvanceProvider, setCodAdvanceProvider] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
+  const [copiedNum, setCopiedNum] = useState(false);
+
+  const handleCopyNumber = (num: string) => {
+    if (!num) return;
+    navigator.clipboard.writeText(num);
+    setCopiedNum(true);
+    setTimeout(() => setCopiedNum(false), 2000);
+  };
 
   useEffect(() => {
     const available = [
@@ -484,9 +493,31 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   const selectedMobileMethod = (enabledMobileMethods || []).find((method) => method.provider === payMethod);
 
+  const storefrontCodConfig = (liveStoreData.codConfig as CodConfig) || undefined;
+  const insideFee = Number(storefrontCodConfig?.insideDhakaFee) || 80;
+  const outsideFee = Number(storefrontCodConfig?.outsideDhakaFee) || 150;
+  const shippingFee = (custCity || 'Dhaka').toLowerCase().includes('dhaka') ? insideFee : outsideFee;
+
   const cartTotal = (cart || []).reduce((sum, item) => sum + ((item.product?.priceBDT ?? 0) * item.quantity), 0);
-  const shippingFee = storefrontMerchant.shippingConfig?.type === 'flat' ? (storefrontMerchant.shippingConfig.fee || 0) : 0;
-  const totalAmount = ((cart || []).length > 0 ? cartTotal : (selectedProduct?.priceBDT || 0)) + shippingFee;
+  const itemsSubtotal = (cart || []).length > 0 ? cartTotal : (selectedProduct?.priceBDT || 0);
+  const baseTotalAmount = itemsSubtotal + shippingFee;
+
+  const mobileChargePercent = selectedMobileMethod?.chargePercentage || 0;
+  const mobileCashOutFee = Math.round(baseTotalAmount * (mobileChargePercent / 100));
+  const finalPayableMobile = baseTotalAmount + mobileCashOutFee;
+
+  const advanceMethodsAvailable = enabledMobileMethods.filter(m => m.canPayAdvanceCharge && m.number);
+  const requiresAdvanceFee = (payMethod === 'cod') && (advanceMethodsAvailable.length > 0 || !!storefrontCodConfig?.requestAdvanceDeliveryCharge);
+  const advanceDeliveryFeeAmount = Number(storefrontCodConfig?.advanceDeliveryChargeAmount) || shippingFee;
+  const selectedAdvConfig = advanceMethodsAvailable.find(m => m.provider === codAdvanceProvider) || advanceMethodsAvailable[0] || enabledMobileMethods[0];
+  const advChargePercent = selectedAdvConfig?.chargePercentage || 0;
+  const advCashOutFee = Math.round(advanceDeliveryFeeAmount * (advChargePercent / 100));
+  const totalAdvancePayable = advanceDeliveryFeeAmount + advCashOutFee;
+  const remainingCodBalance = Math.max(0, baseTotalAmount - advanceDeliveryFeeAmount);
+
+  const totalAmount = ['bkash', 'nagad', 'rocket'].includes(payMethod)
+    ? finalPayableMobile
+    : baseTotalAmount;
 
   const customerOrders = customerSession
     ? (orders || []).filter((order) =>
@@ -1671,51 +1702,239 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 <div className="pt-3 border-t border-slate-100">
                   <label className="block mb-2 font-bold text-xs text-slate-900">Select Payment Method</label>
                   <div className="grid grid-cols-1 gap-2">
-                    {enabledMobileMethods.map((method) => (
+                    {enabledMobileMethods.map((method) => {
+                      const isSelected = payMethod === method.provider;
+                      const chgPercent = method.chargePercentage || 0;
+                      return (
+                        <button
+                          key={method.id}
+                          type="button"
+                          onClick={() => setPayMethod(method.provider as any)}
+                          className={`p-3 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? method.provider === 'bkash' ? 'border-pink-500 bg-pink-50 text-pink-700' : method.provider === 'nagad' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-purple-500 bg-purple-50 text-purple-700'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Smartphone className={`w-4 h-4 shrink-0 ${method.provider === 'bkash' ? 'text-pink-500' : method.provider === 'nagad' ? 'text-orange-500' : 'text-purple-500'}`} />
+                            <span>{method.displayName} ({method.accountType})</span>
+                          </div>
+                          {chgPercent > 0 && (
+                            <span className="text-[10px] font-semibold bg-slate-100 px-2 py-0.5 rounded text-slate-600">
+                              +{chgPercent}% cash-out fee
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {visibleBankAccount && (
                       <button
-                        key={method.id}
                         type="button"
-                        onClick={() => setPayMethod(method.provider)}
+                        onClick={() => setPayMethod('bank')}
                         className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
-                          payMethod === method.provider ? 'border-pink-500 bg-pink-50 text-pink-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          payMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <Smartphone className="w-4 h-4 text-pink-500 shrink-0" />
-                        <span>{method.displayName}</span>
+                        <Building2 className="w-4 h-4 shrink-0 text-indigo-500" />
+                        <span>Bank Transfer ({visibleBankAccount.bankName})</span>
                       </button>
-                    ))}
-                    {visibleBankAccount && <button type="button" onClick={() => setPayMethod('bank')} className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 ${payMethod === 'bank' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}><Building2 className="w-4 h-4 shrink-0" /><span>Bank transfer</span></button>}
+                    )}
+
                     {storefrontMerchant.paymentMethods?.cod && (
                       <button
                         type="button"
                         onClick={() => setPayMethod('cod')}
-                        className={`p-3 rounded-xl border text-xs font-bold transition flex items-center gap-2.5 cursor-pointer ${
+                        className={`p-3 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
                           payMethod === 'cod' ? 'border-[#00D68F] bg-emerald-50 text-[#00A16B]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <Building2 className={`w-4 h-4 shrink-0 ${payMethod === 'cod' ? 'text-[#00D68F]' : 'text-slate-400'}`} />
-                        <span>Cash on Delivery</span>
+                        <div className="flex items-center gap-2.5">
+                          <Building2 className={`w-4 h-4 shrink-0 ${payMethod === 'cod' ? 'text-[#00D68F]' : 'text-slate-400'}`} />
+                          <span>Cash on Delivery (COD)</span>
+                        </div>
+                        {requiresAdvanceFee && (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-300/50">
+                            Advance Delivery Fee Required
+                          </span>
+                        )}
                       </button>
                     )}
                   </div>
                 </div>
 
-                {payMethod === 'bkash' && (
-                  <div className="border border-pink-200 p-3.5 rounded-xl bg-pink-50/50 space-y-2">
-                    <div className="text-[10px] font-bold text-pink-600 uppercase tracking-wider flex items-center gap-1.5">
-                      <Smartphone className="w-3.5 h-3.5" /> Send Money Instructions
+                {/* Direct Mobile Payment Details (bKash, Nagad, Rocket) */}
+                {['bkash', 'nagad', 'rocket'].includes(payMethod) && selectedMobileMethod && (
+                  <div className={`border p-3.5 rounded-xl space-y-3 ${
+                    payMethod === 'bkash' ? 'border-pink-200 bg-pink-50/50' : payMethod === 'nagad' ? 'border-orange-200 bg-orange-50/50' : 'border-purple-200 bg-purple-50/50'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className={`text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                        payMethod === 'bkash' ? 'text-pink-600' : payMethod === 'nagad' ? 'text-orange-600' : 'text-purple-600'
+                      }`}>
+                        <Smartphone className="w-4 h-4" /> {selectedMobileMethod.displayName} Payment Instructions
+                      </div>
+                      <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
+                        {selectedMobileMethod.accountType}
+                      </span>
                     </div>
-                    <p className="text-xs text-slate-700">
-                      Send exactly <strong className="text-slate-900">৳{totalAmount}</strong> to merchant bKash number <strong className="text-pink-600">01844990011</strong>. Paste TrxID below:
+
+                    {/* Merchant Number Display */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Merchant {selectedMobileMethod.provider.toUpperCase()} Number</div>
+                        <div className="font-mono text-base font-black text-slate-900">{selectedMobileMethod.number || '01844990011'}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNumber(selectedMobileMethod.number || '01844990011')}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer transition"
+                      >
+                        {copiedNum ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedNum ? 'Copied!' : 'Copy'}</span>
+                      </button>
+                    </div>
+
+                    {/* Price Breakdown including Cash-out Fee */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                      <div className="flex justify-between text-slate-600">
+                        <span>Items Subtotal:</span>
+                        <span className="font-semibold text-slate-900">৳{itemsSubtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>Shipping Fee ({custCity || 'Dhaka'}):</span>
+                        <span className="font-semibold text-slate-900">৳{shippingFee}</span>
+                      </div>
+                      {mobileChargePercent > 0 && (
+                        <div className="flex justify-between text-pink-600 font-medium">
+                          <span>Cash-out / Charge Fee ({mobileChargePercent}%):</span>
+                          <span className="font-bold">+৳{mobileCashOutFee}</span>
+                        </div>
+                      )}
+                      <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-slate-900 text-sm">
+                        <span>Total Payable to Merchant:</span>
+                        <span className="text-pink-600 font-mono">৳{finalPayableMobile.toLocaleString()} BDT</span>
+                      </div>
+                    </div>
+
+                    {selectedMobileMethod.instructions && (
+                      <p className="text-xs text-slate-700 bg-white/80 p-2.5 rounded-lg border border-slate-200 leading-relaxed">
+                        <strong className="text-slate-900">Note:</strong> {selectedMobileMethod.instructions}
+                      </p>
+                    )}
+
+                    <div>
+                      <label className="block mb-1 font-bold text-xs text-slate-800">
+                        Enter {selectedMobileMethod.provider.toUpperCase()} Transaction ID (TrxID) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder={`e.g. ${payMethod === 'bkash' ? 'BK' : payMethod === 'nagad' ? 'NG' : 'RO'}9X2810L9`}
+                        value={custTxId}
+                        onChange={(e) => setCustTxId(e.target.value)}
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 font-mono text-xs uppercase bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 font-bold"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Cash on Delivery with Mandatory Advance Delivery Charge */}
+                {payMethod === 'cod' && requiresAdvanceFee && (
+                  <div className="border border-amber-200 bg-amber-50/50 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-amber-800 font-bold text-xs">
+                      <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Upfront Advance Delivery Charge Mandatory</span>
+                    </div>
+                    <p className="text-xs text-slate-700 leading-relaxed">
+                      To confirm your Cash on Delivery (COD) order, please pay the <strong className="text-slate-900">৳{advanceDeliveryFeeAmount} Delivery Fee</strong> upfront via Mobile Banking. The remaining order balance will be collected upon courier delivery.
                     </p>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. BK9X2810L9"
-                      value={custTxId}
-                      onChange={(e) => setCustTxId(e.target.value)}
-                      className="w-full border border-pink-300 rounded-xl px-3 py-2 font-mono text-xs uppercase bg-white focus:outline-none focus:border-pink-500"
-                    />
+
+                    {/* Provider Selector for Advance Delivery Payment */}
+                    {advanceMethodsAvailable.length > 0 && (
+                      <div className="space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase">Select Advance Payment Method:</label>
+                        <div className="flex gap-2">
+                          {advanceMethodsAvailable.map((adv) => (
+                            <button
+                              key={adv.id}
+                              type="button"
+                              onClick={() => setCodAdvanceProvider(adv.provider as any)}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer transition ${
+                                selectedAdvConfig?.provider === adv.provider
+                                  ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-sm'
+                                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              {adv.displayName}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Merchant Number & Instructions */}
+                    {selectedAdvConfig && (
+                      <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase">Send Money to {selectedAdvConfig.displayName}</div>
+                            <div className="font-mono text-base font-black text-slate-900">{selectedAdvConfig.number}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyNumber(selectedAdvConfig.number)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 text-xs font-bold cursor-pointer"
+                          >
+                            {copiedNum ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+
+                        {/* Breakdown for Advance Delivery */}
+                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
+                          <div className="flex justify-between text-slate-600">
+                            <span>Advance Delivery Charge:</span>
+                            <span className="font-bold text-slate-900">৳{advanceDeliveryFeeAmount}</span>
+                          </div>
+                          {advChargePercent > 0 && (
+                            <div className="flex justify-between text-amber-700 font-medium">
+                              <span>Cash-out Charge ({advChargePercent}%):</span>
+                              <span className="font-bold">+৳{advCashOutFee}</span>
+                            </div>
+                          )}
+                          <div className="border-t border-slate-200 pt-1 flex justify-between font-black text-slate-900">
+                            <span>Total Upfront Payable:</span>
+                            <span className="text-amber-800 font-mono">৳{totalAdvancePayable} BDT</span>
+                          </div>
+                          <div className="flex justify-between text-[#00D68F] font-bold text-[11px] pt-1 border-t border-slate-200">
+                            <span>Remaining COD Balance Due on Delivery:</span>
+                            <span>৳{remainingCodBalance.toLocaleString()} BDT</span>
+                          </div>
+                        </div>
+
+                        {selectedAdvConfig.instructions && (
+                          <p className="text-[11px] text-slate-600 italic">
+                            Note: {selectedAdvConfig.instructions}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* TrxID Input for Advance Delivery Payment */}
+                    <div>
+                      <label className="block mb-1 font-bold text-xs text-slate-800">
+                        Enter Advance Payment Transaction ID (TrxID) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. BK8X991029"
+                        value={custTxId}
+                        onChange={(e) => setCustTxId(e.target.value)}
+                        className="w-full border border-amber-300 rounded-xl px-3.5 py-2.5 font-mono text-xs uppercase bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold"
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -1724,7 +1943,13 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     type="submit"
                     className="w-full py-3.5 bg-[#00D68F] text-slate-950 font-black rounded-xl text-sm hover:bg-[#00E699] transition cursor-pointer shadow-lg"
                   >
-                    Confirm Order • ৳{totalAmount.toLocaleString()}
+                    Confirm Order • ৳{
+                      ['bkash', 'nagad', 'rocket'].includes(payMethod)
+                        ? finalPayableMobile.toLocaleString()
+                        : payMethod === 'cod' && requiresAdvanceFee
+                        ? `${totalAdvancePayable} Upfront (৳${remainingCodBalance.toLocaleString()} COD)`
+                        : baseTotalAmount.toLocaleString()
+                    }
                   </button>
                 </div>
               </form>

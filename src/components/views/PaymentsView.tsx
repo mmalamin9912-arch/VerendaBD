@@ -17,7 +17,8 @@ import {
   Sparkles,
   Info,
   Copy,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 interface PaymentsViewProps {
@@ -86,6 +87,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
 
   // Checkout Preview Simulator State
   const [simSelectedMethod, setSimSelectedMethod] = useState<'bkash' | 'nagad' | 'rocket' | 'bank' | 'cod' | 'gateway'>('bkash');
+  const [simCity, setSimCity] = useState<'Dhaka' | 'Chittagong' | 'Sylhet'>('Dhaka');
+  const [simAdvProvider, setSimAdvProvider] = useState<'bkash' | 'nagad' | 'rocket'>('bkash');
   const [simTxId, setSimTxId] = useState('');
 
   const handleAddBank = (e: React.FormEvent) => {
@@ -903,211 +906,386 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
       )}
 
       {/* TAB 6: Checkout Preview Simulator */}
-      {activeTab === 'simulator' && (
-        <div className="bg-[#1D212E] border border-indigo-500/40 rounded-2xl p-6 space-y-6">
-          <div className="flex items-center gap-3 border-b border-[#2E3548] pb-4">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
-              <Eye className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">Live Customer Checkout Simulator</h3>
-              <p className="text-xs text-slate-400">Test how your end customers experience payment options on your Zid storefront.</p>
-            </div>
-          </div>
+      {activeTab === 'simulator' && (() => {
+        const simShippingFee = simCity === 'Dhaka' ? Number(codForm.insideDhakaFee || 80) : Number(codForm.outsideDhakaFee || 150);
+        const simSubtotal = 3200;
+        const simBaseTotal = simSubtotal + simShippingFee;
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Payment Choice Selection */}
-            <div className="space-y-4">
-              <label className="block text-xs font-bold text-slate-300 uppercase">Customer Selects Payment Method:</label>
-              
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('bkash')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'bkash'
-                      ? 'border-pink-500 bg-pink-500/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-1 bg-pink-600 text-white font-black text-xs rounded">bKash</span>
-                    <div>
-                      <div className="text-xs font-bold text-white">bKash Mobile Payment</div>
-                      <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'bkash')?.number || 'Not Configured'}</div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-pink-400">+{mobileConfigs.find(m => m.provider === 'bkash')?.chargePercentage || 1.5}% charge</span>
-                </button>
+        const advanceMethods = mobileConfigs.filter(m => m.isEnabled && m.canPayAdvanceCharge && m.number);
+        const isAdvanceRequired = simSelectedMethod === 'cod' && (advanceMethods.length > 0 || codForm.requestAdvanceDeliveryCharge);
+        const advanceFee = Number(codForm.advanceDeliveryChargeAmount) || simShippingFee;
+        const advCfg = advanceMethods.find(m => m.provider === simAdvProvider) || advanceMethods[0] || mobileConfigs[0];
+        const advChargePercent = advCfg?.chargePercentage || 0;
+        const advCashOutFee = Math.round(advanceFee * (advChargePercent / 100));
+        const totalAdvUpfront = advanceFee + advCashOutFee;
+        const remainingCodBalance = Math.max(0, simBaseTotal - advanceFee);
 
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('nagad')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'nagad'
-                      ? 'border-orange-500 bg-orange-500/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-1 bg-orange-600 text-white font-black text-xs rounded">Nagad</span>
-                    <div>
-                      <div className="text-xs font-bold text-white">Nagad Direct</div>
-                      <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'nagad')?.number || 'Not Configured'}</div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-orange-400">+{mobileConfigs.find(m => m.provider === 'nagad')?.chargePercentage || 1.0}% charge</span>
-                </button>
+        return (
+          <div className="bg-[#1D212E] border border-indigo-500/40 rounded-2xl p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#2E3548] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Live Customer Checkout Simulator</h3>
+                  <p className="text-xs text-slate-400">Test how end customers experience your dynamic payment rules & cash-out fees in real-time.</p>
+                </div>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('rocket')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'rocket'
-                      ? 'border-purple-500 bg-purple-500/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
+              {/* City Selection Controls for Simulator */}
+              <div className="flex items-center gap-2 bg-[#181B26] p-1.5 rounded-xl border border-[#2E3548]">
+                <span className="text-[11px] font-bold text-slate-400 pl-2">City:</span>
+                <select
+                  value={simCity}
+                  onChange={(e) => setSimCity(e.target.value as any)}
+                  className="bg-[#202533] text-white text-xs font-bold px-3 py-1.5 rounded-lg border border-[#3A435E] focus:outline-none"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-1 bg-purple-600 text-white font-black text-xs rounded">Rocket</span>
-                    <div>
-                      <div className="text-xs font-bold text-white">Rocket Direct</div>
-                      <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'rocket')?.number || 'Not Configured'}</div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-purple-400">+{mobileConfigs.find(m => m.provider === 'rocket')?.chargePercentage || 1.0}% charge</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('bank')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'bank'
-                      ? 'border-blue-500 bg-blue-500/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <Building2 className="w-5 h-5 text-blue-400" />
-                    <div>
-                      <div className="text-xs font-bold text-white">Direct Bank Transfer</div>
-                      <div className="text-[11px] text-slate-400">{bankAccounts[0]?.bankName || 'Dutch-Bangla Bank PLC'}</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('cod')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'cod'
-                      ? 'border-[#00D68F] bg-[#00D68F]/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <DollarSign className="w-5 h-5 text-[#00D68F]" />
-                    <div>
-                      <div className="text-xs font-bold text-white">Cash on Delivery (COD)</div>
-                      <div className="text-[11px] text-slate-400">Pay cash upon courier arrival</div>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSimSelectedMethod('gateway')}
-                  className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition ${
-                    simSelectedMethod === 'gateway'
-                      ? 'border-indigo-500 bg-indigo-500/10 text-white'
-                      : 'border-[#2E3548] bg-[#202533] text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <CreditCard className="w-5 h-5 text-indigo-400" />
-                    <div>
-                      <div className="text-xs font-bold text-white">Online Payment (Card/NetBanking)</div>
-                      <div className="text-[11px] text-slate-400">{gatewayConfig.isEnabled ? `Powered by ${gatewayConfig.gateway}` : 'Gateway Not Configured'}</div>
-                    </div>
-                  </div>
-                </button>
+                  <option value="Dhaka">Dhaka (Inside - ৳{codForm.insideDhakaFee || 80})</option>
+                  <option value="Chittagong">Chittagong (Outside - ৳{codForm.outsideDhakaFee || 150})</option>
+                  <option value="Sylhet">Sylhet (Outside - ৳{codForm.outsideDhakaFee || 150})</option>
+                </select>
               </div>
             </div>
 
-            {/* Live Instructions Box */}
-            <div className="bg-[#181B26] border border-[#2E3548] p-5 rounded-2xl space-y-4">
-              <span className="text-xs font-bold text-[#00D68F] uppercase tracking-wider">Customer Screen Display</span>
-
-              {simSelectedMethod === 'gateway' && (
-                <div className="space-y-3 text-xs">
-                  <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 text-indigo-100">
-                    <div className="flex items-center gap-2 mb-2">
-                       <Sparkles className="w-4 h-4 text-indigo-400" />
-                       <span className="font-bold">Instant Activation</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Payment Choice Selection */}
+              <div className="space-y-4">
+                <label className="block text-xs font-bold text-slate-300 uppercase">1. Customer Selects Payment Method:</label>
+                
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('bkash')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'bkash'
+                        ? 'border-pink-500 bg-pink-500/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-pink-600 text-white font-black text-xs rounded">bKash</span>
+                      <div>
+                        <div className="text-xs font-bold text-white">bKash Mobile Payment</div>
+                        <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'bkash')?.number || 'Not Configured'}</div>
+                      </div>
                     </div>
-                    <p className="text-[11px] leading-relaxed mb-3">
-                      Customer will be redirected to <strong>{gatewayConfig.gateway}</strong> secure payment page to complete the transaction.
-                    </p>
-                    <div className="flex gap-2">
-                      <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold">VISA</div>
-                      <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold">MC</div>
-                      <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold">AMEX</div>
+                    <span className="text-xs font-bold text-pink-400">+{mobileConfigs.find(m => m.provider === 'bkash')?.chargePercentage || 1.5}% fee</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('nagad')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'nagad'
+                        ? 'border-orange-500 bg-orange-500/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-orange-600 text-white font-black text-xs rounded">Nagad</span>
+                      <div>
+                        <div className="text-xs font-bold text-white">Nagad Direct</div>
+                        <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'nagad')?.number || 'Not Configured'}</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-orange-400">+{mobileConfigs.find(m => m.provider === 'nagad')?.chargePercentage || 1.0}% fee</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('rocket')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'rocket'
+                        ? 'border-purple-500 bg-purple-500/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-purple-600 text-white font-black text-xs rounded">Rocket</span>
+                      <div>
+                        <div className="text-xs font-bold text-white">Rocket Direct</div>
+                        <div className="text-[11px] text-slate-400">Direct deposit to {mobileConfigs.find(m => m.provider === 'rocket')?.number || 'Not Configured'}</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-purple-400">+{mobileConfigs.find(m => m.provider === 'rocket')?.chargePercentage || 1.0}% fee</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('bank')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'bank'
+                        ? 'border-blue-500 bg-blue-500/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-5 h-5 text-blue-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white">Direct Bank Transfer</div>
+                        <div className="text-[11px] text-slate-400">{bankAccounts[0]?.bankName || 'Dutch-Bangla Bank PLC'}</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('cod')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'cod'
+                        ? 'border-[#00D68F] bg-[#00D68F]/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <DollarSign className="w-5 h-5 text-[#00D68F]" />
+                      <div>
+                        <div className="text-xs font-bold text-white">Cash on Delivery (COD)</div>
+                        <div className="text-[11px] text-slate-400">
+                          {isAdvanceRequired ? 'Mandatory Advance Delivery Fee' : 'Standard Cash on Delivery'}
+                        </div>
+                      </div>
+                    </div>
+                    {isAdvanceRequired && (
+                      <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded">
+                        Advance Fee
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimSelectedMethod('gateway')}
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between text-left transition cursor-pointer ${
+                      simSelectedMethod === 'gateway'
+                        ? 'border-indigo-500 bg-indigo-500/10 text-white'
+                        : 'border-[#2E3548] bg-[#202533] text-slate-400 hover:bg-[#252C3D]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="w-5 h-5 text-indigo-400" />
+                      <div>
+                        <div className="text-xs font-bold text-white">Online Payment (Card/NetBanking)</div>
+                        <div className="text-[11px] text-slate-400">{gatewayConfig.isEnabled ? `Powered by ${gatewayConfig.gateway}` : 'Gateway Not Configured'}</div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Instructions Box */}
+              <div className="bg-[#181B26] border border-[#2E3548] p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-[#2E3548] pb-2">
+                  <span className="text-xs font-bold text-[#00D68F] uppercase tracking-wider">2. Customer Screen Display</span>
+                  <span className="text-[10px] font-mono text-slate-400">Storefront Live Preview</span>
+                </div>
+
+                {simSelectedMethod === 'gateway' && (
+                  <div className="space-y-3 text-xs">
+                    <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-500/5 text-indigo-100 space-y-2">
+                      <div className="flex items-center gap-2">
+                         <Sparkles className="w-4 h-4 text-indigo-400" />
+                         <span className="font-bold">Instant Gateway Checkout</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-slate-300">
+                        Customer will be redirected to <strong>{gatewayConfig.gateway}</strong> secure payment portal.
+                      </p>
+                      <div className="flex gap-2 pt-1">
+                        <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold text-white">VISA</div>
+                        <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold text-white">MC</div>
+                        <div className="h-6 w-10 bg-white/10 rounded border border-white/10 flex items-center justify-center text-[8px] font-bold text-white">bKash</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {['bkash', 'nagad', 'rocket'].includes(simSelectedMethod) && (() => {
-                const cfg = mobileConfigs.find(m => m.provider === simSelectedMethod);
-                if (!cfg) return <div className="text-xs text-slate-500">Method configuration not found or disabled.</div>;
-                const isBk = simSelectedMethod === 'bkash';
-                const isNg = simSelectedMethod === 'nagad';
-                const brandColor = isBk ? 'pink' : isNg ? 'orange' : 'purple';
-                const textBrandClass = isBk ? 'text-pink-300' : isNg ? 'text-orange-300' : 'text-purple-300';
-                const bgBrandClass = isBk ? 'bg-pink-500/10 border-pink-500/30' : isNg ? 'bg-orange-500/10 border-orange-500/30' : 'bg-purple-500/10 border-purple-500/30';
+                {['bkash', 'nagad', 'rocket'].includes(simSelectedMethod) && (() => {
+                  const cfg = mobileConfigs.find(m => m.provider === simSelectedMethod);
+                  if (!cfg) return <div className="text-xs text-slate-500">Method configuration not found or disabled.</div>;
+                  const chargePercent = cfg.chargePercentage || 0;
+                  const cashOutFee = Math.round(simBaseTotal * (chargePercent / 100));
+                  const totalPayable = simBaseTotal + cashOutFee;
+                  const isBk = simSelectedMethod === 'bkash';
+                  const isNg = simSelectedMethod === 'nagad';
+                  const bgBrandClass = isBk ? 'bg-pink-500/10 border-pink-500/30 text-pink-200' : isNg ? 'bg-orange-500/10 border-orange-500/30 text-orange-200' : 'bg-purple-500/10 border-purple-500/30 text-purple-200';
 
-                return (
-                  <div className="space-y-3 text-xs">
-                    <div className={`p-3 rounded-xl border ${bgBrandClass} ${textBrandClass}`}>
-                      <strong>Instructions shown to customer:</strong>
-                      <p className="mt-1 text-[11px] leading-relaxed">{cfg.instructions}</p>
+                  return (
+                    <div className="space-y-3 text-xs">
+                      <div className={`p-3.5 rounded-xl border ${bgBrandClass} space-y-2`}>
+                        <div className="flex items-center justify-between">
+                          <strong className="text-white text-xs uppercase">{cfg.displayName} ({cfg.accountType})</strong>
+                          <span className="font-mono text-xs font-black text-white bg-black/40 px-2 py-0.5 rounded">
+                            {cfg.number || 'Not Configured'}
+                          </span>
+                        </div>
+
+                        {/* Calculated Breakdown */}
+                        <div className="bg-black/30 p-2.5 rounded-lg text-slate-300 text-[11px] space-y-1 font-mono">
+                          <div className="flex justify-between">
+                            <span>Test Order Subtotal:</span>
+                            <span className="text-white">৳{simSubtotal.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Shipping Fee ({simCity}):</span>
+                            <span className="text-white">৳{simShippingFee}</span>
+                          </div>
+                          {chargePercent > 0 && (
+                            <div className="flex justify-between text-amber-400 font-bold">
+                              <span>Cash-out Fee ({chargePercent}%):</span>
+                              <span>+৳{cashOutFee}</span>
+                            </div>
+                          )}
+                          <div className="border-t border-white/10 pt-1 flex justify-between font-bold text-white text-xs">
+                            <span>Total Payable Amount:</span>
+                            <span className="text-[#00D68F]">৳{totalPayable.toLocaleString()} BDT</span>
+                          </div>
+                        </div>
+
+                        {cfg.instructions && (
+                          <p className="text-[11px] text-slate-300 leading-relaxed pt-1">
+                            <strong>Note:</strong> {cfg.instructions}
+                          </p>
+                        )}
+                      </div>
+
+                      {cfg.requireTrxId && (
+                        <div className="space-y-1">
+                          <label className="block text-slate-400 text-[11px]">Customer Enters {simSelectedMethod.toUpperCase()} Transaction ID:</label>
+                          <input
+                            type="text"
+                            placeholder={`e.g. ${isBk ? 'BK' : isNg ? 'NG' : 'RO'}8X991029`}
+                            value={simTxId}
+                            onChange={(e) => setSimTxId(e.target.value)}
+                            className="w-full bg-[#202533] border border-[#3A435E] rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-[#00D68F]"
+                          />
+                        </div>
+                      )}
                     </div>
-                    {cfg.requireTrxId && (
-                      <div>
-                        <label className="block text-slate-400 mb-1">Customer Enters {simSelectedMethod.toUpperCase()} Transaction ID:</label>
-                        <input
-                          type="text"
-                          placeholder={`e.g. ${isBk ? 'BK' : isNg ? 'NG' : 'RO'}8X991029`}
-                          value={simTxId}
-                          onChange={(e) => setSimTxId(e.target.value)}
-                          className="w-full bg-[#202533] border border-[#3A435E] rounded-xl px-3 py-2 text-white font-mono"
-                        />
+                  );
+                })()}
+
+                {simSelectedMethod === 'cod' && (
+                  <div className="space-y-3 text-xs">
+                    {isAdvanceRequired ? (
+                      <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2 text-amber-400 font-bold">
+                          <ShieldCheck className="w-4 h-4 shrink-0" />
+                          <span>Mandatory Advance Delivery Charge Required</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          Customer must pay <strong className="text-white">৳{advanceFee} Delivery Charge</strong> upfront via Mobile Banking before COD order is placed.
+                        </p>
+
+                        {/* Advance Provider Selector */}
+                        {advanceMethods.length > 0 && (
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Select Provider for Advance Payment:</label>
+                            <div className="flex gap-2">
+                              {advanceMethods.map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => setSimAdvProvider(m.provider as any)}
+                                  className={`px-2.5 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                                    advCfg?.provider === m.provider
+                                      ? 'bg-amber-500 text-slate-950 font-black'
+                                      : 'bg-[#202533] text-slate-300 border border-[#3A435E]'
+                                  }`}
+                                >
+                                  {m.displayName}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {advCfg && (
+                          <div className="bg-black/30 p-2.5 rounded-lg border border-white/10 space-y-1.5">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-400">Send Money Number:</span>
+                              <span className="font-mono font-bold text-amber-300">{advCfg.number || 'Not Set'}</span>
+                            </div>
+
+                            <div className="text-[11px] space-y-1 font-mono text-slate-300 border-t border-white/10 pt-1.5">
+                              <div className="flex justify-between">
+                                <span>Advance Delivery Fee:</span>
+                                <span>৳{advanceFee}</span>
+                              </div>
+                              {advChargePercent > 0 && (
+                                <div className="flex justify-between text-amber-400">
+                                  <span>Cash-out Fee ({advChargePercent}%):</span>
+                                  <span>+৳{advCashOutFee}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-bold text-amber-300 text-xs border-t border-white/10 pt-1">
+                                <span>Total Upfront Payable:</span>
+                                <span>৳{totalAdvUpfront} BDT</span>
+                              </div>
+                              <div className="flex justify-between font-bold text-[#00D68F] text-xs pt-0.5">
+                                <span>Remaining COD Balance (Delivery):</span>
+                                <span>৳{remainingCodBalance.toLocaleString()} BDT</span>
+                              </div>
+                            </div>
+
+                            {advCfg.instructions && (
+                              <p className="text-[10px] text-slate-400 italic pt-1">
+                                Note: {advCfg.instructions}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-slate-400 text-[11px] mb-1">Customer Enters Advance Payment TrxID:</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. BK8X991029"
+                            value={simTxId}
+                            onChange={(e) => setSimTxId(e.target.value)}
+                            className="w-full bg-[#202533] border border-[#3A435E] rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-400"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-[#202533] p-3.5 rounded-xl border border-[#2E3548] space-y-2">
+                        <div className="font-bold text-white text-xs">Standard Cash on Delivery</div>
+                        <p className="text-[11px] text-slate-300">{codForm.notes || 'Customer will pay total amount in cash upon package delivery.'}</p>
+                        <div className="font-mono text-xs text-[#00D68F] font-bold pt-1">
+                          Total COD Amount Due on Delivery: ৳{simBaseTotal.toLocaleString()} BDT
+                        </div>
                       </div>
                     )}
                   </div>
-                );
-              })()}
+                )}
 
-              {simSelectedMethod === 'bank' && (
-                <div className="space-y-2 text-xs">
-                  <div className="bg-[#202533] p-3 rounded-xl border border-[#2E3548] space-y-1">
-                    <div className="font-bold text-white">{bankAccounts[0]?.bankName}</div>
-                    <div className="text-slate-400">Account Name: <span className="text-white font-semibold">{bankAccounts[0]?.accountHolder}</span></div>
-                    <div className="text-slate-400">Account Number: <span className="text-[#00D68F] font-mono font-bold">{bankAccounts[0]?.accountNumber}</span></div>
+                {simSelectedMethod === 'bank' && (
+                  <div className="space-y-2 text-xs">
+                    <div className="bg-[#202533] p-3 rounded-xl border border-[#2E3548] space-y-1">
+                      <div className="font-bold text-white">{bankAccounts[0]?.bankName || 'Dutch-Bangla Bank PLC'}</div>
+                      <div className="text-slate-400">Account Name: <span className="text-white font-semibold">{bankAccounts[0]?.accountHolder || 'Zid Merchant'}</span></div>
+                      <div className="text-slate-400">Account Number: <span className="text-[#00D68F] font-mono font-bold">{bankAccounts[0]?.accountNumber || '15211029384910'}</span></div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <button
-                onClick={() => alert(`Simulated Order Submitted via ${simSelectedMethod.toUpperCase()}!`)}
-                className="w-full py-3 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold rounded-xl text-xs transition cursor-pointer"
-              >
-                Place Test Order (৳3,200 BDT)
-              </button>
+                <button
+                  onClick={() => alert(`Simulated Order Submitted via ${simSelectedMethod.toUpperCase()}!`)}
+                  className="w-full py-3 bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-bold rounded-xl text-xs transition cursor-pointer shadow-lg"
+                >
+                  Place Test Order (৳{
+                    ['bkash', 'nagad', 'rocket'].includes(simSelectedMethod)
+                      ? (simBaseTotal + Math.round(simBaseTotal * ((mobileConfigs.find(m => m.provider === simSelectedMethod)?.chargePercentage || 0) / 100))).toLocaleString()
+                      : isAdvanceRequired
+                      ? `${totalAdvUpfront} Upfront (৳${remainingCodBalance.toLocaleString()} COD)`
+                      : simBaseTotal.toLocaleString()
+                  } BDT)
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

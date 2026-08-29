@@ -33,7 +33,10 @@ import {
   Calendar,
   Clock,
   DollarSign,
-  Layers
+  Layers,
+  ShieldCheck,
+  ShieldAlert,
+  Shield
 } from 'lucide-react';
 
 const getOrderToken = (ord: any) => {
@@ -166,6 +169,153 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [selectedOrderForCourier, setSelectedOrderForCourier] = useState<Order | null>(null);
   const [dispatchCourier, setDispatchCourier] = useState('Steadfast Courier');
   const [newTagInput, setNewTagInput] = useState<{ [orderId: string]: string }>({});
+  const [isBookingCourier, setIsBookingCourier] = useState<{ [orderId: string]: boolean }>({});
+
+  const handleBooking = async (ord: Order) => {
+    setIsBookingCourier(prev => ({ ...prev, [ord.id]: true }));
+    try {
+      let merchantSettings: any = {};
+      try {
+        const stored = localStorage.getItem('zid_merchant_settings') || localStorage.getItem('merchantSettings');
+        if (stored) merchantSettings = JSON.parse(stored);
+      } catch (e) {}
+
+      const res = await fetch('/api/courier/steadfast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          order: {
+            invoice_id: ord.orderNumber || ord.id,
+            customer_name: ord.customerName,
+            customer_phone: ord.customerPhone,
+            shipping_address: `${ord.address || ''}, ${ord.customerCity || ''}`,
+            cod_amount: ord.totalBDT || 0,
+            customer_note: (ord as any).customerNote || (ord as any).notes || 'Handle with care',
+            ...ord
+          },
+          merchantConfig: merchantSettings
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const trackingCode = data.tracking_code || `STF-${Math.floor(100000 + Math.random() * 900000)}`;
+        const updated = orders.map(o => {
+          if (o.id === ord.id) {
+            return {
+              ...o,
+              status: 'In delivery' as const,
+              fulfillmentStatus: 'In Transit' as const,
+              courierName: 'Steadfast Courier',
+              trackingCode: trackingCode,
+            };
+          }
+          return o;
+        });
+        onUpdateOrders(updated);
+        alert(`Booked Successfully! Tracking ID: ${trackingCode}`);
+      } else {
+        alert('Booking failed: ' + (typeof data.message === 'object' ? JSON.stringify(data.message) : (data.message || data.error || 'Unknown error')));
+      }
+    } catch (error: any) {
+      alert('Booking failed: ' + (error?.message || 'Network error'));
+    } finally {
+      setIsBookingCourier(prev => ({ ...prev, [ord.id]: false }));
+    }
+  };
+
+  // Steadfast Fraud Check State & Logic
+  const [fraudCheckCache, setFraudCheckCache] = useState<{ [phone: string]: any }>({});
+  const [loadingFraudCheck, setLoadingFraudCheck] = useState<{ [phone: string]: boolean }>({});
+
+  const fetchFraudCheck = async (phone: string) => {
+    if (!phone) return;
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (!cleanPhone || fraudCheckCache[cleanPhone] || loadingFraudCheck[cleanPhone]) return;
+
+    setLoadingFraudCheck(prev => ({ ...prev, [cleanPhone]: true }));
+    try {
+      let merchantSettings: any = {};
+      try {
+        const stored = localStorage.getItem('zid_merchant_settings') || localStorage.getItem('merchantSettings');
+        if (stored) merchantSettings = JSON.parse(stored);
+      } catch (e) {}
+
+      const res = await fetch('/api/courier/steadfast/fraud-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone, merchantConfig: merchantSettings })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setFraudCheckCache(prev => ({ ...prev, [cleanPhone]: data }));
+      }
+    } catch (err) {
+      console.warn('Fraud check fetch error:', err);
+    } finally {
+      setLoadingFraudCheck(prev => ({ ...prev, [cleanPhone]: false }));
+    }
+  };
+
+  useEffect(() => {
+    orders.forEach(o => {
+      if (o.customerPhone) {
+        fetchFraudCheck(o.customerPhone);
+      }
+    });
+  }, [orders]);
+
+  const renderFraudBadge = (phone: string) => {
+    const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
+    const data = fraudCheckCache[cleanPhone];
+    const isLoading = loadingFraudCheck[cleanPhone];
+
+    if (isLoading) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-medium text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700 animate-pulse mt-0.5">
+          <span>Checking Fraud DB...</span>
+        </span>
+      );
+    }
+
+    if (!data) {
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); fetchFraudCheck(phone); }}
+          className="inline-flex items-center gap-1 text-[9px] text-slate-400 hover:text-emerald-400 bg-slate-800/60 hover:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 transition cursor-pointer mt-0.5"
+          title="Check delivery success rate with Steadfast"
+        >
+          <ShieldAlert className="w-2.5 h-2.5" />
+          <span>Check Reliability</span>
+        </button>
+      );
+    }
+
+    if (data.risk_level === 'low') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded mt-0.5" title={`${data.total_delivered}/${data.total_orders} Delivered`}>
+          <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+          <span>{data.risk_label}</span>
+        </span>
+      );
+    } else if (data.risk_level === 'medium') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded mt-0.5" title={`${data.total_delivered}/${data.total_orders} Delivered`}>
+          <ShieldAlert className="w-2.5 h-2.5 text-amber-400" />
+          <span>{data.risk_label}</span>
+        </span>
+      );
+    } else {
+      return (
+        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 px-1.5 py-0.5 rounded mt-0.5" title={`${data.total_returned}/${data.total_orders} Returns/Cancelled`}>
+          <ShieldAlert className="w-2.5 h-2.5 text-rose-400" />
+          <span>{data.risk_label}</span>
+        </span>
+      );
+    }
+  };
 
   // Form for Manual Order
   const [manualForm, setManualForm] = useState({
@@ -1038,6 +1188,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             <td className="p-3.5">
                               <div className="font-bold text-white text-xs">{ord.customerName}</div>
                               <div className="text-[11px] text-slate-400 font-mono mt-0.5">{ord.customerPhone}</div>
+                              {renderFraudBadge(ord.customerPhone)}
                             </td>
 
                             {/* Platform */}
@@ -1065,8 +1216,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                 <Truck className="w-3.5 h-3.5 text-slate-400" />
                                 <span>{courierName}</span>
                               </div>
-                              {ord.trackingCode && (
-                                <div className="text-[10px] text-slate-400 font-mono">{ord.trackingCode}</div>
+                              {ord.trackingCode ? (
+                                <div className="inline-flex items-center gap-1 text-[10px] text-[#00D68F] font-mono font-bold bg-[#00D68F]/10 border border-[#00D68F]/20 px-1.5 py-0.5 rounded mt-1">
+                                  <span>TRK: {ord.trackingCode}</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleBooking(ord)}
+                                  disabled={isBookingCourier[ord.id]}
+                                  className="mt-1.5 flex items-center gap-1 text-[10px] font-bold bg-[#00D68F]/10 text-[#00D68F] hover:bg-[#00D68F] hover:text-slate-950 border border-[#00D68F]/30 px-2 py-0.5 rounded transition cursor-pointer disabled:opacity-50"
+                                >
+                                  <Send className="w-3 h-3" />
+                                  <span>{isBookingCourier[ord.id] ? 'Sending...' : 'Send to Courier'}</span>
+                                </button>
                               )}
                             </td>
 
@@ -1128,6 +1290,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                                     {/* Quick Actions */}
                                     <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => handleBooking(ord)}
+                                        disabled={isBookingCourier[ord.id]}
+                                        className="bg-[#00D68F] text-slate-950 hover:bg-[#00E699] px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                      >
+                                        <Send className="w-3.5 h-3.5" />
+                                        <span>{isBookingCourier[ord.id] ? 'Sending...' : 'Send to Courier'}</span>
+                                      </button>
+
                                       <a
                                         href={`https://wa.me/${ord.customerPhone.replace(/[^0-9]/g, '')}`}
                                         target="_blank"
@@ -1140,7 +1311,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                                       <button
                                         onClick={() => setSelectedOrderForCourier(ord)}
-                                        className="bg-[#00D68F] text-slate-950 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-[#00E699] cursor-pointer"
+                                        className="bg-[#181B26] text-slate-300 border border-[#2E3548] px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 hover:text-white cursor-pointer"
                                       >
                                         <Truck className="w-3.5 h-3.5" />
                                         <span>Courier Dispatch</span>
@@ -1179,7 +1350,54 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                       </div>
 
                                       <div className="border-t border-[#2E3548] pt-2">
-                                        <div className="text-slate-400 text-[10px] font-bold uppercase mb-1">Change Order Status</div>
+                                        {/* Steadfast Delivery Reliability Report */}
+                                       {fraudCheckCache[ord.customerPhone.replace(/[^0-9]/g, '')] && (
+                                         <div className="border-t border-[#2E3548] pt-2 space-y-1.5">
+                                           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                                             <span className="flex items-center gap-1">
+                                               <ShieldCheck className="w-3.5 h-3.5 text-[#00D68F]" />
+                                               Steadfast Reliability Report
+                                             </span>
+                                           </div>
+                                           {(() => {
+                                             const fc = fraudCheckCache[ord.customerPhone.replace(/[^0-9]/g, '')];
+                                             return (
+                                               <div className="bg-[#12141D] p-2 rounded-lg border border-[#2E3548] space-y-1.5 text-[11px]">
+                                                 <div className="flex items-center justify-between font-bold">
+                                                   <span className="text-slate-400 text-[10px]">Status:</span>
+                                                   <span className={fc.risk_level === 'low' ? 'text-emerald-400 font-mono font-extrabold text-[10px]' : fc.risk_level === 'medium' ? 'text-amber-400 font-mono font-extrabold text-[10px]' : 'text-rose-400 font-mono font-extrabold text-[10px]'}>
+                                                     {fc.risk_label}
+                                                   </span>
+                                                 </div>
+
+                                                 <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                   <div 
+                                                     className={`h-full transition-all duration-500 ${fc.risk_level === 'low' ? 'bg-emerald-500' : fc.risk_level === 'medium' ? 'bg-amber-500' : 'bg-rose-500'}`} 
+                                                     style={{ width: `${fc.success_rate}%` }} 
+                                                   />
+                                                 </div>
+
+                                                 <div className="grid grid-cols-3 gap-1 text-center text-[9px] pt-1">
+                                                   <div className="bg-[#181B26] p-1 rounded border border-[#2E3548]">
+                                                     <div className="text-slate-400">Total</div>
+                                                     <div className="font-mono font-bold text-white">{fc.total_orders}</div>
+                                                   </div>
+                                                   <div className="bg-[#181B26] p-1 rounded border border-emerald-500/20">
+                                                     <div className="text-emerald-400">Delivered</div>
+                                                     <div className="font-mono font-bold text-emerald-400">{fc.total_delivered}</div>
+                                                   </div>
+                                                   <div className="bg-[#181B26] p-1 rounded border border-rose-500/20">
+                                                     <div className="text-rose-400">Returned</div>
+                                                     <div className="font-mono font-bold text-rose-400">{fc.total_returned}</div>
+                                                   </div>
+                                                 </div>
+                                               </div>
+                                             );
+                                           })()}
+                                         </div>
+                                       )}
+
+                                       <div className="text-slate-400 text-[10px] font-bold uppercase mb-1">Change Order Status</div>
                                         <select
                                           value={ord.status || 'New'}
                                           onChange={(e) => handleQuickUpdateStatus(ord.id, e.target.value as any)}
@@ -2376,27 +2594,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               </select>
 
               <button
-                onClick={() => {
-                  const tracking = `SF-BD-${Math.floor(100000 + Math.random() * 900000)}`;
-                  const updated = orders.map(o => {
-                    if (o.id === selectedOrderForCourier.id) {
-                      return {
-                        ...o,
-                        status: 'In delivery' as const,
-                        fulfillmentStatus: 'In Transit' as const,
-                        courierName: dispatchCourier,
-                        trackingCode: tracking,
-                      };
-                    }
-                    return o;
-                  });
-                  onUpdateOrders(updated);
+                onClick={async () => {
+                  const targetOrd = selectedOrderForCourier;
                   setSelectedOrderForCourier(null);
+                  if (targetOrd) {
+                    await handleBooking(targetOrd);
+                  }
                 }}
-                className="w-full bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#00D68F]/20"
+                disabled={Boolean(selectedOrderForCourier && isBookingCourier[selectedOrderForCourier.id])}
+                className="w-full bg-[#00D68F] hover:bg-[#00E699] text-slate-950 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#00D68F]/20 disabled:opacity-50"
               >
                 <Truck className="w-4 h-4" />
-                <span>Auto-Book Pickup via {dispatchCourier} API</span>
+                <span>{selectedOrderForCourier && isBookingCourier[selectedOrderForCourier.id] ? 'Booking Courier...' : `1-Click Book via ${dispatchCourier} API`}</span>
               </button>
             </div>
           </div>
