@@ -185,71 +185,132 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     activeTheme?.primaryColor ||
     '#00D68F'
   );
-  // Direct Supabase State & Query Hook
+  // Direct Supabase & Backend API & LocalStorage Catalog Hook
   const [supabaseProducts, setSupabaseProducts] = useState<Product[]>([]);
   const [supabaseCategories, setSupabaseCategories] = useState<any[]>([]);
   const [isLoadingSupabase, setIsLoadingSupabase] = useState<boolean>(true);
 
   useEffect(() => {
     let active = true;
-    const fetchDirectFromSupabase = async () => {
+    const fetchCatalog = async () => {
       let catData: any[] = [];
       let prodData: any[] = [];
 
+      // 1. Fetch from Backend API endpoints & localStorage first
       try {
-        if (supabase) {
-          const [catRes, prodRes] = await Promise.all([
-            supabase.from('categories').select('*').eq('store_slug', storeSlug),
-            supabase.from('products').select('*').eq('store_slug', storeSlug).eq('status', 'active')
-          ]);
+        const [catRes1, catRes2, prodRes, storefrontRes] = await Promise.all([
+          fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/products?store_slug=${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
+        ]);
 
-          if (catRes.data && Array.isArray(catRes.data)) catData = catRes.data;
-          if (prodRes.data && Array.isArray(prodRes.data)) prodData = prodRes.data;
+        if (catRes1 && catRes1.ok) {
+          const json1 = await catRes1.json().catch(() => null);
+          const list = json1?.categories || json1;
+          if (Array.isArray(list) && list.length > 0) catData.push(...list);
+        }
+        if (catRes2 && catRes2.ok) {
+          const json2 = await catRes2.json().catch(() => null);
+          if (Array.isArray(json2) && json2.length > 0) catData.push(...json2);
+        }
+        if (prodRes && prodRes.ok) {
+          const pJson = await prodRes.json().catch(() => null);
+          if (Array.isArray(pJson) && pJson.length > 0) prodData.push(...pJson);
+        }
+        if (storefrontRes && storefrontRes.ok) {
+          const sJson = await storefrontRes.json().catch(() => null);
+          const sf = sJson?.storefront || sJson?.tenant || sJson;
+          if (sf) {
+            if (Array.isArray(sf.categories)) catData.push(...sf.categories);
+            if (Array.isArray(sf.products)) prodData.push(...sf.products);
+          }
         }
       } catch (e) {
-        console.warn('Supabase client query warning:', e);
+        console.warn('API catalog fetch warning:', e);
       }
 
-      // REST Fallback query if client returned no data or is uninitialized
-      if (catData.length === 0 || prodData.length === 0) {
-        try {
-          const { supabaseUrl, supabaseAnonKey } = await import('../lib/supabase');
-          if (supabaseUrl && supabaseAnonKey) {
-            const headers = { 'apikey': supabaseAnonKey, 'Authorization': `Bearer ${supabaseAnonKey}` };
-            const [cRes, pRes] = await Promise.all([
-              fetch(`${supabaseUrl}/rest/v1/categories?store_slug=eq.${encodeURIComponent(storeSlug)}&select=*`, { headers }).catch(() => null),
-              fetch(`${supabaseUrl}/rest/v1/products?store_slug=eq.${encodeURIComponent(storeSlug)}&status=eq.active&select=*`, { headers }).catch(() => null)
-            ]);
-
-            if (cRes && cRes.ok) {
-              const cJson = await cRes.json().catch(() => []);
-              if (Array.isArray(cJson) && cJson.length > 0) catData = cJson;
-            }
-            if (pRes && pRes.ok) {
-              const pJson = await pRes.json().catch(() => []);
-              if (Array.isArray(pJson) && pJson.length > 0) prodData = pJson;
-            }
+      // Check localStorage fallbacks
+      try {
+        const localCatKeys = [
+          `zid_store_categories_v2:${storeSlug}`,
+          'zid_store_categories_v2:bd',
+          'zid_store_categories_v2:default',
+          'zid_store_categories_v2:verandabd'
+        ];
+        for (const k of localCatKeys) {
+          const val = localStorage.getItem(k);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) catData.push(...parsed);
           }
-        } catch (e) {
-          console.warn('Supabase REST query warning:', e);
         }
+
+        const localStoreKeys = [
+          `ZID_MERCHANT_STORE_DATA_${storeSlug}`,
+          'ZID_MERCHANT_STORE_DATA_bd',
+          'ZID_MERCHANT_STORE_DATA_verandabd'
+        ];
+        for (const k of localStoreKeys) {
+          const val = localStorage.getItem(k);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed?.categories)) catData.push(...parsed.categories);
+            if (Array.isArray(parsed?.products)) prodData.push(...parsed.products);
+          }
+        }
+      } catch (e) {
+        console.warn('LocalStorage fallback warning:', e);
+      }
+
+      // 2. Fetch from Supabase client if available
+      try {
+        if (supabase) {
+          const slugsToQuery = Array.from(new Set([storeSlug, storeSlug?.toLowerCase?.(), 'bd', 'verandabd', 'default'])).filter(Boolean);
+          const [catRes, prodRes] = await Promise.all([
+            supabase.from('categories').select('*').in('store_slug', slugsToQuery).catch(() => ({ data: null })),
+            supabase.from('products').select('*').in('store_slug', slugsToQuery).eq('status', 'active').catch(() => ({ data: null }))
+          ]);
+
+          if (catRes.data && Array.isArray(catRes.data)) catData.push(...catRes.data);
+          if (prodRes.data && Array.isArray(prodRes.data)) prodData.push(...prodRes.data);
+        }
+      } catch (e) {
+        // silent
       }
 
       if (active) {
-        setSupabaseProducts(prodData.map(mapSupabaseProduct));
-        setSupabaseCategories(catData.map(mapSupabaseCategory));
+        const uniqueCatMap = new Map<string, any>();
+        for (const c of catData) {
+          if (c) {
+            const key = String(c.id || c.category_id || c.name || c.title || '').trim().toLowerCase();
+            if (key) uniqueCatMap.set(key, c);
+          }
+        }
+
+        const uniqueProdMap = new Map<string, any>();
+        for (const p of prodData) {
+          if (p) {
+            const key = String(p.id || p.title || p.name || '').trim();
+            if (key) uniqueProdMap.set(key, p);
+          }
+        }
+
+        setSupabaseCategories(Array.from(uniqueCatMap.values()).map(mapSupabaseCategory));
+        setSupabaseProducts(Array.from(uniqueProdMap.values()).map(mapSupabaseProduct));
         setIsLoadingSupabase(false);
       }
     };
 
-    void fetchDirectFromSupabase();
-    const interval = setInterval(fetchDirectFromSupabase, 4000);
+    void fetchCatalog();
+    const interval = setInterval(fetchCatalog, 3000);
     return () => { active = false; clearInterval(interval); };
   }, [storeSlug]);
 
   const combinedRawProducts = [
     ...(Array.isArray(liveStoreData?.products) ? liveStoreData.products : []),
     ...(Array.isArray(products) ? products : []),
+    ...supabaseProducts,
   ];
   const prodMap = new Map<string, Product>();
   for (const p of combinedRawProducts) {
@@ -258,15 +319,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     }
   }
 
-  // Bypass local state/mock arrays completely in public storefront view (`/e/:storeSlug`)
-  const isPublicStorefrontRoute = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/e/') || 
-    window.location.pathname.startsWith('/store/')
-  );
-
-  const storefrontProducts = isPublicStorefrontRoute
+  const storefrontProducts = supabaseProducts.length > 0
     ? supabaseProducts
-    : (supabaseProducts.length > 0 ? supabaseProducts : Array.from(prodMap.values()));
+    : (Array.from(prodMap.values()).length > 0 ? Array.from(prodMap.values()) : (liveStoreData.products || []).map(mapSupabaseProduct));
 
   const storefrontMobileBanking = Array.isArray(liveStoreData.mobileBanking)
     ? liveStoreData.mobileBanking as MobileBankingConfig[]
@@ -277,11 +332,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const enabledMobileMethods = (storefrontMobileBanking || []).filter((method) => method?.isEnabled && method?.number?.trim());
   const visibleBankAccount = (storefrontBankAccounts || []).find((account) => account?.isVisibleAtCheckout);
 
-  const rawStorefrontCategories = isPublicStorefrontRoute
+  const rawStorefrontCategories = supabaseCategories.length > 0
     ? supabaseCategories
-    : (supabaseCategories.length > 0
-        ? supabaseCategories
-        : (Array.isArray(liveStoreData.categories) ? liveStoreData.categories : []));
+    : (Array.isArray(liveStoreData.categories) && liveStoreData.categories.length > 0
+        ? liveStoreData.categories
+        : []);
 
   const allActiveProducts = (storefrontProducts || []).filter(p => {
     const status = (p.status || 'active').toLowerCase();
