@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
-import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug, upsertCategoryToSupabase } from '../../utils/catalogPayload';
+import { buildCategoryDbPayload, buildProductDbPayload, maxCatalogId, packCatalogItem, toCatalogSlug, ensureCategory } from '../utils/catalogPayload';
 import { readZidStoreData } from '../../lib/storeData';
 import { 
   ArrowLeft, 
