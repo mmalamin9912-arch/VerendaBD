@@ -257,8 +257,8 @@ app.all('/api/categories', async (req, res) => {
       if (catId) {
         const cats = categoryStore.get(storeSlug) || [];
         const updatedCats = cats
-          .filter(c => String(c.id) !== catId)
-          .map(c => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
+          .filter((c: any) => String(c.id) !== catId)
+          .map((c: any) => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
         categoryStore.set(storeSlug, updatedCats);
 
         const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -506,100 +506,149 @@ function getMergedProductsForStore(storeSlug: string, merchantId: string, payloa
 }
 
 app.get('/api/products', async (req, res) => {
-  const rawSlug = (req.query.store_slug as string || req.query.storeSlug as string || '').trim().toLowerCase();
-  const storeSlug = String(rawSlug || '').split(':')[0].trim().toLowerCase();
-  const merchantId = (req.query.merchant_id as string || req.query.merchantId as string || '').trim();
-  const payload = await readStorePayload();
-  const prods = getMergedProductsForStore(storeSlug, merchantId, payload);
-  return res.json(prods);
+  res.setHeader('Content-Type', 'application/json');
+  try {
+    const rawSlug = (req.query.store_slug as string || req.query.storeSlug as string || '').trim().toLowerCase();
+    const storeSlug = String(rawSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
+    const merchantId = (req.query.merchant_id as string || req.query.merchantId as string || '').trim();
+    const payload = await readStorePayload();
+    const prods = getMergedProductsForStore(storeSlug, merchantId, payload);
+    return res.status(200).json(Array.isArray(prods) ? prods : []);
+  } catch (err: any) {
+    console.error('[Server] GET /api/products error:', err);
+    return res.status(200).json([]);
+  }
 });
 
 app.post('/api/products', async (req, res) => {
-  const product = req.body;
-  if (!product) return res.status(400).json({ ok: false, error: 'Product required' });
-  if (!product.id) product.id = `prod-${Date.now()}`;
-  const slug = (product.storeSlug || product.store_slug || 'bd').trim().toLowerCase();
-  product.storeSlug = slug;
-  product.store_slug = slug;
-  product.status = 'active';
-  product.is_published = true;
-
-  // 1. Memory store
-  const prods = productStore.get(slug) || [];
-  const existingIdx = prods.findIndex(p => p.id === product.id);
-  if (existingIdx >= 0) {
-    prods[existingIdx] = product;
-  } else {
-    prods.unshift(product);
-  }
-  productStore.set(slug, prods);
-
-  // 2. Main payload database file
-  const payload = await readStorePayload();
-  if (!Array.isArray(payload.products)) {
-    payload.products = [];
-  }
-  const pIdx = payload.products.findIndex((p: any) => p.id === product.id);
-  if (pIdx >= 0) {
-    payload.products[pIdx] = product;
-  } else {
-    payload.products.unshift(product);
-  }
-
-  // 3. Storefront store object if exists
-  if (!payload.stores) payload.stores = {};
-  if (!payload.stores[slug]) {
-    payload.stores[slug] = { storeSlug: slug, products: [] };
-  }
-  if (!Array.isArray(payload.stores[slug].products)) {
-    payload.stores[slug].products = [];
-  }
-  const storePIdx = payload.stores[slug].products.findIndex((p: any) => p.id === product.id);
-  if (storePIdx >= 0) {
-    payload.stores[slug].products[storePIdx] = product;
-  } else {
-    payload.stores[slug].products.unshift(product);
-  }
-
-  await writeStorePayload(payload);
-
-  // 4. Supabase direct REST upsert
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
-
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
-    try {
-      const sbRecord = {
-        id: String(product.id),
-        store_slug: slug,
-        title: String(product.title || product.name || 'Untitled Product'),
-        name: String(product.title || product.name || 'Untitled Product'),
-        price: Number(product.priceBDT ?? product.price ?? 0),
-        image_url: String(product.image || product.image_url || ''),
-        image: String(product.image || product.image_url || ''),
-        category_id: String(product.categoryId || product.category_id || product.category || ''),
-        category: String(product.category || ''),
-        status: 'active',
-        is_published: true,
-      };
-      await fetch(`${supabaseUrl}/rest/v1/products`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-          'Prefer': 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify(sbRecord),
-      }).catch(err => console.warn('Server Supabase product upsert error:', err));
-    } catch (sbErr) {
-      console.warn('Server Supabase product error:', sbErr);
+  res.setHeader('Content-Type', 'application/json');
+  try {
+    const body = req.body || {};
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ ok: false, error: 'Product payload object required' });
     }
-  }
 
-  return res.json({ ok: true, success: true, product });
+    const rawSlug = String(body.store_slug || body.storeSlug || req.query.store_slug || 'bd');
+    const store_slug = String(rawSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
+
+    const price = parseFloat(body.price ?? body.priceBDT ?? body.price_bdt ?? 0) || 0;
+    const stock_quantity = parseInt(body.stock_quantity ?? body.stock ?? 0, 10) || 0;
+    const stock = stock_quantity;
+
+    const id = String(body.id || `prod-${Date.now()}`).trim();
+    const title = String(body.title || body.name || 'Untitled Product').trim();
+
+    const product = {
+      ...body,
+      id,
+      store_slug,
+      storeSlug: store_slug,
+      price,
+      priceBDT: price,
+      stock_quantity,
+      stock,
+      status: body.status || 'active',
+      is_published: body.is_published !== false,
+    };
+
+    // 1. Memory store
+    const prods = productStore.get(store_slug) || [];
+    const existingIdx = prods.findIndex(p => String(p.id) === String(product.id));
+    if (existingIdx >= 0) {
+      prods[existingIdx] = product;
+    } else {
+      prods.unshift(product);
+    }
+    productStore.set(store_slug, prods);
+
+    // 2. Main payload database file
+    const payload = await readStorePayload();
+    if (!Array.isArray(payload.products)) {
+      payload.products = [];
+    }
+    const pIdx = payload.products.findIndex((p: any) => String(p.id) === String(product.id));
+    if (pIdx >= 0) {
+      payload.products[pIdx] = product;
+    } else {
+      payload.products.unshift(product);
+    }
+
+    // 3. Storefront store object if exists
+    if (!payload.stores) payload.stores = {};
+    if (!payload.stores[store_slug]) {
+      payload.stores[store_slug] = { storeSlug: store_slug, products: [] };
+    }
+    if (!Array.isArray(payload.stores[store_slug].products)) {
+      payload.stores[store_slug].products = [];
+    }
+    const storePIdx = payload.stores[store_slug].products.findIndex((p: any) => String(p.id) === String(product.id));
+    if (storePIdx >= 0) {
+      payload.stores[store_slug].products[storePIdx] = product;
+    } else {
+      payload.stores[store_slug].products.unshift(product);
+    }
+
+    await writeStorePayload(payload);
+
+    // 4. Supabase direct REST upsert
+    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+
+    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+      try {
+        const sbRecord = {
+          id: String(product.id),
+          store_slug,
+          title,
+          name: title,
+          price,
+          stock_quantity,
+          stock,
+          image_url: String(product.image || product.image_url || ''),
+          image: String(product.image || product.image_url || ''),
+          category_id: String(product.categoryId || product.category_id || product.category || ''),
+          category: String(product.category || ''),
+          status: 'active',
+          is_published: true,
+        };
+
+        const sbRes = await fetch(`${supabaseUrl}/rest/v1/products`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify(sbRecord),
+        });
+
+        if (!sbRes.ok) {
+          const errText = await sbRes.text().catch(() => '');
+          console.warn('[Server] Supabase product upsert error status:', sbRes.status, errText);
+          if (sbRes.status >= 400 && sbRes.status < 500) {
+            return res.status(400).json({
+              ok: false,
+              error: `Supabase schema error: ${errText || 'Invalid product payload or missing column'}`,
+            });
+          }
+        }
+      } catch (sbErr: any) {
+        console.warn('[Server] Supabase product error:', sbErr);
+        return res.status(400).json({
+          ok: false,
+          error: `Supabase database query failed: ${sbErr?.message || 'Database error'}`,
+        });
+      }
+    }
+
+    return res.status(200).json({ ok: true, success: true, product });
+  } catch (err: any) {
+    console.error('[Server] POST /api/products error:', err);
+    return res.status(400).json({ ok: false, error: err?.message || 'Invalid product request' });
+  }
 });
 
 app.delete('/api/products/:id', async (req, res) => {

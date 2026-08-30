@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, CodConfig, Order, OrderItem, ThemeConfig } from '../types';
-import { ShoppingBag, X, Check, Copy, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, Loader2 } from 'lucide-react';
+import { ShoppingBag, X, Check, Copy, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, ChevronLeft, Trash2, Flame, Eye, Plus, Minus, Tag, Zap, Loader2 } from 'lucide-react';
 import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../lib/whatsappOtpService';
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
@@ -101,22 +101,23 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   useEffect(() => subscribeToZidStoreData(setLiveStoreData, storeSlug), [storeSlug]);
   useEffect(() => {
     let active = true;
+    const effectiveSlug = String(storeSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
     const loadStorefront = async () => {
       try {
         const [storefrontRes, productsRes] = await Promise.all([
-          fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, {
+          fetch(`/api/storefront/${encodeURIComponent(effectiveSlug)}`, {
             cache: 'no-store',
             headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-          }),
-          fetch(`/api/products?store_slug=${encodeURIComponent(storeSlug)}`, {
+          }).catch(() => null),
+          fetch(`/api/products?store_slug=${encodeURIComponent(effectiveSlug)}`, {
             cache: 'no-store',
             headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-          })
+          }).catch(() => null)
         ]);
         
         let apiProducts: any[] = [];
-        if (productsRes.ok && productsRes.headers.get('content-type')?.includes('application/json')) {
-          const fetched = await productsRes.json();
+        if (productsRes && productsRes.ok && productsRes.headers.get('content-type')?.includes('application/json')) {
+          const fetched = await productsRes.json().catch(() => null);
           if (Array.isArray(fetched)) {
             apiProducts = fetched;
           }
@@ -192,6 +193,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   useEffect(() => {
     let active = true;
+    const effectiveSlug = String(storeSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
     const fetchCatalog = async () => {
       let catData: any[] = [];
       let prodData: any[] = [];
@@ -199,10 +201,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       // 1. Fetch from Backend API endpoints & localStorage first
       try {
         const [catRes1, catRes2, prodRes, storefrontRes] = await Promise.all([
-          fetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/products?store_slug=${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/storefront/${encodeURIComponent(storeSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/categories?store_slug=${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/categories-by-slug/${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/products?store_slug=${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
+          fetch(`/api/storefront/${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
         ]);
 
         if (catRes1 && catRes1.ok) {
@@ -358,6 +360,15 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     return { ...cat, productCount: count };
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
+  const categoryCarouselRef = React.useRef<HTMLDivElement>(null);
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoryCarouselRef.current) {
+      const scrollAmount = direction === 'left' ? -220 : 220;
+      categoryCarouselRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
   const [checkoutStep, setCheckoutStep] = useState<'catalog' | 'checkout' | 'success'>('catalog');
   const [cart, setCart] = useState<{product: Product, quantity: number, variant: string}[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -770,6 +781,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       return status !== 'archived' && status !== 'hidden' && isPublished;
     })
     .filter(p => {
+      // Category carousel filter selection
+      if (activeCategoryFilter && activeCategoryFilter !== 'all') {
+        const filterLower = activeCategoryFilter.toLowerCase().trim();
+        const pCatLower = (p.category || '').toLowerCase().trim();
+        const pCatId = String(p.categoryId || p.category_id || '').toLowerCase().trim();
+        const isMatch = pCatLower === filterLower || pCatId === filterLower;
+        if (!isMatch) return false;
+      }
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       if ((p.title || '').toLowerCase().includes(q) || ((p as any).name || '').toLowerCase().includes(q)) return true;
@@ -789,10 +808,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   return (
     <div
-      className="min-h-screen font-sans bg-slate-950 flex justify-center items-start text-slate-900 selection:text-white selection:bg-[var(--theme-primary)]"
+      className="min-h-screen font-sans bg-[#0f172a] flex justify-center items-start text-slate-100 selection:text-slate-950 selection:bg-amber-400"
       style={{ ['--theme-primary' as string]: primaryColor } as React.CSSProperties}
     >
-      <div className="w-full max-w-[480px] min-h-screen bg-slate-50 shadow-2xl relative flex flex-col border-x border-slate-800/80 overflow-x-hidden pb-16">
+      <div className="w-full max-w-[520px] min-h-screen bg-[#0f172a] text-slate-100 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative flex flex-col border-x border-slate-800/80 overflow-x-hidden pb-24">
         {isSplashVisible && (
           <div className="fixed inset-0 z-[80] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center">
             <div className="flex flex-col items-center gap-4 text-center animate-pulse">
@@ -838,32 +857,32 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           }
         `}</style>
 
-        {/* Top Header Bar (Mobile-Only) */}
-        <header className="sticky top-0 z-40 bg-white border-b border-slate-200/90 shadow-sm">
+        {/* Top Header Bar (Luxury Dark Glassmorphism) */}
+        <header className="sticky top-0 z-40 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800/80 shadow-2xl">
           {/* Top Announcement Bar */}
-          <div className="bg-[#00D68F] text-slate-950 py-1.5 px-3 overflow-hidden whitespace-nowrap relative text-[11px] font-bold">
+          <div className="bg-gradient-to-r from-amber-500 via-[#00D68F] to-amber-500 text-slate-950 py-1.5 px-3 overflow-hidden whitespace-nowrap relative text-[11px] font-black uppercase tracking-wider shadow-md">
             <div className="zid-marquee-track inline-flex items-center">
-              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to SlateBD Luxury Store"}</span>
               <span className="mx-2">✦</span>
-              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+              <span className="mx-2">Free Delivery on Orders Over ৳3,000</span>
               <span className="mx-2">✦</span>
-              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to ZidSaaS BD"}</span>
+              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to SlateBD Luxury Store"}</span>
             </div>
           </div>
 
-          <div className="py-2 px-3 flex items-center justify-between gap-2">
+          <div className="py-2.5 px-3.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
               <button 
-                className="p-1.5 -ml-1 text-slate-700 hover:text-slate-900 rounded-lg shrink-0"
+                className="p-1.5 -ml-1 text-slate-300 hover:text-amber-400 rounded-lg shrink-0 transition"
                 onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(!isMobileMenuOpen); }}
               >
                 <Menu className="w-5 h-5" />
               </button>
               
-              {/* Stacked Branding Hierarchy: Official ZID SAAS BD logo at the top, Merchant store name right below */}
+              {/* Stacked Branding Hierarchy */}
               <div className="flex flex-col min-w-0">
-                <BrandLogo size="sm" showSubtitle={false} isDarkMode={false} />
-                <h1 className="text-xs font-black tracking-tight text-slate-900 truncate max-w-[170px] mt-0.5">
+                <BrandLogo size="sm" showSubtitle={false} isDarkMode={true} />
+                <h1 className="text-xs font-black tracking-wider text-amber-400 truncate max-w-[170px] mt-0.5 uppercase">
                   {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}
                 </h1>
               </div>
@@ -872,7 +891,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setIsSearchOpen(!isSearchOpen)}
-                className="p-1.5 text-slate-600 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+                className="p-1.5 text-slate-300 hover:text-amber-400 transition rounded-lg hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60"
               >
                 <Search className="w-5 h-5" />
               </button>
@@ -882,7 +901,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               {customerSession ? (
                 <button
                   onClick={handleCustomerSignOut}
-                  className="p-1.5 text-slate-700 hover:text-red-500 transition rounded-lg hover:bg-slate-100"
+                  className="p-1.5 text-slate-300 hover:text-rose-400 transition rounded-lg hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60"
                   title={t('sf_sign_out')}
                 >
                   <LogOut className="w-5 h-5" />
@@ -890,7 +909,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               ) : (
                 <button
                   onClick={() => setIsAuthOpen(true)}
-                  className="p-1.5 text-slate-700 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+                  className="p-1.5 text-slate-300 hover:text-amber-400 transition rounded-lg hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60"
                   title={t('sf_customer_sign_in')}
                 >
                   <User className="w-5 h-5" />
@@ -899,11 +918,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
               <button
                 onClick={() => setIsCartOpen(true)}
-                className="relative p-1.5 text-slate-700 hover:text-[#00D68F] transition rounded-lg hover:bg-slate-100"
+                className="relative p-2 text-slate-200 hover:text-amber-400 transition rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 shadow-md cursor-pointer"
               >
                 <ShoppingBag className="w-5 h-5" />
                 {cart.length > 0 && (
-                  <span className="absolute top-0.5 right-0.5 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center bg-[#00D68F] shadow">
+                  <span className="absolute -top-1 -right-1 text-slate-950 text-[10px] font-black min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center bg-gradient-to-r from-amber-400 to-[#00D68F] shadow-[0_0_10px_rgba(212,175,55,0.4)]">
                     {cart.reduce((s, i) => s + i.quantity, 0)}
                   </span>
                 )}
@@ -913,21 +932,21 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
           {/* Search Input Popup */}
           {isSearchOpen && (
-            <div className="p-2.5 bg-slate-50 border-t border-slate-200">
+            <div className="p-3 bg-slate-900 border-t border-slate-800/80 shadow-xl animate-fade-in-up">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={t('sf_search_placeholder')}
-                  className="w-full rounded-xl pl-9 pr-8 py-2 text-xs bg-white border border-slate-200 focus:border-[#00D68F] outline-none shadow-sm"
+                  className="w-full rounded-xl pl-10 pr-8 py-2.5 text-xs bg-slate-950 text-slate-100 border border-slate-700/80 focus:border-amber-400 outline-none shadow-inner font-medium"
                 />
                 {searchQuery && (
                   <button 
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 text-xs font-bold"
                   >
                     ×
                   </button>
@@ -938,24 +957,24 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
           {/* Mobile Menu Dropdown */}
           {isMobileMenuOpen && (
-            <div className="border-t border-slate-100 bg-white shadow-xl p-3 space-y-1 animate-fade-in-up">
+            <div className="border-t border-slate-800/80 bg-slate-900/95 backdrop-blur-xl shadow-2xl p-3 space-y-1 animate-fade-in-up">
               <button
                 onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'home' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2.5 transition ${mobileTab === 'home' ? 'bg-amber-400/15 text-amber-400 border border-amber-400/30' : 'text-slate-300 hover:bg-slate-800/60'}`}
               >
-                <Home className="w-4 h-4" /> {t('sf_home')}
+                <Home className="w-4 h-4 text-amber-400" /> {t('sf_home')}
               </button>
               <button
                 onClick={() => { setCheckoutStep('catalog'); setMobileTab('orders'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'orders' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2.5 transition ${mobileTab === 'orders' ? 'bg-amber-400/15 text-amber-400 border border-amber-400/30' : 'text-slate-300 hover:bg-slate-800/60'}`}
               >
-                <PackageCheck className="w-4 h-4" /> {t('sf_my_orders')}
+                <PackageCheck className="w-4 h-4 text-emerald-400" /> {t('sf_my_orders')}
               </button>
               <button
                 onClick={() => { setCheckoutStep('catalog'); setMobileTab('profile'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 ${mobileTab === 'profile' ? 'bg-[#00D68F]/15 text-[#00D68F]' : 'text-slate-700 hover:bg-slate-50'}`}
+                className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2.5 transition ${mobileTab === 'profile' ? 'bg-amber-400/15 text-amber-400 border border-amber-400/30' : 'text-slate-300 hover:bg-slate-800/60'}`}
               >
-                <User className="w-4 h-4" /> {t('sf_tab_profile')}
+                <User className="w-4 h-4 text-slate-400" /> {t('sf_tab_profile')}
               </button>
             </div>
           )}
@@ -968,70 +987,119 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         {checkoutStep === 'catalog' && (
           <>
             {mobileTab === 'home' && (
-            <div className="space-y-4 pb-6">
+            <div className="space-y-6 pb-6">
             
-            {/* Hero Banner (Mobile Height) */}
-            <div className="w-full h-[210px] relative overflow-hidden bg-slate-900">
+            {/* Hero Banner (Luxury Dark Aesthetic) */}
+            <div className="w-full h-[220px] relative overflow-hidden bg-slate-950 border-b border-slate-800/80">
               <img 
                 src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"} 
                 alt="Hero Banner" 
-                className="w-full h-full object-cover opacity-60"
+                className="w-full h-full object-cover opacity-50 scale-105 transition-transform duration-700 hover:scale-100"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent flex items-end p-4">
-                <div className="space-y-2">
-                  <span className="inline-block bg-[#00D68F] text-slate-950 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full">
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/50 to-transparent flex items-end p-5">
+                <div className="space-y-2 max-w-sm">
+                  <span className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-[#00D68F] text-slate-950 text-[10px] font-black uppercase tracking-widest px-3 py-0.5 rounded-full shadow-lg">
+                    <Sparkles className="w-3 h-3 fill-slate-950" />
                     {t('sf_new_arrivals')}
                   </span>
-                  <h2 className="text-xl font-black text-white leading-tight">
+                  <h2 className="text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md">
                     {storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
                   </h2>
-                  <p className="text-xs text-slate-300 line-clamp-2">
+                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
                     {storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="px-3.5 space-y-6">
+            <div className="px-4 space-y-7">
               
-              {/* Popular Categories Grid (2-Column Mobile) */}
+              {/* Interactive Category Sliding Carousel */}
               <section className="space-y-3">
-                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                <div className="flex justify-between items-center px-0.5">
                   <div>
-                    <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{t('sf_popular_categories')}</h2>
-                    <p className="text-[11px] text-slate-500">{t('sf_shop_by_category')}</p>
+                    <h2 className="text-sm font-black text-slate-100 tracking-tight uppercase flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      {t('sf_popular_categories')}
+                    </h2>
+                    <p className="text-[11px] text-slate-400">{t('sf_shop_by_category')}</p>
+                  </div>
+
+                  {/* Chevron scroll buttons */}
+                  <div className="flex items-center gap-1">
+                    <button 
+                      onClick={() => scrollCategories('left')}
+                      className="p-1.5 rounded-lg bg-slate-800/80 text-slate-300 hover:text-amber-400 border border-slate-700/60 transition cursor-pointer"
+                      aria-label="Scroll left"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => scrollCategories('right')}
+                      className="p-1.5 rounded-lg bg-slate-800/80 text-slate-300 hover:text-amber-400 border border-slate-700/60 transition cursor-pointer"
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div 
+                  ref={categoryCarouselRef}
+                  className="flex items-center gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x"
+                >
+                  {/* 'All Items' pill */}
+                  <div
+                    onClick={() => setActiveCategoryFilter('all')}
+                    className={`snap-start shrink-0 rounded-2xl p-3 border transition-all duration-300 cursor-pointer min-w-[105px] flex flex-col items-center justify-center gap-1.5 ${
+                      activeCategoryFilter === 'all'
+                        ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-emerald-500/20 border-amber-400 text-amber-300 shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeCategoryFilter === 'all' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-slate-800 text-slate-300'}`}>
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <span className="text-xs font-extrabold truncate max-w-[90px]">All Items</span>
+                    <span className="text-[9px] font-bold text-slate-400">{allActiveProducts.length} Items</span>
+                  </div>
+
                   {(storefrontCategories.length
                     ? storefrontCategories
                     : (Array.from(new Set(displayProducts.map(p => p.category))) as string[]).map(name => ({ name, image: '' }) as { name: string; status?: string; image?: string; coverImage?: string })
-                  ).slice(0, 4).map((cat, i) => {
+                  ).map((cat, i) => {
                     const catName = typeof cat === 'string' ? cat : (cat?.name || '');
+                    const catId = typeof cat === 'object' && cat ? (cat.id || catName) : catName;
                     const catImage = cat && typeof cat === 'object' ? (cat.image || cat.coverImage || '') : '';
                     const firstProductImage = displayProducts.find(p => p.category === catName)?.image || '';
                     const image = catName ? (catImage || firstProductImage) : '';
+                    const isSelected = activeCategoryFilter === catName || activeCategoryFilter === String(catId);
+                    const productCount = (cat as any)?.productCount ?? allActiveProducts.filter(p => p.category === catName).length;
+
                     return (
                       <div 
                         key={catName || `cat-${i}`} 
-                        className="aspect-[4/3] bg-slate-100 rounded-xl relative overflow-hidden group cursor-pointer border border-slate-200 shadow-sm"
                         onClick={() => {
-                          setSearchQuery(catName);
-                          // Scroll to products section smoothly
-                          document.getElementById('storefront-products-section')?.scrollIntoView({ behavior: 'smooth' });
+                          setActiveCategoryFilter(isSelected ? 'all' : (catName || String(catId)));
                         }}
+                        className={`snap-start shrink-0 rounded-2xl p-2.5 border transition-all duration-300 cursor-pointer min-w-[115px] flex flex-col items-center justify-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-emerald-500/20 border-amber-400 text-amber-300 shadow-[0_0_18px_rgba(212,175,55,0.25)] scale-[1.02]'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900'
+                        }`}
                       >
-                        {image ? (
-                          <img src={image} alt={catName} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#00D68F]/20 via-slate-200 to-[#D4AF37]/20">
-                            <span className="text-3xl font-black text-slate-800">{catName.charAt(0) || 'Z'}</span>
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent" />
-                        <div className="absolute bottom-0 left-0 p-2.5">
-                          <h3 className="text-white font-bold text-xs truncate max-w-[140px]">{catName || t('sf_products')}</h3>
+                        <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-800 border border-slate-700/80">
+                          {image ? (
+                            <img src={image} alt={catName} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-amber-500/30 to-emerald-500/30 text-amber-300 font-black text-base">
+                              {catName.charAt(0) || 'Z'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-center">
+                          <h3 className="font-extrabold text-xs text-slate-100 truncate max-w-[100px]">{catName || t('sf_products')}</h3>
+                          <p className="text-[9px] font-semibold text-slate-400">{productCount} items</p>
                         </div>
                       </div>
                     );
@@ -1039,60 +1107,109 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 </div>
               </section>
 
-              {/* Product Grid (2-Column Mobile) */}
-              <section className="space-y-3">
-                <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+              {/* Product Grid (Luxury Dark Cards with Stock & Price Highlights) */}
+              <section id="storefront-products-section" className="space-y-3.5">
+                <div className="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
                   <div>
-                    <h2 className="text-base font-extrabold text-slate-900 tracking-tight">{t('sf_products')}</h2>
-                    <p className="text-[11px] text-slate-500">{t('sf_discover_collection')}</p>
+                    <h2 className="text-base font-black text-slate-100 uppercase tracking-tight flex items-center gap-2">
+                      <ShoppingBag className="w-4 h-4 text-[#00D68F]" />
+                      {t('sf_products')}
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      {activeCategoryFilter !== 'all' ? `Filtered by ${activeCategoryFilter}` : t('sf_discover_collection')}
+                    </p>
                   </div>
+                  {activeCategoryFilter !== 'all' && (
+                    <button
+                      onClick={() => setActiveCategoryFilter('all')}
+                      className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20 hover:bg-amber-400/20 transition cursor-pointer"
+                    >
+                      Clear Filter
+                    </button>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-2 gap-3">
                   {displayProducts.length === 0 ? (
-                    <div className="col-span-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
-                      <ShoppingBag className="mx-auto h-8 w-8 text-slate-300" />
-                      <h3 className="mt-2 text-sm font-extrabold text-slate-900">{t('sf_no_products')}</h3>
-                      <p className="mt-1 text-xs text-slate-500">{t('sf_no_products_desc')}</p>
+                    <div className="col-span-2 rounded-2xl border border-dashed border-slate-800 bg-slate-900/50 px-4 py-12 text-center space-y-2">
+                      <ShoppingBag className="mx-auto h-10 w-10 text-slate-600" />
+                      <h3 className="text-sm font-black text-slate-200">{t('sf_no_products')}</h3>
+                      <p className="text-xs text-slate-500">{t('sf_no_products_desc')}</p>
                     </div>
                   ) : displayProducts.map(p => (
                     <div 
                       key={p.id}
-                      className="group flex flex-col justify-between bg-white rounded-xl overflow-hidden border border-slate-200 shadow-sm relative"
+                      className="group flex flex-col justify-between bg-slate-900/80 backdrop-blur-md rounded-2xl overflow-hidden border border-slate-800/80 hover:border-amber-500/40 hover:shadow-[0_0_25px_rgba(212,175,55,0.15)] transition-all duration-300 relative"
                     >
-                      {(p.status === 'Active' || p.status === 'active') && (
-                        <div className="absolute top-2 left-2 z-10 bg-[#00D68F] text-slate-950 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded">
-                          Hot
-                        </div>
-                      )}
+                      {/* Status & Stock Badges */}
+                      <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between pointer-events-none">
+                        {p.compareAtPriceBDT && p.compareAtPriceBDT > (p.priceBDT || 0) ? (
+                          <span className="bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md flex items-center gap-1">
+                            <Flame className="w-2.5 h-2.5 fill-slate-950" /> Sale
+                          </span>
+                        ) : (
+                          <span className="bg-[#00D68F] text-slate-950 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md">
+                            Hot
+                          </span>
+                        )}
 
-                      <div className="relative aspect-square bg-slate-100 overflow-hidden cursor-pointer" onClick={() => {
-                        setSelectedProduct(p);
-                        setCheckoutStep('checkout');
-                      }}>
-                        <img 
-                          src={p.image} 
-                          alt={p.title} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300" 
-                        />
+                        {/* Stock Badge */}
+                        {(p.stock ?? 99) <= 0 ? (
+                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+                            Out of Stock
+                          </span>
+                        ) : (p.stock ?? 99) <= 5 ? (
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+                            Only {p.stock} Left
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> In Stock
+                          </span>
+                        )}
                       </div>
 
-                      <div className="p-2.5 space-y-2 flex-1 flex flex-col justify-between">
+                      {/* Image Container with Hover Effects */}
+                      <div 
+                        className="relative aspect-square bg-slate-950/80 overflow-hidden cursor-pointer"
+                        onClick={() => setQuickViewProduct(p)}
+                      >
+                        <img 
+                          src={p.image || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80"} 
+                          alt={p.title} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60 group-hover:opacity-30 transition-opacity" />
+                        
+                        {/* Hover Quick View Trigger */}
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setQuickViewProduct(p); }}
+                          className="absolute bottom-2.5 right-2.5 p-2 rounded-xl bg-slate-900/80 backdrop-blur-md text-slate-200 hover:text-amber-400 border border-slate-700/80 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110"
+                          title="Quick View"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Card Content */}
+                      <div className="p-3 space-y-2 flex-1 flex flex-col justify-between bg-slate-900/40">
                         <div>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{p.category}</p>
-                          <h4 className="font-bold text-xs text-slate-900 line-clamp-2 leading-tight cursor-pointer hover:text-[#00D68F] transition"
-                              onClick={() => { setSelectedProduct(p); setCheckoutStep('checkout'); }}>
+                          <span className="text-[9px] font-extrabold text-amber-400 uppercase tracking-widest">{p.category || 'Collection'}</span>
+                          <h4 
+                            className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug cursor-pointer hover:text-amber-400 transition mt-0.5"
+                            onClick={() => setQuickViewProduct(p)}
+                          >
                             {p.title}
                           </h4>
                         </div>
                         
-                        <div className="pt-1 flex items-center justify-between">
+                        <div className="pt-2 border-t border-slate-800/80 flex items-end justify-between gap-2">
                           <div className="space-y-0.5">
-                            <div className="text-sm font-black text-[#00D68F] tracking-tight">
+                            <div className="text-sm font-black text-amber-400 tracking-tight">
                               ৳{(p.priceBDT ?? 0).toLocaleString()}
                             </div>
                             {p.compareAtPriceBDT && (
-                              <div className="text-[10px] text-slate-400 line-through">
+                              <div className="text-[10px] text-slate-500 line-through font-mono">
                                 ৳{(p.compareAtPriceBDT ?? 0).toLocaleString()}
                               </div>
                             )}
@@ -1100,9 +1217,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                           
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
-                            className="bg-slate-100 hover:bg-[#00D68F] hover:text-white text-slate-800 w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer"
+                            className="bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 text-slate-950 font-black text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md hover:shadow-amber-400/20 hover:scale-105 active:scale-95 transition cursor-pointer"
                           >
                             <ShoppingBag className="w-3.5 h-3.5" />
+                            <span>Add</span>
                           </button>
                         </div>
                       </div>
@@ -1111,35 +1229,35 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 </div>
               </section>
 
-              {/* Store Benefits Section (Mobile Grid) */}
-              <section className="bg-white rounded-2xl border border-slate-200 p-3.5 grid grid-cols-2 gap-3 text-center shadow-sm">
-                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
-                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+              {/* Store Benefits Section (Luxury Glass Cards) */}
+              <section className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-4 grid grid-cols-2 gap-3 text-center shadow-xl">
+                <div className="space-y-1.5 p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/60">
+                  <div className="w-8 h-8 bg-amber-400/10 text-amber-400 rounded-lg flex items-center justify-center mx-auto border border-amber-400/20">
                     <Building2 className="w-4 h-4" />
                   </div>
-                  <h4 className="font-extrabold text-xs text-slate-900">Cash On Delivery</h4>
-                  <p className="text-[10px] text-slate-500">Everywhere BD</p>
+                  <h4 className="font-black text-xs text-slate-100">Cash On Delivery</h4>
+                  <p className="text-[10px] text-slate-400">Nationwide Shipping</p>
                 </div>
-                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
-                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                <div className="space-y-1.5 p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/60">
+                  <div className="w-8 h-8 bg-pink-500/10 text-pink-400 rounded-lg flex items-center justify-center mx-auto border border-pink-500/20">
                     <Smartphone className="w-4 h-4" />
                   </div>
-                  <h4 className="font-extrabold text-xs text-slate-900">bKash Payment</h4>
-                  <p className="text-[10px] text-slate-500">Instant gateway</p>
+                  <h4 className="font-black text-xs text-slate-100">bKash & Nagad</h4>
+                  <p className="text-[10px] text-slate-400">Instant Fast Pay</p>
                 </div>
-                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
-                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                <div className="space-y-1.5 p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/60">
+                  <div className="w-8 h-8 bg-emerald-500/10 text-emerald-400 rounded-lg flex items-center justify-center mx-auto border border-emerald-500/20">
                     <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <h4 className="font-extrabold text-xs text-slate-900">Authentic Items</h4>
-                  <p className="text-[10px] text-slate-500">100% Genuine</p>
+                  <h4 className="font-black text-xs text-slate-100">Authentic Items</h4>
+                  <p className="text-[10px] text-slate-400">100% Guaranteed</p>
                 </div>
-                <div className="space-y-1 p-2 bg-slate-50 rounded-xl">
-                  <div className="w-8 h-8 bg-emerald-100 text-[#00D68F] rounded-lg flex items-center justify-center mx-auto">
+                <div className="space-y-1.5 p-2.5 bg-slate-950/50 rounded-xl border border-slate-800/60">
+                  <div className="w-8 h-8 bg-indigo-500/10 text-indigo-400 rounded-lg flex items-center justify-center mx-auto border border-indigo-500/20">
                     <Clock className="w-4 h-4" />
                   </div>
-                  <h4 className="font-extrabold text-xs text-slate-900">Fast Shipping</h4>
-                  <p className="text-[10px] text-slate-500">Within 48 hours</p>
+                  <h4 className="font-black text-xs text-slate-100">Fast Shipping</h4>
+                  <p className="text-[10px] text-slate-400">24-48 Hours Express</p>
                 </div>
               </section>
             </div>
@@ -1606,80 +1724,83 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
            <div className="w-full px-3.5 py-6 space-y-6">
             <button
               onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}
-              className="text-xs flex items-center gap-1.5 cursor-pointer text-slate-500 hover:text-slate-900 font-bold transition"
+              className="text-xs flex items-center gap-1.5 cursor-pointer text-slate-400 hover:text-amber-400 font-extrabold transition"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Return to Catalog
             </button>
             
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-6">
+            <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-800/80 p-4 shadow-2xl space-y-6 text-slate-100">
               
               <div>
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">Checkout</h3>
-                <p className="text-xs mt-0.5 text-slate-500">Provide your delivery details below.</p>
+                <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-amber-400" />
+                  Express Checkout
+                </h3>
+                <p className="text-xs mt-0.5 text-slate-400">Provide your delivery details below.</p>
               </div>
 
               {/* Order Summary Items */}
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-900 uppercase tracking-wider">Order Summary</h4>
+              <div className="bg-slate-950 rounded-xl p-3 border border-slate-800/80 space-y-3">
+                <h4 className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Order Summary</h4>
                 
                 {cart.length > 0 ? (
                   cart.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-3 py-1">
-                      <img src={item.product.image} alt={item.product.title} className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                      <img src={item.product.image} alt={item.product.title} className="w-12 h-12 object-cover rounded-lg border border-slate-800 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-xs text-slate-900 truncate">{item.product.title}</h4>
-                        <div className="text-[10px] text-slate-500">Qty: {item.quantity} | Variant: {item.variant}</div>
+                        <h4 className="font-semibold text-xs text-slate-100 truncate">{item.product.title}</h4>
+                        <div className="text-[10px] text-slate-400">Qty: {item.quantity}</div>
                       </div>
-                      <div className="text-xs font-black text-[#00D68F] shrink-0">৳{((item.product.priceBDT ?? 0) * item.quantity).toLocaleString()}</div>
+                      <div className="text-xs font-black text-amber-400 shrink-0">৳{((item.product.priceBDT ?? 0) * item.quantity).toLocaleString()}</div>
                     </div>
                   ))
                 ) : selectedProduct ? (
                   <div className="flex items-center gap-3 py-1">
-                    <img src={selectedProduct.image} alt={selectedProduct.title} className="w-12 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                    <img src={selectedProduct.image} alt={selectedProduct.title} className="w-12 h-12 object-cover rounded-lg border border-slate-800 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-xs text-slate-900 truncate">{selectedProduct.title}</h4>
+                      <h4 className="font-semibold text-xs text-slate-100 truncate">{selectedProduct.title}</h4>
                     </div>
-                    <div className="text-xs font-black text-[#00D68F] shrink-0">৳{(selectedProduct.priceBDT ?? 0).toLocaleString()}</div>
+                    <div className="text-xs font-black text-amber-400 shrink-0">৳{(selectedProduct.priceBDT ?? 0).toLocaleString()}</div>
                   </div>
                 ) : null}
                 
-                <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-600">Total Payable:</span>
-                  <span className="text-base font-black text-[#00D68F]">৳{totalAmount.toLocaleString()}</span>
+                <div className="border-t border-slate-800 pt-2 flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-400">Total Payable:</span>
+                  <span className="text-base font-black text-amber-400">৳{totalAmount.toLocaleString()}</span>
                 </div>
               </div>
 
               <form onSubmit={handleCheckoutSubmit} className="space-y-4">
                 <div className="space-y-3">
                   <div>
-                    <label className="block mb-1 font-bold text-xs text-slate-700">Full Name</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-300">Full Name</label>
                     <input
                       type="text"
                       required
                       value={custName}
                       onChange={(e) => setCustName(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
                     />
                   </div>
                   <div>
-                    <label className="block mb-1 font-bold text-xs text-slate-700">Phone Number</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-300">Phone Number</label>
                     <input
                       type="text"
                       required
                       value={custPhone}
                       onChange={(e) => setCustPhone(e.target.value)}
-                      className="w-full font-mono rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
+                      className="w-full font-mono rounded-xl px-3.5 py-2.5 bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <label className="block mb-1 font-bold text-xs text-slate-700">City / District</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-300">City / District</label>
                     <select
                       value={custCity}
                       onChange={(e) => setCustCity(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F] font-medium"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-medium"
                     >
                       <option value="Dhaka">Dhaka (Inside Dhaka - ৳80)</option>
                       <option value="Chittagong">Chittagong (Outside Dhaka - ৳150)</option>
@@ -1687,20 +1808,20 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block mb-1 font-bold text-xs text-slate-700">Detailed Address</label>
+                    <label className="block mb-1 font-bold text-xs text-slate-300">Detailed Address</label>
                     <input
                       type="text"
                       required
                       value={custAddress}
                       onChange={(e) => setCustAddress(e.target.value)}
-                      className="w-full rounded-xl px-3.5 py-2.5 bg-white border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#00D68F]"
+                      className="w-full rounded-xl px-3.5 py-2.5 bg-slate-950 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-amber-400"
                     />
                   </div>
                 </div>
 
                 {/* Payment Options */}
-                <div className="pt-3 border-t border-slate-100">
-                  <label className="block mb-2 font-bold text-xs text-slate-900">Select Payment Method</label>
+                <div className="pt-3 border-t border-slate-800">
+                  <label className="block mb-2 font-bold text-xs text-white">Select Payment Method</label>
                   <div className="grid grid-cols-1 gap-2">
                     {enabledMobileMethods.map((method) => {
                       const isSelected = payMethod === method.provider;
@@ -1990,9 +2111,30 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         )}
       </main>
 
-      {/* Mobile App Bottom Navigation (Fixed inside standard frame) */}
+      {/* Mobile App Bottom Navigation & Sticky Action Bar (Fixed inside frame) */}
       {checkoutStep === 'catalog' && (
-        <nav className="absolute bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div className="absolute bottom-0 left-0 right-0 z-40 bg-[#0f172a]/95 backdrop-blur-xl border-t border-slate-800/80 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+          {/* Quick Payment & Cart Fast Checkout Bar (Shows if items in cart) */}
+          {cart.length > 0 && (
+            <div className="px-3.5 py-2 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-b border-slate-800/80 flex items-center justify-between gap-2 animate-fade-in-up">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Fast Pay:</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 shrink-0">bKash</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">Nagad</span>
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">COD</span>
+              </div>
+
+              <button
+                onClick={() => setCheckoutStep('checkout')}
+                className="shrink-0 bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 text-slate-950 font-black text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-[0_0_15px_rgba(212,175,55,0.3)] hover:scale-105 active:scale-95 transition cursor-pointer"
+              >
+                <span>Checkout ৳{cartTotal.toLocaleString()}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Tab Navigation */}
           <div className="grid grid-cols-3 h-14">
             {([
               { id: 'home', label: t('sf_tab_home'), icon: Home },
@@ -2006,12 +2148,12 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 <button
                   key={tabItem.id}
                   onClick={() => setMobileTab(tabItem.id)}
-                  className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-black transition cursor-pointer ${active ? 'text-[#00D68F]' : 'text-slate-400 hover:text-slate-600'}`}
+                  className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-black transition cursor-pointer ${active ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'}`}
                 >
                   <span className="relative">
-                    <TabIcon className={`w-4 h-4 ${active ? 'text-[#00D68F]' : 'text-slate-400'}`} />
+                    <TabIcon className={`w-4 h-4 ${active ? 'text-amber-400' : 'text-slate-400'}`} />
                     {count > 0 && (
-                      <span className="absolute -top-1.5 -right-2 bg-[#00D68F] text-slate-950 text-[9px] font-black min-w-[14px] h-3.5 px-1 rounded-full flex items-center justify-center">
+                      <span className="absolute -top-1.5 -right-2 bg-gradient-to-r from-amber-400 to-[#00D68F] text-slate-950 text-[9px] font-black min-w-[14px] h-3.5 px-1 rounded-full flex items-center justify-center">
                         {count}
                       </span>
                     )}
@@ -2021,36 +2163,36 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               );
             })}
           </div>
-        </nav>
+        </div>
       )}
 
       {isAuthOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl border border-slate-700 bg-[#111827] p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-3xl border border-slate-700/80 bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-[#00D68F]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-[#00D68F] border border-[#00D68F]/30">
-                  <Sparkles className="w-3.5 h-3.5" />
+                <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 border border-amber-400/30">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   {t('sf_customer_account')}
                 </div>
                 <h3 className="mt-3 text-2xl font-black text-white">{authMode === 'signin' ? t('sign_in') : t('sign_up')}</h3>
                 <p className="mt-1 text-xs text-slate-400">{t('sf_auth_subtitle')}</p>
               </div>
-              <button onClick={() => setIsAuthOpen(false)} className="rounded-lg bg-slate-800 p-2 text-slate-300 hover:text-white">
+              <button onClick={() => setIsAuthOpen(false)} className="rounded-xl bg-slate-800 p-2 text-slate-300 hover:text-white transition cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-900 p-1">
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-950 p-1">
               <button
                 onClick={() => setAuthMode('signin')}
-                className={`rounded-xl px-3 py-2 text-xs font-bold ${authMode === 'signin' ? 'bg-[#00D68F] text-slate-950' : 'text-slate-400'}`}
+                className={`rounded-xl px-3 py-2 text-xs font-bold transition ${authMode === 'signin' ? 'bg-gradient-to-r from-amber-400 to-[#00D68F] text-slate-950 font-black' : 'text-slate-400'}`}
               >
                 {t('sign_in')}
               </button>
               <button
                 onClick={() => setAuthMode('signup')}
-                className={`rounded-xl px-3 py-2 text-xs font-bold ${authMode === 'signup' ? 'bg-[#00D68F] text-slate-950' : 'text-slate-400'}`}
+                className={`rounded-xl px-3 py-2 text-xs font-bold transition ${authMode === 'signup' ? 'bg-gradient-to-r from-amber-400 to-[#00D68F] text-slate-950 font-black' : 'text-slate-400'}`}
               >
                 {t('sf_auth_create_account')}
               </button>
@@ -2063,7 +2205,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   <input
                     value={authName}
                     onChange={(e) => setAuthName(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
                     placeholder={t('sf_auth_name_placeholder')}
                   />
                 </div>
@@ -2077,7 +2219,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     type="email"
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
                     placeholder="Enter your email"
                   />
                 </div>
@@ -2117,19 +2259,19 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     type="password"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-900 pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:border-[#00D68F]"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:border-amber-400"
                     placeholder="••••••••"
                   />
                 </div>
               </div>
 
               {authNotice && (
-                <div className="rounded-xl border border-[#00D68F]/30 bg-[#00D68F]/10 px-3 py-2 text-xs text-[#8CFFDA]">{authNotice}</div>
+                <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-300">{authNotice}</div>
               )}
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-[#00D68F] py-3 text-sm font-black text-slate-950 hover:bg-[#00E699] transition"
+                className="w-full rounded-xl bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 py-3 text-sm font-black text-slate-950 hover:shadow-lg transition cursor-pointer"
               >
                 {authMode === 'signin' ? 'Continue to Order Dashboard' : 'Create Customer Account'}
               </button>
@@ -2139,39 +2281,39 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       )}
 
       {showOrderDashboard && customerSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl rounded-3xl border border-slate-700 bg-white p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-[#00D68F]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-[#00D68F] border border-[#00D68F]/30">
+                <div className="inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 border border-amber-400/30">
                   <PackageCheck className="w-3.5 h-3.5" />
                   Order Dashboard
                 </div>
-                <h3 className="mt-3 text-2xl font-black text-slate-900">Welcome, {customerSession.name}</h3>
-                <p className="mt-1 text-xs text-slate-500">{customerSession.email} • {customerSession.phone}</p>
+                <h3 className="mt-3 text-2xl font-black text-white">Welcome, {customerSession.name}</h3>
+                <p className="mt-1 text-xs text-slate-400">{customerSession.email} • {customerSession.phone}</p>
               </div>
-              <button onClick={() => setShowOrderDashboard(false)} className="rounded-lg bg-slate-100 p-2 text-slate-500 hover:text-slate-900">
+              <button onClick={() => setShowOrderDashboard(false)} className="rounded-xl bg-slate-800 p-2 text-slate-400 hover:text-white transition cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
               {customerOrders.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No orders are linked to this account yet. Place your first order from the storefront catalog.</div>
+                <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950 p-8 text-center text-sm text-slate-400">No orders are linked to this account yet. Place your first order from the storefront catalog.</div>
               ) : (
                 customerOrders.map((order) => (
-                  <div key={order.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div key={order.id} className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-2">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{order.orderNumber}</div>
-                        <div className="mt-1 text-lg font-black text-slate-900">{order.paymentMethod}</div>
+                        <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">{order.orderNumber}</div>
+                        <div className="mt-1 text-lg font-black text-white">{order.paymentMethod}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-bold text-[#00D68F]">৳{order.totalBDT.toLocaleString()}</div>
-                        <div className="text-xs text-slate-500">{order.fulfillmentStatus}</div>
+                        <div className="text-sm font-black text-amber-400">৳{order.totalBDT.toLocaleString()}</div>
+                        <div className="text-xs font-bold text-emerald-400">{order.fulfillmentStatus}</div>
                       </div>
                     </div>
-                    <div className="mt-3 text-xs text-slate-500">{order.createdAt}</div>
+                    <div className="text-xs text-slate-500">{order.createdAt}</div>
                   </div>
                 ))
               )}
@@ -2180,39 +2322,150 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         </div>
       )}
 
-      {/* Cart Drawer Modal */}
+      {/* Product Quick View Modal */}
+      {quickViewProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-fade-in-up">
+          <div className="w-full max-w-sm rounded-3xl border border-slate-800 bg-slate-900 overflow-hidden shadow-2xl space-y-4 relative">
+            <button
+              onClick={() => setQuickViewProduct(null)}
+              className="absolute top-3 right-3 z-20 p-2 rounded-full bg-slate-950/80 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="relative aspect-square bg-slate-950 overflow-hidden">
+              <img src={quickViewProduct.image} alt={quickViewProduct.title} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent opacity-80" />
+              <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end">
+                <span className="bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-md">
+                  {quickViewProduct.category || 'Luxury'}
+                </span>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
+                  In Stock ({quickViewProduct.stock ?? 99})
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 pt-0 space-y-4">
+              <div>
+                <h3 className="text-lg font-black text-white leading-tight">{quickViewProduct.title}</h3>
+                <p className="text-xs text-slate-400 mt-1 line-clamp-3 leading-relaxed">{quickViewProduct.description || "Premium high-grade lifestyle item with nationwide express dispatch."}</p>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                <div>
+                  <div className="text-xs text-slate-400">Price</div>
+                  <div className="text-xl font-black text-amber-400">৳{(quickViewProduct.priceBDT ?? 0).toLocaleString()}</div>
+                </div>
+                {quickViewProduct.compareAtPriceBDT && (
+                  <div className="text-right">
+                    <div className="text-[10px] text-slate-500 line-through font-mono">৳{quickViewProduct.compareAtPriceBDT.toLocaleString()}</div>
+                    <div className="text-[10px] font-black text-emerald-400">
+                      Save ৳{(quickViewProduct.compareAtPriceBDT - (quickViewProduct.priceBDT || 0)).toLocaleString()}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    handleAddToCart(quickViewProduct);
+                    setQuickViewProduct(null);
+                    setIsCartOpen(true);
+                  }}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-100 font-black rounded-xl text-xs transition cursor-pointer border border-slate-700 flex items-center justify-center gap-1.5"
+                >
+                  <ShoppingBag className="w-4 h-4 text-amber-400" />
+                  <span>Add to Cart</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedProduct(quickViewProduct);
+                    setQuickViewProduct(null);
+                    setCheckoutStep('checkout');
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 text-slate-950 font-black rounded-xl text-xs transition cursor-pointer shadow-lg flex items-center justify-center gap-1.5 hover:scale-[1.02]"
+                >
+                  <Zap className="w-4 h-4 fill-slate-950" />
+                  <span>Buy Now</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cart Drawer Modal (Slide-Over Panel) */}
       {isCartOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md h-full bg-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="font-extrabold text-xl text-slate-900 flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-[#00D68F]" />
-                Your Cart
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/80 backdrop-blur-md animate-fade-in-up">
+          <div className="w-full max-w-md h-full bg-slate-900 border-l border-slate-800/80 shadow-2xl flex flex-col text-slate-100 relative">
+            <div className="flex items-center justify-between p-5 border-b border-slate-800/80 bg-slate-950/60">
+              <h3 className="font-black text-lg text-slate-100 flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-amber-400" />
+                Shopping Cart
+                <span className="text-xs font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+                  {cart.reduce((s, i) => s + i.quantity, 0)} items
+                </span>
               </h3>
-              <button onClick={() => setIsCartOpen(false)} className="p-2 text-slate-400 hover:text-slate-900 bg-slate-50 rounded-full transition cursor-pointer">
-                <X className="w-5 h-5" />
+              <button 
+                onClick={() => setIsCartOpen(false)} 
+                className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl transition cursor-pointer border border-slate-700/60"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-3.5">
               {cart.length === 0 ? (
-                <div className="text-center py-20 text-slate-400">
-                  <ShoppingBag className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p>Your cart is empty.</p>
+                <div className="text-center py-24 text-slate-500 space-y-3">
+                  <ShoppingBag className="w-16 h-16 mx-auto opacity-20 text-slate-400" />
+                  <p className="text-sm font-bold text-slate-400">Your shopping cart is currently empty.</p>
+                  <button 
+                    onClick={() => setIsCartOpen(false)}
+                    className="text-xs font-black text-amber-400 bg-amber-400/10 px-4 py-2 rounded-xl border border-amber-400/20 hover:bg-amber-400/20 transition cursor-pointer"
+                  >
+                    Start Shopping
+                  </button>
                 </div>
               ) : (
                 cart.map((item, idx) => (
-                  <div key={idx} className="flex gap-4 p-4 border border-slate-100 rounded-2xl bg-slate-50">
-                    <img src={item.product.image} alt={item.product.title} className="w-20 h-20 object-cover rounded-xl border border-slate-200" />
-                    <div className="flex-1 flex flex-col justify-between">
+                  <div key={idx} className="flex gap-3.5 p-3.5 border border-slate-800/80 rounded-2xl bg-slate-950/60 relative group">
+                    <img src={item.product.image} alt={item.product.title} className="w-20 h-20 object-cover rounded-xl border border-slate-800 shrink-0" />
+                    <div className="flex-1 flex flex-col justify-between min-w-0">
                       <div>
-                        <h4 className="font-bold text-sm text-slate-900 line-clamp-1">{item.product.title}</h4>
-                        <div className="text-sm font-black text-[#00D68F] mt-1">৳{(item.product.priceBDT ?? 0).toLocaleString()}</div>
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className="font-bold text-xs text-slate-100 line-clamp-1">{item.product.title}</h4>
+                          <button 
+                            onClick={() => handleUpdateCartQty(item.product.id, -item.quantity)}
+                            className="text-slate-500 hover:text-rose-400 transition cursor-pointer shrink-0"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="text-sm font-black text-amber-400 mt-1">
+                          ৳{((item.product.priceBDT ?? 0) * item.quantity).toLocaleString()}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 bg-white border border-slate-200 w-fit rounded-lg px-2 py-1 mt-2">
-                        <button onClick={() => handleUpdateCartQty(item.product.id, -1)} className="font-bold px-1 text-slate-400 hover:text-slate-900">-</button>
-                        <span className="text-xs font-bold text-slate-900 min-w-[16px] text-center">{item.quantity}</span>
-                        <button onClick={() => handleUpdateCartQty(item.product.id, 1)} className="font-bold px-1 text-slate-400 hover:text-slate-900">+</button>
+
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/60">
+                        <span className="text-[10px] text-slate-400 font-mono">৳{(item.product.priceBDT ?? 0).toLocaleString()} each</span>
+                        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1">
+                          <button 
+                            onClick={() => handleUpdateCartQty(item.product.id, -1)} 
+                            className="font-black px-1 text-slate-400 hover:text-amber-400 transition cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="text-xs font-black text-slate-100 min-w-[16px] text-center">{item.quantity}</span>
+                          <button 
+                            onClick={() => handleUpdateCartQty(item.product.id, 1)} 
+                            className="font-black px-1 text-slate-400 hover:text-amber-400 transition cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2221,19 +2474,31 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             </div>
 
             {cart.length > 0 && (
-              <div className="p-6 border-t border-slate-100 bg-white">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="font-bold text-slate-500">Subtotal</span>
-                  <span className="text-xl font-black text-[#00D68F]">৳{cartTotal.toLocaleString()}</span>
+              <div className="p-5 border-t border-slate-800/80 bg-slate-950/90 space-y-3">
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Subtotal</span>
+                    <span className="font-extrabold text-slate-200">৳{cartTotal.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Delivery Fee</span>
+                    <span className="text-emerald-400 font-bold">Calculated at Checkout</span>
+                  </div>
+                  <div className="border-t border-slate-800 pt-2 flex justify-between items-center text-sm">
+                    <span className="font-bold text-slate-200">Total Payable</span>
+                    <span className="text-xl font-black text-amber-400">৳{cartTotal.toLocaleString()}</span>
+                  </div>
                 </div>
+
                 <button
                   onClick={() => {
                     setIsCartOpen(false);
                     setCheckoutStep('checkout');
                   }}
-                  className="w-full py-4 bg-[#00D68F] text-slate-950 font-black rounded-xl text-base hover:bg-[#00E699] transition cursor-pointer shadow-lg"
+                  className="w-full py-4 bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 text-slate-950 font-black rounded-xl text-sm hover:scale-[1.01] transition cursor-pointer shadow-lg flex items-center justify-center gap-2"
                 >
-                  Proceed to Checkout
+                  <span>Proceed to Checkout</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
@@ -2242,9 +2507,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       )}
 
       {/* Store Footer */}
-      <footer className="bg-slate-900 text-slate-400 py-8 px-4 text-xs mt-6 border-t border-slate-800 space-y-6">
+      <footer className="bg-slate-950 text-slate-400 py-8 px-4 text-xs mt-6 border-t border-slate-800/80 space-y-6">
         <div className="space-y-3 text-center">
-          <h4 className="text-white text-base font-black">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
+          <h4 className="text-amber-400 text-base font-black tracking-wider uppercase">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
           <p className="text-[11px] leading-relaxed text-slate-400 max-w-xs mx-auto">
             Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by ZID SAAS BD Engine.
           </p>

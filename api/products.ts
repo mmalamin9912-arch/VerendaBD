@@ -162,74 +162,121 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rawParam = extractRawStoreSlug(req);
-    const cleanSlug = String(rawParam || '').split(':')[0].trim().toLowerCase() || 'bd';
+    const cleanSlug = String(rawParam || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
 
     if (req.method === 'GET' || !req.method) {
-      const products = await loadProducts(cleanSlug);
-      return res.status(200).json(Array.isArray(products) ? products : []);
+      try {
+        const products = await loadProducts(cleanSlug);
+        return res.status(200).json(Array.isArray(products) ? products : []);
+      } catch (getErr: any) {
+        console.error('[Vercel Serverless] GET /api/products error:', getErr);
+        return res.status(200).json([]);
+      }
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
-      const product = (req.body && typeof req.body === 'object') ? req.body as any : {};
-      if (!product.id) {
-        product.id = `prod-${Date.now()}`;
-      }
-
-      product.storeSlug = cleanSlug;
-      product.store_slug = cleanSlug;
-      product.status = 'active';
-      product.is_published = true;
-
-      // Save to KV / tenantStore
       try {
-        const tenant = (await getTenant(cleanSlug)) || {};
-        const prods = Array.isArray(tenant.products) ? tenant.products : [];
-        const idx = prods.findIndex((p: any) => String(p.id) === String(product.id));
-        if (idx >= 0) prods[idx] = product;
-        else prods.unshift(product);
-        await saveTenant(cleanSlug, { ...tenant, products: prods });
-      } catch (kvErr) {
-        console.warn('[Vercel Serverless] Save product KV error:', kvErr);
-      }
-
-      // Upsert to Supabase explicitly with store_slug: cleanSlug
-      const supabase = getDatabaseClient();
-      if (supabase) {
-        try {
-          const title = String(product.title || product.name || 'Untitled Product');
-          const sbRecord = {
-            id: String(product.id),
-            store_slug: cleanSlug,
-            title,
-            name: title,
-            price: Number(product.priceBDT ?? product.price ?? 0),
-            image_url: String(product.image || product.image_url || ''),
-            image: String(product.image || product.image_url || ''),
-            category_id: String(product.categoryId || product.category_id || product.category || ''),
-            category: String(product.category || 'General'),
-            status: 'active',
-            is_published: true,
-            sku: String(product.sku || ''),
-            stock: Number(product.stock ?? 0),
-            description: String(product.description || product.descriptionEn || ''),
-          };
-          await supabase.from('products').upsert(sbRecord, { onConflict: 'id' }).catch(async (err) => {
-            console.warn('[Vercel Serverless] Product upsert warning, trying minimal:', err?.message);
-            await supabase.from('products').upsert({
-              id: sbRecord.id,
-              store_slug: cleanSlug,
-              title: sbRecord.title,
-              price: sbRecord.price,
-              image: sbRecord.image,
-              status: 'active',
-            }, { onConflict: 'id' }).catch(() => {});
-          });
-        } catch (sbErr) {
-          console.warn('[Vercel Serverless] Supabase product error:', sbErr);
+        const product = (req.body && typeof req.body === 'object') ? (req.body as any) : {};
+        if (!product.id) {
+          product.id = `prod-${Date.now()}`;
         }
-      }
 
-      return res.status(200).json({ ok: true, success: true, product });
+        // 1. Sanitize incoming payload fields & data types
+        const rawSlug = String(product.store_slug || product.storeSlug || cleanSlug || 'bd');
+        const store_slug = String(rawSlug).split(':')[0].trim().toLowerCase() || 'bd';
+
+        const price = parseFloat(product.price ?? product.priceBDT ?? product.price_bdt ?? 0) || 0;
+        const stock_quantity = parseInt(product.stock_quantity ?? product.stock ?? 0, 10) || 0;
+        const stock = stock_quantity;
+
+        const id = String(product.id).trim();
+        const title = String(product.title || product.name || 'Untitled Product').trim();
+        const image_url = String(product.image || product.image_url || '').trim();
+        const category_id = String(product.categoryId || product.category_id || product.category || '').trim();
+        const category = String(product.category || 'General').trim();
+        const description = String(product.description || product.descriptionEn || '').trim();
+        const sku = String(product.sku || '').trim();
+
+        // Attach sanitized properties back to product object
+        product.id = id;
+        product.store_slug = store_slug;
+        product.storeSlug = store_slug;
+        product.price = price;
+        product.priceBDT = price;
+        product.stock_quantity = stock_quantity;
+        product.stock = stock;
+        product.status = product.status || 'active';
+        product.is_published = product.is_published !== false;
+
+        // Save to KV / tenantStore
+        try {
+          const tenant = (await getTenant(store_slug)) || {};
+          const prods = Array.isArray(tenant.products) ? tenant.products : [];
+          const idx = prods.findIndex((p: any) => String(p.id) === String(product.id));
+          if (idx >= 0) prods[idx] = product;
+          else prods.unshift(product);
+          await saveTenant(store_slug, { ...tenant, products: prods });
+        } catch (kvErr) {
+          console.warn('[Vercel Serverless] Save product KV error:', kvErr);
+        }
+
+        // 2. Safe Supabase Queries
+        const supabase = getDatabaseClient();
+        if (supabase) {
+          try {
+            const sbRecord = {
+              id: String(product.id),
+              store_slug,
+              title,
+              name: title,
+              price,
+              stock_quantity,
+              stock,
+              image_url,
+              image: image_url,
+              category_id,
+              category,
+              status: 'active',
+              is_published: true,
+              sku,
+              description,
+            };
+
+            const { error: upsertErr } = await supabase.from('products').upsert(sbRecord, { onConflict: 'id' });
+            if (upsertErr) {
+              console.warn('[Vercel Serverless] Primary product upsert failed, trying minimal:', upsertErr.message || upsertErr);
+              const { error: minErr } = await supabase.from('products').upsert({
+                id: sbRecord.id,
+                store_slug: sbRecord.store_slug,
+                title: sbRecord.title,
+                price: sbRecord.price,
+                image: sbRecord.image,
+                status: 'active',
+              }, { onConflict: 'id' });
+
+              if (minErr) {
+                console.error('[Vercel Serverless] Supabase product schema error on POST:', minErr);
+                return res.status(400).json({
+                  ok: false,
+                  error: `Supabase schema or column error: ${minErr.message || upsertErr.message}`,
+                  details: minErr || upsertErr,
+                });
+              }
+            }
+          } catch (sbErr: any) {
+            console.error('[Vercel Serverless] Supabase product POST exception:', sbErr);
+            return res.status(400).json({
+              ok: false,
+              error: `Supabase database error: ${sbErr?.message || 'Database execution failed'}`,
+            });
+          }
+        }
+
+        return res.status(200).json({ ok: true, success: true, product });
+      } catch (postErr: any) {
+        console.error('[Vercel Serverless] POST product error:', postErr);
+        return res.status(400).json({ ok: false, error: postErr?.message || 'Invalid product payload' });
+      }
     }
 
     if (req.method === 'DELETE') {
