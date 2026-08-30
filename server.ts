@@ -81,6 +81,26 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+function getServerSupabaseConfig() {
+  const rawSupabaseUrl =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    process.env.DATABASE_URL ||
+    '';
+  const rawSupabaseKey =
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    '';
+  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+  const isConfigured = Boolean(supabaseUrl && supabaseKey && isValidUrl(supabaseUrl));
+  return { supabaseUrl, supabaseKey, isConfigured };
+}
+
 function sanitizeServerMerchant(m: any) {
   if (!m || typeof m !== 'object') return m;
   const planId = m.subscriptionPlan || m.subscription_plan || 'free_trial';
@@ -141,12 +161,9 @@ app.get('/api/subscription/by-store/:storeName', async (req, res) => {
       return res.status(200).json({ ok: false, subscription_plan: null, subscription_expiry: null });
     }
 
-    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+    const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    if (isConfigured) {
       try {
         const slug = storeName.toLowerCase().replace(/[^a-z0-9]/g, '');
         const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?or=(store_name.ilike.${encodeURIComponent(storeName)},store_slug.eq.${encodeURIComponent(slug)})&select=*&limit=1`, {
@@ -214,12 +231,9 @@ app.all('/api/categories', async (req, res) => {
         categoryStore.set(storeSlug, categories);
       }
 
-      const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-      const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-      const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-      const supabaseKey = cleanEnvKey(rawSupabaseKey);
+      const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-      if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl) && categories.length > 0) {
+      if (isConfigured && categories.length > 0) {
         try {
           const records = categories.map((cat: any) => ({
             id: String(cat.id),
@@ -261,11 +275,8 @@ app.all('/api/categories', async (req, res) => {
           .map((c: any) => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
         categoryStore.set(storeSlug, updatedCats);
 
-        const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-        const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-        const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-        const supabaseKey = cleanEnvKey(rawSupabaseKey);
-        if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+        const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
+        if (isConfigured) {
           try {
             await fetch(`${supabaseUrl}/rest/v1/categories?parent_id=eq.${encodeURIComponent(catId)}`, {
               method: 'PATCH',
@@ -359,12 +370,9 @@ app.get('/api/merchants/check/:email', async (req, res) => {
   if (!email) return res.json(null);
   
   // 1. Query Supabase REST if configured
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+  const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+  if (isConfigured) {
     try {
       const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?email=ilike.${encodeURIComponent(email)}&select=*&limit=1`, {
         headers: {
@@ -410,12 +418,9 @@ app.get('/api/merchants/by-slug', async (req, res) => {
   if (!slug) return res.json({ ok: false, merchant: null });
   
   // 1. Query Supabase REST if configured
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
+  const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+  if (isConfigured) {
     try {
       const sbRes = await fetch(`${supabaseUrl}/rest/v1/merchants?store_slug=eq.${encodeURIComponent(slug)}&select=*&limit=1`, {
         headers: {
@@ -591,12 +596,9 @@ app.post('/api/products', async (req, res) => {
     await writeStorePayload(payload);
 
     // 4. Supabase direct REST upsert
-    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+    const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    if (isConfigured) {
       try {
         const sbRecord = {
           id: String(product.id),
@@ -672,11 +674,8 @@ app.delete('/api/products/:id', async (req, res) => {
   }
   await writeStorePayload(payload);
 
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+  const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
+  if (isConfigured) {
     await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(prodId)}`, {
       method: 'DELETE',
       headers: {
@@ -711,16 +710,13 @@ app.delete('/api/products', async (req, res) => {
   }
   await writeStorePayload(payload);
 
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
-    await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(prodId)}`, {
+  const { supabaseUrl: sbUrl2, supabaseKey: sbKey2, isConfigured: isSbConfig2 } = getServerSupabaseConfig();
+  if (isSbConfig2) {
+    await fetch(`${sbUrl2}/rest/v1/products?id=eq.${encodeURIComponent(prodId)}`, {
       method: 'DELETE',
       headers: {
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
+        'apikey': sbKey2,
+        'Authorization': `Bearer ${sbKey2}`,
         'Prefer': 'return=minimal',
       },
     }).catch(() => {});
@@ -991,11 +987,8 @@ async function dispatchLiveWhatsAppMessage(phone: string, code: string, userType
   }
 
   // 5. Check Supabase Edge Function
-  const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-  const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-  const supabaseKey = cleanEnvKey(rawSupabaseKey);
-  if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+  const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
+  if (isConfigured) {
     try {
       const edgeRes = await fetch(`${supabaseUrl}/functions/v1/send-whatsapp-otp`, {
         method: 'POST',
@@ -1076,12 +1069,9 @@ app.post('/api/auth/whatsapp-otp/send', async (req, res) => {
     });
 
     // Attempt to sync with Supabase REST API if configured
-    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+    const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    if (isConfigured) {
       try {
         await fetch(`${supabaseUrl}/rest/v1/whatsapp_otps`, {
           method: 'POST',
@@ -1143,12 +1133,9 @@ app.post('/api/auth/whatsapp-otp/verify', async (req, res) => {
 
     // Also check Supabase if session in memory expired/missing
     let isValidInSupabase = false;
-    const rawSupabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-    const rawSupabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
-    const supabaseKey = cleanEnvKey(rawSupabaseKey);
+    const { supabaseUrl, supabaseKey, isConfigured } = getServerSupabaseConfig();
 
-    if (supabaseUrl && supabaseKey && isValidUrl(supabaseUrl)) {
+    if (isConfigured) {
       try {
         const sbRes = await fetch(`${supabaseUrl}/rest/v1/whatsapp_otps?phone=in.(${encodeURIComponent(cleanPhone)},${encodeURIComponent(rawPhoneDigits)})&status=eq.pending&select=*&order=created_at.desc&limit=1`, {
           headers: {

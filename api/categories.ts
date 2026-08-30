@@ -45,29 +45,37 @@ function getDatabaseClient(): SupabaseClient | null {
   try {
     if (cachedSupabase) return cachedSupabase;
 
-    const rawUrl =
+    // 1. Multi-Prefix Environment Fallback
+    const rawSupabaseUrl =
+      process.env.VITE_SUPABASE_URL ||
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.SUPABASE_URL ||
-      process.env.VITE_SUPABASE_URL ||
       process.env.DATABASE_URL ||
       '';
 
-    const rawKey =
+    const rawSupabaseKey =
+      process.env.VITE_SUPABASE_ANON_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       process.env.SUPABASE_ANON_KEY ||
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.VITE_SUPABASE_ANON_KEY ||
       process.env.SUPABASE_KEY ||
       '';
 
-    const url = cleanEnvUrl(rawUrl);
-    const key = cleanEnvKey(rawKey);
+    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+    const supabaseKey = cleanEnvKey(rawSupabaseKey);
 
-    if (!url || !key || !isValidUrl(url)) {
+    // 2. Safe Initialization Guard
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('[Vercel Serverless /api/categories] Supabase credentials missing (VITE_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_URL, or SUPABASE_URL). Fallback mode enabled.');
       return null;
     }
 
-    cachedSupabase = createClient(url, key, {
+    if (!isValidUrl(supabaseUrl)) {
+      console.warn('[Vercel Serverless /api/categories] Invalid Supabase URL format:', supabaseUrl);
+      return null;
+    }
+
+    cachedSupabase = createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false },
       global: {
         headers: {
@@ -77,7 +85,7 @@ function getDatabaseClient(): SupabaseClient | null {
     });
     return cachedSupabase;
   } catch (e: any) {
-    console.warn('[Vercel Serverless] Supabase client initialization warning:', e?.message || e);
+    console.warn('[Vercel Serverless /api/categories] Supabase client initialization warning:', e?.message || e);
     return null;
   }
 }
@@ -121,7 +129,7 @@ function extractRawStoreSlug(req: VercelRequest): string {
       }
     }
   } catch (err: any) {
-    console.warn('[Vercel Serverless] Error extracting store_slug:', err?.message || err);
+    console.warn('[Vercel Serverless /api/categories] Error extracting store_slug:', err?.message || err);
   }
   return 'bd';
 }
@@ -167,7 +175,7 @@ async function loadCategories(cleanSlug: string): Promise<any[]> {
               .eq('store_slug', sanitizedSlug);
 
             if (error) {
-              console.error('[Vercel Serverless] Supabase categories error:', error.message);
+              console.error('[Vercel Serverless /api/categories] Supabase categories error:', error.message);
               return null;
             }
 
@@ -184,17 +192,17 @@ async function loadCategories(cleanSlug: string): Promise<any[]> {
                 .maybeSingle();
 
               if (tenantErr) {
-                console.error('[Vercel Serverless] Supabase tenant categories error:', tenantErr.message);
+                console.error('[Vercel Serverless /api/categories] Supabase tenant categories error:', tenantErr.message);
               } else if (tenantData?.categories && Array.isArray(tenantData.categories) && tenantData.categories.length > 0) {
                 return tenantData.categories;
               }
             } catch (tErr: any) {
-              console.error('[Vercel Serverless] Supabase tenant lookup error:', tErr?.message || tErr);
+              console.error('[Vercel Serverless /api/categories] Supabase tenant lookup error:', tErr?.message || tErr);
             }
 
             return null;
           } catch (innerErr: any) {
-            console.error('[Vercel Serverless] Supabase categories execution error:', innerErr?.message || innerErr);
+            console.error('[Vercel Serverless /api/categories] Supabase categories execution error:', innerErr?.message || innerErr);
             return null;
           }
         })();
@@ -204,7 +212,7 @@ async function loadCategories(cleanSlug: string): Promise<any[]> {
           return sbCategories;
         }
       } catch (sbErr: any) {
-        console.error('[Vercel Serverless] Supabase category query warning:', sbErr?.message || sbErr);
+        console.error('[Vercel Serverless /api/categories] Supabase category query warning:', sbErr?.message || sbErr);
       }
     }
 
@@ -216,7 +224,7 @@ async function loadCategories(cleanSlug: string): Promise<any[]> {
         return tenant.categories;
       }
     } catch (kvErr: any) {
-      console.warn('[Vercel Serverless] Tenant store lookup warning:', kvErr?.message || kvErr);
+      console.warn('[Vercel Serverless /api/categories] Tenant store lookup warning:', kvErr?.message || kvErr);
     }
 
     // 3. Fallback categories
@@ -226,7 +234,7 @@ async function loadCategories(cleanSlug: string): Promise<any[]> {
 
     return [];
   } catch (err: any) {
-    console.error('[Vercel Serverless] loadCategories exception:', err?.message || err);
+    console.error('[Vercel Serverless /api/categories] loadCategories exception:', err?.message || err);
     return [];
   }
 }
@@ -259,7 +267,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const categories = await loadCategories(cleanSlug);
         return res.status(200).json(Array.isArray(categories) ? categories : []);
       } catch (getErr: any) {
-        console.error('[Vercel Serverless] GET /api/categories error:', getErr?.message || getErr);
+        console.error('[Vercel Serverless /api/categories] GET error:', getErr?.message || getErr);
         return res.status(200).json([]);
       }
     }
@@ -280,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const tenant = (await getTenant(cleanSlug)) || {};
           await saveTenant(cleanSlug, { ...tenant, categories });
         } catch (kvSaveErr: any) {
-          console.warn('[Vercel Serverless] Save to KV error:', kvSaveErr?.message || kvSaveErr);
+          console.warn('[Vercel Serverless /api/categories] Save to KV error:', kvSaveErr?.message || kvSaveErr);
         }
 
         // Safe Supabase upsert
@@ -303,16 +311,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             const { error: upsertErr } = await supabase.from('categories').upsert(records, { onConflict: 'id' });
             if (upsertErr) {
-              console.error('[Vercel Serverless] Supabase categories upsert error:', upsertErr.message);
+              console.error('[Vercel Serverless /api/categories] Supabase categories upsert error:', upsertErr.message);
             }
           } catch (sbUpsertErr: any) {
-            console.error('[Vercel Serverless] Supabase categories upsert exception:', sbUpsertErr?.message || sbUpsertErr);
+            console.error('[Vercel Serverless /api/categories] Supabase categories upsert exception:', sbUpsertErr?.message || sbUpsertErr);
           }
         }
 
         return res.status(200).json(categories);
       } catch (postErr: any) {
-        console.error('[Vercel Serverless] POST categories error:', postErr?.message || postErr);
+        console.error('[Vercel Serverless /api/categories] POST error:', postErr?.message || postErr);
         return res.status(200).json([]);
       }
     }
@@ -341,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await saveTenant(cleanSlug, { ...tenant, categories: updatedCats });
             }
           } catch (kvDelErr: any) {
-            console.warn('[Vercel Serverless] KV category delete error:', kvDelErr?.message || kvDelErr);
+            console.warn('[Vercel Serverless /api/categories] KV category delete error:', kvDelErr?.message || kvDelErr);
           }
 
           const supabase = getDatabaseClient();
@@ -350,10 +358,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
               const { error: delErr } = await supabase.from('categories').delete().eq('id', catId);
               if (delErr) {
-                console.error('[Vercel Serverless] Supabase categories delete error:', delErr.message);
+                console.error('[Vercel Serverless /api/categories] Supabase categories delete error:', delErr.message);
               }
             } catch (sbDelErr: any) {
-              console.error('[Vercel Serverless] Supabase category delete warning:', sbDelErr?.message || sbDelErr);
+              console.error('[Vercel Serverless /api/categories] Supabase category delete warning:', sbDelErr?.message || sbDelErr);
             }
           }
 
@@ -362,7 +370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         return res.status(200).json({ ok: false, error: 'Category id required for deletion' });
       } catch (delErr: any) {
-        console.error('[Vercel Serverless] Categories delete error:', delErr?.message || delErr);
+        console.error('[Vercel Serverless /api/categories] Categories delete error:', delErr?.message || delErr);
         return res.status(200).json({ ok: false, error: delErr?.message || 'Delete operation failed' });
       }
     }

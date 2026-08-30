@@ -45,35 +45,43 @@ function getDatabaseClient(): SupabaseClient | null {
   try {
     if (cachedSupabase) return cachedSupabase;
 
-    const rawUrl =
+    // 1. Multi-Prefix Environment Fallback
+    const rawSupabaseUrl =
+      process.env.VITE_SUPABASE_URL ||
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.SUPABASE_URL ||
-      process.env.VITE_SUPABASE_URL ||
       process.env.DATABASE_URL ||
       '';
 
-    const rawKey =
+    const rawSupabaseKey =
+      process.env.VITE_SUPABASE_ANON_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
       process.env.SUPABASE_ANON_KEY ||
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.VITE_SUPABASE_ANON_KEY ||
       process.env.SUPABASE_KEY ||
       '';
 
-    const url = cleanEnvUrl(rawUrl);
-    const key = cleanEnvKey(rawKey);
+    const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
+    const supabaseKey = cleanEnvKey(rawSupabaseKey);
 
-    if (!url || !key || !isValidUrl(url)) {
+    // 2. Safe Initialization Guard
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('[Vercel Serverless /api/products] Supabase credentials missing (VITE_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_URL, or SUPABASE_URL). Fallback mode enabled.');
       return null;
     }
 
-    cachedSupabase = createClient(url, key, {
+    if (!isValidUrl(supabaseUrl)) {
+      console.warn('[Vercel Serverless /api/products] Invalid Supabase URL format:', supabaseUrl);
+      return null;
+    }
+
+    cachedSupabase = createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false },
       global: { headers: { 'x-client-info': 'vercel-serverless-products' } },
     });
     return cachedSupabase;
   } catch (e: any) {
-    console.warn('[Vercel Serverless] Supabase client init warning:', e?.message || e);
+    console.warn('[Vercel Serverless /api/products] Supabase client initialization warning:', e?.message || e);
     return null;
   }
 }
@@ -109,7 +117,7 @@ function extractRawStoreSlug(req: VercelRequest): string {
       if (typeof bSlug === 'string' && bSlug.trim()) return bSlug.trim();
     }
   } catch (err: any) {
-    console.warn('[Vercel Serverless] Error extracting store_slug:', err?.message || err);
+    console.warn('[Vercel Serverless /api/products] Error extracting store_slug:', err?.message || err);
   }
   return 'bd';
 }
@@ -178,7 +186,7 @@ async function loadProducts(cleanSlug: string): Promise<any[]> {
               .eq('store_slug', sanitizedSlug);
 
             if (error) {
-              console.error('[Vercel Serverless] Supabase products error:', error.message);
+              console.error('[Vercel Serverless /api/products] Supabase products query error:', error.message);
               return null;
             }
 
@@ -195,17 +203,17 @@ async function loadProducts(cleanSlug: string): Promise<any[]> {
                 .maybeSingle();
 
               if (tenantErr) {
-                console.error('[Vercel Serverless] Supabase tenant products error:', tenantErr.message);
+                console.error('[Vercel Serverless /api/products] Supabase tenant products error:', tenantErr.message);
               } else if (tenantData?.products && Array.isArray(tenantData.products) && tenantData.products.length > 0) {
                 return tenantData.products;
               }
             } catch (tErr: any) {
-              console.error('[Vercel Serverless] Supabase tenant lookup exception:', tErr?.message || tErr);
+              console.error('[Vercel Serverless /api/products] Supabase tenant lookup exception:', tErr?.message || tErr);
             }
 
             return null;
           } catch (innerErr: any) {
-            console.error('[Vercel Serverless] Supabase query execution error:', innerErr?.message || innerErr);
+            console.error('[Vercel Serverless /api/products] Supabase query execution error:', innerErr?.message || innerErr);
             return null;
           }
         })();
@@ -215,7 +223,7 @@ async function loadProducts(cleanSlug: string): Promise<any[]> {
           return sbProducts;
         }
       } catch (e: any) {
-        console.error('[Vercel Serverless] Supabase products load warning:', e?.message || e);
+        console.error('[Vercel Serverless /api/products] Supabase products load warning:', e?.message || e);
       }
     }
 
@@ -226,7 +234,7 @@ async function loadProducts(cleanSlug: string): Promise<any[]> {
         return tenant.products;
       }
     } catch (kvErr: any) {
-      console.warn('[Vercel Serverless] KV load error:', kvErr?.message || kvErr);
+      console.warn('[Vercel Serverless /api/products] KV load error:', kvErr?.message || kvErr);
     }
 
     // 3. Fallback mock products for standard preview slugs
@@ -236,7 +244,7 @@ async function loadProducts(cleanSlug: string): Promise<any[]> {
 
     return [];
   } catch (fatalLoadErr: any) {
-    console.error('[Vercel Serverless] loadProducts fatal exception:', fatalLoadErr?.message || fatalLoadErr);
+    console.error('[Vercel Serverless /api/products] loadProducts fatal exception:', fatalLoadErr?.message || fatalLoadErr);
     return [];
   }
 }
@@ -269,7 +277,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const products = await loadProducts(cleanSlug);
         return res.status(200).json(Array.isArray(products) ? products : []);
       } catch (getErr: any) {
-        console.error('[Vercel Serverless] GET /api/products error:', getErr?.message || getErr);
+        console.error('[Vercel Serverless /api/products] GET error:', getErr?.message || getErr);
         return res.status(200).json([]);
       }
     }
@@ -318,7 +326,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           else prods.unshift(product);
           await saveTenant(store_slug, { ...tenant, products: prods });
         } catch (kvErr: any) {
-          console.warn('[Vercel Serverless] Save product KV error:', kvErr?.message || kvErr);
+          console.warn('[Vercel Serverless /api/products] Save product KV error:', kvErr?.message || kvErr);
         }
 
         // 2. Safe Supabase Queries
@@ -345,7 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             const { error: upsertErr } = await supabase.from('products').upsert(sbRecord, { onConflict: 'id' });
             if (upsertErr) {
-              console.error('[Vercel Serverless] Supabase products error on full upsert:', upsertErr.message);
+              console.error('[Vercel Serverless /api/products] Supabase products error on full upsert:', upsertErr.message);
               // Fallback minimal upsert with core columns
               const { error: minErr } = await supabase.from('products').upsert({
                 id: sbRecord.id,
@@ -357,17 +365,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }, { onConflict: 'id' });
 
               if (minErr) {
-                console.error('[Vercel Serverless] Supabase products error on minimal upsert:', minErr.message);
+                console.error('[Vercel Serverless /api/products] Supabase products error on minimal upsert:', minErr.message);
               }
             }
           } catch (sbErr: any) {
-            console.error('[Vercel Serverless] Supabase product POST exception:', sbErr?.message || sbErr);
+            console.error('[Vercel Serverless /api/products] Supabase product POST exception:', sbErr?.message || sbErr);
           }
         }
 
         return res.status(200).json({ ok: true, success: true, product });
       } catch (postErr: any) {
-        console.error('[Vercel Serverless] POST product error:', postErr?.message || postErr);
+        console.error('[Vercel Serverless /api/products] POST product error:', postErr?.message || postErr);
         return res.status(200).json({ ok: false, error: postErr?.message || 'Invalid product payload' });
       }
     }
@@ -394,7 +402,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               await saveTenant(cleanSlug, { ...tenant, products: updated });
             }
           } catch (kvDelErr: any) {
-            console.warn('[Vercel Serverless] KV product delete error:', kvDelErr?.message || kvDelErr);
+            console.warn('[Vercel Serverless /api/products] KV product delete error:', kvDelErr?.message || kvDelErr);
           }
 
           const supabase = getDatabaseClient();
@@ -402,10 +410,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             try {
               const { error: delErr } = await supabase.from('products').delete().eq('id', id);
               if (delErr) {
-                console.error('[Vercel Serverless] Supabase products error on delete:', delErr.message);
+                console.error('[Vercel Serverless /api/products] Supabase products error on delete:', delErr.message);
               }
             } catch (e: any) {
-              console.error('[Vercel Serverless] Supabase product delete exception:', e?.message || e);
+              console.error('[Vercel Serverless /api/products] Supabase product delete exception:', e?.message || e);
             }
           }
 
@@ -414,7 +422,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         return res.status(200).json({ ok: false, error: 'id required for deletion' });
       } catch (delErr: any) {
-        console.error('[Vercel Serverless] Product delete error:', delErr?.message || delErr);
+        console.error('[Vercel Serverless /api/products] Product delete error:', delErr?.message || delErr);
         return res.status(200).json({ ok: false, error: delErr?.message || 'Delete operation failed' });
       }
     }
