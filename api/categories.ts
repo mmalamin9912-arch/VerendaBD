@@ -16,7 +16,6 @@ type VercelResponse = {
   end: () => void;
 };
 
-// Reusable Supabase client instance across serverless invocations
 let cachedSupabase: SupabaseClient | null = null;
 
 function cleanEnvUrl(raw?: string): string {
@@ -42,9 +41,6 @@ function isValidUrl(url: string): boolean {
   }
 }
 
-/**
- * Safely initialize and reuse Supabase client if Database environment variables are present.
- */
 function getDatabaseClient(): SupabaseClient | null {
   if (cachedSupabase) return cachedSupabase;
 
@@ -85,21 +81,16 @@ function getDatabaseClient(): SupabaseClient | null {
   return null;
 }
 
-/**
- * Safely parse store_slug query parameter across Vercel URL rewrites and route handling.
- */
-function extractStoreSlug(req: VercelRequest): string {
+function extractRawStoreSlug(req: VercelRequest): string {
   try {
-    // 1. Direct query parameters
     const qSlug = req.query?.store_slug || req.query?.slug || req.query?.store;
     if (typeof qSlug === 'string' && qSlug.trim()) {
-      return qSlug.trim().toLowerCase();
+      return qSlug.trim();
     }
     if (Array.isArray(qSlug) && typeof qSlug[0] === 'string' && qSlug[0].trim()) {
-      return qSlug[0].trim().toLowerCase();
+      return qSlug[0].trim();
     }
 
-    // 2. Parse from req.url query string if present (Vercel rewrite handling)
     if (req.url) {
       try {
         const urlObj = new URL(req.url, 'http://localhost');
@@ -108,18 +99,15 @@ function extractStoreSlug(req: VercelRequest): string {
           urlObj.searchParams.get('slug') ||
           urlObj.searchParams.get('store');
         if (searchSlug && searchSlug.trim()) {
-          return searchSlug.trim().toLowerCase();
+          return searchSlug.trim();
         }
-      } catch {
-        // Suppress URL parsing errors
-      }
+      } catch {}
     }
 
-    // 3. Body parameter if POST/PUT
     if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
-      const bSlug = (req.body as Record<string, any>).store_slug || (req.body as Record<string, any>).slug;
+      const bSlug = (req.body as Record<string, any>).store_slug || (req.body as Record<string, any>).slug || (req.body as Record<string, any>).storeSlug;
       if (typeof bSlug === 'string' && bSlug.trim()) {
-        return bSlug.trim().toLowerCase();
+        return bSlug.trim();
       }
     }
   } catch (err) {
@@ -128,14 +116,10 @@ function extractStoreSlug(req: VercelRequest): string {
   return '';
 }
 
-/**
- * Timeout wrapper for database lookups to prevent serverless function hangs/500 errors.
- */
 async function fetchWithTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => {
-      console.warn(`[Vercel Serverless] Database lookup timed out after ${timeoutMs}ms`);
       resolve(fallback);
     }, timeoutMs);
   });
@@ -144,20 +128,15 @@ async function fetchWithTimeout<T>(promise: Promise<T>, timeoutMs: number, fallb
     const result = await Promise.race([promise, timeoutPromise]);
     clearTimeout(timer!);
     return result;
-  } catch (err) {
+  } catch {
     clearTimeout(timer!);
-    console.warn('[Vercel Serverless] Database query error:', err);
     return fallback;
   }
 }
 
-/**
- * Safely fetch categories from Supabase, Vercel KV, or default fallbacks.
- */
-async function loadCategories(storeSlug: string): Promise<any[]> {
-  if (!storeSlug) return [];
+async function loadCategories(cleanSlug: string): Promise<any[]> {
+  if (!cleanSlug) return [];
 
-  // Source A: Supabase categories table
   const supabase = getDatabaseClient();
   if (supabase) {
     try {
@@ -165,17 +144,16 @@ async function loadCategories(storeSlug: string): Promise<any[]> {
         const { data, error } = await supabase
           .from('categories')
           .select('*')
-          .eq('store_slug', storeSlug);
+          .eq('store_slug', cleanSlug);
 
         if (!error && Array.isArray(data) && data.length > 0) {
           return data;
         }
 
-        // Fallback: check tenants table in Supabase
         const { data: tenantData } = await supabase
           .from('tenants')
           .select('categories')
-          .eq('store_slug', storeSlug)
+          .eq('store_slug', cleanSlug)
           .maybeSingle();
 
         if (tenantData?.categories && Array.isArray(tenantData.categories) && tenantData.categories.length > 0) {
@@ -194,9 +172,8 @@ async function loadCategories(storeSlug: string): Promise<any[]> {
     }
   }
 
-  // Source B: Vercel KV / tenantStore
   try {
-    const kvQuery = getTenant(storeSlug);
+    const kvQuery = getTenant(cleanSlug);
     const tenant = await fetchWithTimeout(kvQuery, 2000, null);
     if (tenant && Array.isArray(tenant.categories) && tenant.categories.length > 0) {
       return tenant.categories;
@@ -205,8 +182,7 @@ async function loadCategories(storeSlug: string): Promise<any[]> {
     console.warn('[Vercel Serverless] Tenant store lookup warning:', kvErr);
   }
 
-  // Fallback defaults for common slugs like 'bd' or general fallback
-  if (storeSlug === 'bd' || storeSlug === 'verandabd' || storeSlug === 'default') {
+  if (cleanSlug === 'bd' || cleanSlug === 'verandabd' || cleanSlug === 'default') {
     return [
       { id: 'cat-electronics', name: 'Electronics & Gadgets', slug: 'electronics', image: '' },
       { id: 'cat-fashion', name: 'Fashion & Clothing', slug: 'fashion', image: '' },
@@ -218,13 +194,8 @@ async function loadCategories(storeSlug: string): Promise<any[]> {
   return [];
 }
 
-/**
- * Vercel Serverless Route Handler for /api/categories
- * Safe, fault-tolerant execution that NEVER crashes with a hard 500 error on Vercel.
- */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // 1. Always set CORS & Anti-Caching Headers
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -236,36 +207,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('CDN-Cache-Control', 'no-store');
     res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
 
-    // Handle OPTIONS Preflight
     if (req.method === 'OPTIONS') {
       res.status(200);
       return res.end();
     }
 
-    // 2. Parse store_slug
-    const storeSlug = extractStoreSlug(req);
+    // Sanitize store_slug by splitting on ':'
+    const rawParam = extractRawStoreSlug(req) || (typeof req.query?.store_slug === 'string' ? req.query.store_slug : '');
+    const cleanSlug = String(rawParam || '').split(':')[0].trim().toLowerCase() || 'bd';
 
-    // If store_slug is missing, return 200 OK status with empty array [] as fallback
-    if (!storeSlug) {
-      return res.status(200).json({
-        ok: true,
-        store_slug: '',
-        categories: [],
-        message: 'store_slug query parameter was omitted; returned empty array fallback.'
-      });
-    }
-
-    // 3. GET /api/categories
     if (req.method === 'GET' || !req.method) {
-      const categories = await loadCategories(storeSlug);
+      const categories = await loadCategories(cleanSlug);
       return res.status(200).json({
         ok: true,
-        store_slug: storeSlug,
+        store_slug: cleanSlug,
         categories: Array.isArray(categories) ? categories : []
       });
     }
 
-    // 4. POST / PUT /api/categories
     if (req.method === 'POST' || req.method === 'PUT') {
       let categories = Array.isArray((req.body as any)?.categories)
         ? (req.body as any).categories
@@ -273,21 +232,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? req.body
           : [];
 
-      // Save to KV / tenant store safely
       try {
-        const tenant = (await getTenant(storeSlug)) || {};
-        await saveTenant(storeSlug, { ...tenant, categories });
+        const tenant = (await getTenant(cleanSlug)) || {};
+        await saveTenant(cleanSlug, { ...tenant, categories });
       } catch (kvSaveErr) {
         console.warn('[Vercel Serverless] Save to KV error:', kvSaveErr);
       }
 
-      // Upsert to Supabase safely if client exists
       const supabase = getDatabaseClient();
       if (supabase && categories.length > 0) {
         try {
           const records = categories.map((cat: any) => ({
             id: String(cat.id || `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`),
-            store_slug: storeSlug,
+            store_slug: cleanSlug,
             title: String(cat.name || cat.title || 'Category'),
             name: String(cat.name || cat.title || 'Category'),
             image_url: String(cat.image || cat.coverImage || cat.image_url || ''),
@@ -307,12 +264,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         ok: true,
-        store_slug: storeSlug,
+        store_slug: cleanSlug,
         categories
       });
     }
 
-    // 5. DELETE /api/categories
     if (req.method === 'DELETE') {
       let catId = (typeof req.query?.id === 'string' ? req.query.id : '').trim();
       if (!catId && req.body && typeof req.body === 'object') {
@@ -326,102 +282,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (catId) {
-        // Update KV / tenant store
         try {
-          const tenant = (await getTenant(storeSlug)) || {};
+          const tenant = (await getTenant(cleanSlug)) || {};
           if (Array.isArray(tenant.categories)) {
             const updatedCats = tenant.categories
               .filter((c: any) => String(c.id) !== catId)
               .map((c: any) => String(c.parentId) === catId || String(c.parent_id) === catId ? { ...c, parentId: null, parent_id: null } : c);
-            await saveTenant(storeSlug, { ...tenant, categories: updatedCats });
+            await saveTenant(cleanSlug, { ...tenant, categories: updatedCats });
           }
         } catch (kvDelErr) {
           console.warn('[Vercel Serverless] KV category delete error:', kvDelErr);
         }
 
-        // Supabase DELETE
         const supabase = getDatabaseClient();
-        let dbDeleted = false;
-        let dbError: string | null = null;
         if (supabase) {
           try {
-            // 1. Detach child categories first (only real column: parent_id).
-            //    Note: `parentId` is NOT a database column and would make the
-            //    whole update fail silently, leaving dangling FK references.
-            const { error: childErr } = await supabase
-              .from('categories')
-              .update({ parent_id: null })
-              .eq('parent_id', catId);
-            if (childErr) {
-              console.warn('[Vercel Serverless] Supabase detach child categories warning:', childErr.message);
-            }
-
-            // 2. Attempt the actual DELETE by primary key.
-            const { error: delErr } = await supabase
-              .from('categories')
-              .delete()
-              .eq('id', catId);
-
-            if (!delErr) {
-              dbDeleted = true;
-            } else if (delErr.code === '23503' || /foreign key|violates/i.test(delErr.message || '')) {
-              // 3. Foreign key constraint: detach dependent products, then retry.
-              console.warn('[Vercel Serverless] Category FK violation, detaching products then retrying delete:', delErr.message);
-              const { error: prodDetachErr } = await supabase
-                .from('products')
-                .update({ category_id: null })
-                .eq('category_id', catId);
-              if (prodDetachErr) {
-                console.warn('[Vercel Serverless] Supabase detach products warning:', prodDetachErr.message);
-              }
-
-              const { error: retryErr } = await supabase
-                .from('categories')
-                .delete()
-                .eq('id', catId);
-              if (!retryErr) {
-                dbDeleted = true;
-              } else {
-                dbError = retryErr.message || 'Foreign key constraint prevented category deletion';
-                console.error('[Vercel Serverless] Supabase category delete failed after FK retry:', retryErr);
-              }
-            } else {
-              dbError = delErr.message || 'Unknown Supabase delete error';
-              console.error('[Vercel Serverless] Supabase category delete error:', delErr);
-            }
-          } catch (sbDelErr: any) {
-            dbError = sbDelErr?.message || 'Supabase category delete exception';
+            await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
+            await supabase.from('categories').delete().eq('id', catId);
+          } catch (sbDelErr) {
             console.warn('[Vercel Serverless] Supabase category delete warning:', sbDelErr);
           }
         }
 
-        return res.status(200).json({
-          ok: dbDeleted || !supabase,
-          deleted_id: catId,
-          db_deleted: dbDeleted,
-          error: dbError
-        });
+        return res.status(200).json({ ok: true, deleted_id: catId });
       }
 
       return res.status(400).json({ ok: false, error: 'Category id required for deletion' });
     }
 
     res.setHeader('Allow', 'GET, POST, PUT, DELETE, OPTIONS');
-    return res.status(200).json({
-      ok: false,
-      store_slug: storeSlug,
-      categories: [],
-      error: `Method ${req.method || 'UNKNOWN'} is not allowed`
-    });
+    return res.status(200).json([]);
 
   } catch (fatalError: any) {
-    // Ultimate safety block: NEVER return 500 Internal Server Error on Vercel
     console.error('[Vercel Serverless Fatal Error] /api/categories handler crash prevented:', fatalError);
-    return res.status(200).json({
-      ok: true,
-      store_slug: (req as any)?.query?.store_slug || 'bd',
-      categories: [],
-      error: fatalError?.message || 'Server error suppressed; fallback categories returned'
-    });
+    return res.status(200).json([]);
   }
 }

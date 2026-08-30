@@ -200,11 +200,12 @@ app.get('/api/health', (req, res) => {
 app.all('/api/categories', async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   try {
-    const storeSlug = typeof req.query.store_slug === 'string' 
+    const rawSlug = typeof req.query.store_slug === 'string' 
       ? req.query.store_slug.trim().toLowerCase() 
       : typeof req.body?.store_slug === 'string' 
         ? req.body.store_slug.trim().toLowerCase() 
         : '';
+    const storeSlug = String(rawSlug || '').split(':')[0].trim().toLowerCase();
         
     const categories = Array.isArray(req.body?.categories) ? req.body.categories : (req.body ? [req.body] : []);
 
@@ -505,7 +506,8 @@ function getMergedProductsForStore(storeSlug: string, merchantId: string, payloa
 }
 
 app.get('/api/products', async (req, res) => {
-  const storeSlug = (req.query.store_slug as string || req.query.storeSlug as string || '').trim().toLowerCase();
+  const rawSlug = (req.query.store_slug as string || req.query.storeSlug as string || '').trim().toLowerCase();
+  const storeSlug = String(rawSlug || '').split(':')[0].trim().toLowerCase();
   const merchantId = (req.query.merchant_id as string || req.query.merchantId as string || '').trim();
   const payload = await readStorePayload();
   const prods = getMergedProductsForStore(storeSlug, merchantId, payload);
