@@ -115,7 +115,11 @@ export function buildCategoryDbPayload(category: any, merchant?: { id?: string; 
 export function buildProductDbPayload(product: any, merchant?: { id?: string; storeSlug?: string } | null) {
   const title = String(product.title || product.name || '').trim() || 'Untitled Product';
   const merchantId = product.merchantId || product.merchant_id || merchant?.id || merchant?.storeSlug || 'default';
-  const storeSlug = product.storeSlug || product.store_slug || merchant?.storeSlug || merchantId || 'default';
+  const storeSlug = product.storeSlug || product.store_slug || merchant?.storeSlug || merchantId || 'bd';
+  const price = Number(product.priceBDT ?? product.price ?? product.price_bdt ?? 0);
+  const stock = Number(product.stock ?? product.stock_quantity ?? product.quantity ?? 0);
+  const image = String(product.image || product.imageUrl || product.image_url || '');
+
   return {
     ...product,
     id: product.id || newCatalogId(),
@@ -127,91 +131,123 @@ export function buildProductDbPayload(product: any, merchant?: { id?: string; st
     merchantId,
     merchant_id: merchantId,
     category: product.category || 'General',
-    status: 'active',
-    is_published: true,
+    status: product.status || 'active',
+    is_published: product.is_published !== false,
     sku: product.sku || '',
-    priceBDT: Number(product.priceBDT ?? product.price ?? 0),
-    price: Number(product.priceBDT ?? product.price ?? 0),
-    stock: Number(product.stock ?? 0),
-    image: product.image || '',
+    priceBDT: price,
+    price,
+    stock,
+    stock_quantity: stock,
+    image,
+    image_url: image,
+    description: product.description || product.descriptionEn || '',
   };
 }
 
-export async function postCatalogJson(url: string, body: unknown): Promise<{ ok: boolean; data: any }> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const contentType = res.headers.get('content-type') || '';
-  let data: any = null;
+export async function postCatalogJson(url: string, body: unknown): Promise<{ ok: boolean; status?: number; data: any; error?: string }> {
   try {
-    if (contentType.includes('application/json')) {
-      data = await res.json();
-    } else {
-      const text = await res.text();
-      data = text ? JSON.parse(text) : null;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const contentType = res.headers.get('content-type') || '';
+    let data: any = null;
+    try {
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : null;
+      }
+    } catch {
+      data = null;
     }
-  } catch {
-    data = null;
+    return { ok: res.ok, status: res.status, data, error: !res.ok ? (data?.error || `HTTP ${res.status}`) : undefined };
+  } catch (err: any) {
+    return { ok: false, status: 0, data: null, error: err?.message || 'Network request failed' };
   }
-  return { ok: res.ok, data };
 }
 
-export async function upsertProductToSupabase(product: any, storeSlugInput?: string) {
-  const slug = String(storeSlugInput || product.storeSlug || product.store_slug || 'bd').toLowerCase().trim();
-  const title = String(product.title || product.name || 'Untitled Product').trim();
-  const basePayload = {
-    id: String(product.id),
-    title,
-    name: title,
-    price: Number(product.priceBDT ?? product.price ?? 0),
-    image_url: String(product.image || product.imageUrl || product.image_url || ''),
-    image: String(product.image || product.imageUrl || product.image_url || ''),
-    category_id: String(product.categoryId || product.category_id || product.category || ''),
-    category: String(product.category || ''),
-    status: 'active',
-    is_published: true,
-    description: String(product.description || product.descriptionEn || ''),
-    sku: String(product.sku || ''),
-    stock: Number(product.stock ?? 0),
+export async function upsertProductToSupabase(productData: any, storeSlugInput?: string): Promise<{ ok: boolean; error?: string }> {
+  const storeSlug = String(storeSlugInput || productData.storeSlug || productData.store_slug || 'bd').toLowerCase().trim() || 'bd';
+  const name = String(productData.name || productData.title || 'Untitled Product').trim();
+  const price = Number(productData.price ?? productData.priceBDT ?? 0) || 0;
+  const stock_quantity = Number(productData.stock ?? productData.stock_quantity ?? productData.quantity ?? 0) || 0;
+  const category = productData.category || 'General';
+  const image_url = String(productData.image || productData.imageUrl || productData.image_url || '');
+
+  // 1. Explicit fallback schema mapping requested
+  const payload = {
+    name,
+    price,
+    stock_quantity,
+    category,
+    image_url,
+    store_slug: storeSlug || 'bd'
   };
 
-  const slugsToUpsert = Array.from(new Set([slug, 'bd', 'verandabd', 'default']));
+  const baseRecord = {
+    id: String(productData.id || newCatalogId()),
+    title: name,
+    name,
+    price,
+    price_bdt: price,
+    image_url,
+    image: image_url,
+    category_id: String(productData.categoryId || productData.category_id || category || ''),
+    category,
+    status: productData.status || 'active',
+    is_published: true,
+    description: String(productData.description || productData.descriptionEn || ''),
+    sku: String(productData.sku || ''),
+    stock: stock_quantity,
+    stock_quantity,
+    store_slug: storeSlug || 'bd',
+  };
+
+  let clientError: string | undefined = undefined;
 
   try {
     const { supabase } = await import('../lib/supabase');
     if (supabase) {
-      for (const s of slugsToUpsert) {
-        const payload = { ...basePayload, store_slug: s };
-        const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
-        if (error) console.warn('Supabase product client upsert notice:', error.message);
+      // First attempt: upsert complete record with conflict resolution
+      const { error: upsertErr } = await supabase.from('products').upsert(baseRecord, { onConflict: 'id' });
+      if (upsertErr) {
+        console.warn('[catalogPayload] Supabase upsert notice, trying explicit insert with fallback schema mapping:', upsertErr.message);
+        // Second attempt: explicit insert with fallback schema mapping
+        const { error: insertErr } = await supabase.from('products').insert([payload]);
+        if (insertErr) {
+          console.error('[catalogPayload] Supabase insert with fallback schema failed:', insertErr.message);
+          clientError = insertErr.message || upsertErr.message;
+        }
       }
     }
-  } catch (e) {
-    console.warn('Supabase product client upsert error:', e);
+  } catch (e: any) {
+    console.error('[catalogPayload] Supabase client exception:', e);
+    clientError = e?.message || 'Supabase client error';
   }
 
+  // REST fallback
   try {
     const { supabaseUrl, supabaseAnonKey } = await import('../lib/supabase');
     if (supabaseUrl && supabaseAnonKey) {
-      for (const s of slugsToUpsert) {
-        const payload = { ...basePayload, store_slug: s };
-        await fetch(`${supabaseUrl}/rest/v1/products`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseAnonKey,
-            'Authorization': `Bearer ${supabaseAnonKey}`,
-            'Prefer': 'resolution=merge-duplicates',
-          },
-          body: JSON.stringify(payload),
-        }).catch(err => console.warn('Supabase product REST upsert error:', err));
-      }
+      await fetch(`${supabaseUrl}/rest/v1/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Prefer': 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify(baseRecord),
+      }).catch(err => console.warn('[catalogPayload] Supabase REST upsert warning:', err));
     }
   } catch (e) {
-    console.warn('Supabase product REST upsert warning:', e);
+    console.warn('[catalogPayload] Supabase REST error:', e);
   }
+
+  return { ok: !clientError, error: clientError };
 }
 
 export async function upsertCategoryToSupabase(category: any, storeSlugInput?: string) {

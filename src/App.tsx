@@ -300,13 +300,34 @@ export default function App() {
     };
 
     // Products
-    safeFetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`).then(data => {
-      if (isMounted && Array.isArray(data)) {
-        if (data.length > 0 || products.length === 0) {
-          setProducts(data);
+    const loadAppProducts = async () => {
+      try {
+        const { supabase } = await import('./lib/supabase');
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('store_slug', 'bd');
+
+          if (!error && isMounted && Array.isArray(data) && data.length > 0) {
+            const { mapApiProduct } = await import('./utils/catalogPayload');
+            setProducts(data.map((p: any) => mapApiProduct(p)));
+            return;
+          }
         }
+      } catch (sbErr) {
+        console.warn('[App] Supabase initial load notice:', sbErr);
       }
-    });
+
+      safeFetch(`/api/products-by-slug/${encodeURIComponent(storeSlug)}`).then(data => {
+        if (isMounted && Array.isArray(data)) {
+          if (data.length > 0 || products.length === 0) {
+            setProducts(data);
+          }
+        }
+      });
+    };
+    loadAppProducts();
 
     // Merchant Settings & Profile by storeSlug
     if (merchant?.storeSlug) {

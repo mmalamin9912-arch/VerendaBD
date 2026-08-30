@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product, ProductSubTab, ProductType, MerchantProfile } from '../../types';
 import { buildProductDbPayload, mapApiProduct, postCatalogJson, upsertProductToSupabase } from '../../utils/catalogPayload';
 import { 
@@ -65,6 +65,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   const [sortBy, setSortBy] = useState<'latest' | 'price-desc' | 'price-asc' | 'stock-desc'>('latest');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [toastNotification, setToastNotification] = useState<{ type: 'success' | 'error' | 'warning'; message: string } | null>(null);
 
   // Modals & Forms State
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
@@ -92,6 +93,50 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     { id: 'digital', label: 'Digital files' },
     { id: 'bundle', label: 'Dynamic Bundle' },
   ];
+
+  // 3. Initial Data Fetch: Directly fetch existing items from Supabase products table where store_slug = 'bd' on page load
+  useEffect(() => {
+    let isMounted = true;
+    const fetchExistingProducts = async () => {
+      // 1. Direct Supabase load where store_slug = 'bd'
+      try {
+        const { supabase } = await import('../../lib/supabase');
+        if (supabase) {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('store_slug', 'bd');
+
+          if (error) {
+            console.error('[ProductsView] Supabase initial products load error:', error.message);
+          } else if (isMounted && Array.isArray(data) && data.length > 0) {
+            onUpdateProducts(data.map((p: any) => mapApiProduct(p)));
+            return;
+          }
+        }
+      } catch (sbErr) {
+        console.error('[ProductsView] Direct Supabase fetch exception:', sbErr);
+      }
+
+      // 2. Fallback fetch from API endpoint
+      try {
+        const res = await fetch('/api/products?store_slug=bd');
+        if (res.ok) {
+          const apiData = await res.json();
+          if (isMounted && Array.isArray(apiData) && apiData.length > 0) {
+            onUpdateProducts(apiData.map((p: any) => mapApiProduct(p)));
+          }
+        }
+      } catch (apiErr) {
+        console.error('[ProductsView] API load error:', apiErr);
+      }
+    };
+
+    fetchExistingProducts();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Filter & Sort Products logic
   const filteredProducts = products.filter((p) => {
@@ -125,41 +170,106 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   const handleSaveProduct = async (savedProduct: Product) => {
     try {
-      const fullSavedProduct = buildProductDbPayload(savedProduct, merchant) as Product;
+      // 1. Prepare productData and fallback schema payload structure
+      const anyProd = savedProduct as any;
+      const productData = {
+        id: savedProduct.id,
+        name: savedProduct.title || anyProd.name || 'Untitled Product',
+        title: savedProduct.title || anyProd.name || 'Untitled Product',
+        price: Number(savedProduct.priceBDT ?? anyProd.price) || 0,
+        stock: Number(savedProduct.stock ?? anyProd.quantity ?? anyProd.stock_quantity) || 0,
+        quantity: Number(savedProduct.stock ?? anyProd.quantity ?? anyProd.stock_quantity) || 0,
+        category: savedProduct.category || 'General',
+        image: savedProduct.image || anyProd.imageUrl || anyProd.image_url || '',
+        imageUrl: savedProduct.image || anyProd.imageUrl || anyProd.image_url || '',
+        store_slug: 'bd'
+      };
 
-      const mergedList = products.some(p => p.id === fullSavedProduct.id)
-        ? products.map(p => (p.id === fullSavedProduct.id ? { ...p, ...fullSavedProduct } : p))
-        : [fullSavedProduct, ...products];
-      onUpdateProducts(mergedList);
+      const payload = {
+        name: productData.name,
+        price: Number(productData.price) || 0,
+        stock_quantity: Number(productData.stock || productData.quantity) || 0,
+        category: productData.category || 'General',
+        image_url: productData.image || productData.imageUrl || '',
+        store_slug: 'bd'
+      };
 
-      const { ok, data } = await postCatalogJson('/api/products', fullSavedProduct);
-      if (!ok || data?.success === false) {
-        console.warn('Product save did not confirm persistence:', data);
-      }
-      if (data?.persisted === false && data?.db_error) {
-        console.error('Product was NOT written to Supabase:', data.db_error);
-      }
-
-      // Upsert directly to Supabase table
-      void upsertProductToSupabase(fullSavedProduct, merchant?.storeSlug || 'bd');
-
+      // 2. Direct Supabase insert with fallback schema mapping
+      let supabaseErrorMsg: string | null = null;
       try {
-        const targetId = merchant?.storeSlug || merchant?.id || 'default';
-        const updatedResponse = await fetch(`/api/products-by-slug/${encodeURIComponent(targetId)}`);
-        if (updatedResponse.ok) {
-          const updatedProducts = await updatedResponse.json();
-          if (Array.isArray(updatedProducts)) {
-            onUpdateProducts(updatedProducts.map((p: any) => mapApiProduct(p)));
+        const { supabase } = await import('../../lib/supabase');
+        if (supabase) {
+          const { error } = await supabase.from('products').insert([payload]);
+          if (error) {
+            console.error('[ProductsView] Supabase insert error:', error.message, error);
+            supabaseErrorMsg = error.message;
           }
         }
-      } catch (fetchErr) {
-        console.warn('Silent refresh products error:', fetchErr);
+      } catch (sbEx: any) {
+        console.error('[ProductsView] Supabase client exception:', sbEx);
+        supabaseErrorMsg = sbEx?.message || 'Supabase connection failed';
       }
+
+      // Display explicit toast/alert if Supabase insert fails (e.g., column missing or RLS policy rejection)
+      if (supabaseErrorMsg) {
+        setToastNotification({
+          type: 'error',
+          message: `Supabase persistence notice: ${supabaseErrorMsg}. (Check table columns or RLS policies)`
+        });
+        alert(`Notice: Supabase insert encountered an issue (${supabaseErrorMsg}). Verifying backend API sync...`);
+      }
+
+      // 3. API endpoint POST request with the exact same payload structure & wait for HTTP 200/201 response
+      const apiPayload = {
+        ...buildProductDbPayload(savedProduct, merchant),
+        ...payload,
+      };
+
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok && response.status !== 200 && response.status !== 201) {
+        const errorData = await response.json().catch(() => null);
+        const errMsg = errorData?.error || `Server returned status ${response.status}`;
+        setToastNotification({
+          type: 'error',
+          message: `Failed to save product via API: ${errMsg}`
+        });
+        alert(`Failed to save product: ${errMsg}`);
+        return;
+      }
+
+      // 4. Update UI State only after HTTP 200/201 response before closing modal/resetting form
+      const updatedProduct = mapApiProduct({
+        ...savedProduct,
+        ...productData,
+        ...payload,
+        stock: payload.stock_quantity,
+        priceBDT: payload.price,
+      });
+
+      const mergedList = products.some(p => p.id === updatedProduct.id)
+        ? products.map(p => (p.id === updatedProduct.id ? { ...p, ...updatedProduct } : p))
+        : [updatedProduct, ...products];
+      onUpdateProducts(mergedList);
+
+      setToastNotification({
+        type: 'success',
+        message: `Product "${payload.name}" saved successfully!`
+      });
 
       setIsFormViewActive(false);
       setEditingProduct(null);
-    } catch (e) {
-      console.warn('Network save product warning:', e);
+    } catch (e: any) {
+      console.error('[ProductsView] Network save product error:', e);
+      setToastNotification({
+        type: 'error',
+        message: `Error saving product: ${e?.message || 'Unknown error'}`
+      });
+      alert(`Error saving product: ${e?.message || 'Unknown network error'}`);
     }
   };
 
@@ -216,6 +326,31 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   return (
     <div className="space-y-6">
       
+      {/* Toast / Alert Feedback Banner */}
+      {toastNotification && (
+        <div className={`p-4 rounded-2xl flex items-center justify-between gap-3 border shadow-xl animate-in fade-in duration-200 ${
+          toastNotification.type === 'error'
+            ? 'bg-rose-950/60 border-rose-500/40 text-rose-200'
+            : toastNotification.type === 'warning'
+            ? 'bg-amber-950/60 border-amber-500/40 text-amber-200'
+            : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-200'
+        }`}>
+          <div className="flex items-center gap-2.5 text-xs font-bold">
+            {toastNotification.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}
+            {toastNotification.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
+            {toastNotification.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
+            <span>{toastNotification.message}</span>
+          </div>
+          <button
+            onClick={() => setToastNotification(null)}
+            className="p-1.5 hover:bg-white/10 rounded-xl text-slate-400 hover:text-white transition cursor-pointer"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. Sub-navigation Bar under Products */}
       <div className="bg-[#1D212E] border border-[#2E3548] rounded-2xl p-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none shadow-md">
         {subNavItems.map((sub) => {
