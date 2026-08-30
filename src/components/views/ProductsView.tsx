@@ -187,10 +187,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
       const payload = {
         name: productData.name,
+        title: productData.name,
         price: Number(productData.price) || 0,
+        stock: Number(productData.stock || productData.quantity) || 0,
         stock_quantity: Number(productData.stock || productData.quantity) || 0,
+        quantity: Number(productData.stock || productData.quantity) || 0,
         category: productData.category || 'General',
+        image: productData.image || productData.imageUrl || '',
         image_url: productData.image || productData.imageUrl || '',
+        imageUrl: productData.image || productData.imageUrl || '',
         store_slug: 'bd'
       };
 
@@ -203,12 +208,15 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
           if (error) {
             console.error('[ProductsView] Supabase insert error:', error.message, error);
             supabaseErrorMsg = error.message;
-          }
+            alert('Supabase Error: ' + error.message);
+            } else {
+          alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
         }
-      } catch (sbEx: any) {
-        console.error('[ProductsView] Supabase client exception:', sbEx);
-        supabaseErrorMsg = sbEx?.message || 'Supabase connection failed';
       }
+    } catch (sbEx: any) {
+      console.error('[ProductsView] Supabase client exception:', sbEx);
+      supabaseErrorMsg = sbEx?.message || 'Supabase connection failed';
+    }
 
       // Display explicit toast/alert if Supabase insert fails (e.g., column missing or RLS policy rejection)
       if (supabaseErrorMsg) {
