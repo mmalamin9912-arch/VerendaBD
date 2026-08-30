@@ -187,15 +187,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
       const payload = {
         name: productData.name,
-        title: productData.name,
         price: Number(productData.price) || 0,
-        stock: Number(productData.stock || productData.quantity) || 0,
         stock_quantity: Number(productData.stock || productData.quantity) || 0,
-        quantity: Number(productData.stock || productData.quantity) || 0,
         category: productData.category || 'General',
-        image: productData.image || productData.imageUrl || '',
         image_url: productData.image || productData.imageUrl || '',
-        imageUrl: productData.image || productData.imageUrl || '',
         store_slug: 'bd'
       };
 
@@ -209,22 +204,22 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
             console.error('[ProductsView] Supabase insert error:', error.message, error);
             supabaseErrorMsg = error.message;
             alert('Supabase Error: ' + error.message);
-            } else {
-          alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
+          } else {
+            alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
+          }
         }
+      } catch (e: any) {
+        console.error('[ProductsView] Supabase exception:', e);
+        alert('Exception Error: ' + (e?.message || e));
+        supabaseErrorMsg = e?.message || 'Supabase exception';
       }
-    } catch (sbEx: any) {
-      console.error('[ProductsView] Supabase client exception:', sbEx);
-      supabaseErrorMsg = sbEx?.message || 'Supabase connection failed';
-    }
 
-      // Display explicit toast/alert if Supabase insert fails (e.g., column missing or RLS policy rejection)
+      // Display explicit toast if Supabase insert fails (e.g., column missing or RLS policy rejection)
       if (supabaseErrorMsg) {
         setToastNotification({
           type: 'error',
           message: `Supabase persistence notice: ${supabaseErrorMsg}. (Check table columns or RLS policies)`
         });
-        alert(`Notice: Supabase insert encountered an issue (${supabaseErrorMsg}). Verifying backend API sync...`);
       }
 
       // 3. API endpoint POST request with the exact same payload structure & wait for HTTP 200/201 response

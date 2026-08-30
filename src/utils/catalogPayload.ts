@@ -18,6 +18,19 @@ export function newCatalogId(): string {
   });
 }
 
+export const maxCatalogId = newCatalogId;
+
+export function ensureCategory(category: any, merchant?: { id?: string; storeSlug?: string } | null) {
+  return buildCategoryDbPayload(category, merchant);
+}
+
+export function packCatalogItem(item: any, merchant?: { id?: string; storeSlug?: string } | null) {
+  if (item?.type === 'category' || item?.isCategory) {
+    return buildCategoryDbPayload(item, merchant);
+  }
+  return buildProductDbPayload(item, merchant);
+}
+
 export function mapApiProduct(raw: any): any {
   if (!raw || typeof raw !== 'object') return raw;
   const title = raw.title || raw.name || 'Untitled Product';
