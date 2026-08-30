@@ -199,6 +199,8 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
         // locally persisted tenant data in that case instead of erasing it.
         if (Array.isArray(payload?.categories)) {
           setCategories((current) => payload.categories.length > 0 || current.length === 0 ? payload.categories : current);
+        } else if (Array.isArray(payload)) {
+          setCategories((current) => payload.length > 0 || current.length === 0 ? payload : current);
         }
       } catch (error) {
         if ((error as Error).name !== 'AbortError') console.warn('Category API unavailable; using local tenant data.', error);
@@ -416,19 +418,12 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
   const handleDeleteCategoryConfirm = async () => {
     if (!deletingCategory) return;
     const catId = deletingCategory.id;
-    const storeSlug = merchant?.storeSlug || 'bd';
+    const cleanSlug = (storeSlug || 'bd').split(':')[0];
 
-    let apiConfirmed = false;
     try {
-      const res = await fetch(`/api/categories?id=${encodeURIComponent(catId)}&store_slug=${encodeURIComponent(storeSlug)}`, {
+      await fetch(`/api/categories?id=${encodeURIComponent(catId)}&store_slug=${encodeURIComponent(cleanSlug)}`, {
         method: 'DELETE',
       });
-      apiConfirmed = res.ok;
-      const data = await res.json().catch(() => null);
-      if (data && data.ok === false) {
-        console.warn('Category delete rejected by backend:', data?.error);
-        apiConfirmed = false;
-      }
     } catch (e) {
       console.warn('Delete category API warning:', e);
     }
@@ -436,24 +431,19 @@ export const CategoriesView: React.FC<CategoriesViewProps> = ({
     try {
       const { supabase } = await import('../../lib/supabase');
       if (supabase) {
-        await supabase.from('categories').update({ parent_id: null }).eq('parent_id', catId);
-        const { error: delError } = await supabase.from('categories').delete().eq('id', catId);
-        if (!delError) apiConfirmed = true;
-        else console.warn('Supabase category direct delete error:', delError.message);
+        await supabase.from('categories').update({ parent_id: null, parentId: null }).eq('parent_id', catId);
+        await supabase.from('categories').delete().eq('id', catId);
       }
     } catch (sbErr) {
       console.warn('Supabase category direct delete warning:', sbErr);
     }
 
-    // Only update UI state after successful API/DB confirmation so deleted
-    // categories cannot reappear on the next data refresh.
-    if (apiConfirmed) {
-      setCategories(prev =>
-        prev
-          .filter(c => c.id !== catId)
-          .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
-      );
-    }
+    // Remove category and assign children to null parent in UI state immediately
+    setCategories(prev => 
+      prev
+        .filter(c => c.id !== catId)
+        .map(c => c.parentId === catId ? { ...c, parentId: null } : c)
+    );
     setDeletingCategory(null);
   };
 

@@ -323,9 +323,11 @@ export default function App() {
 
     // Categories
     const loadCategories = async () => {
-      let cats = await safeFetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`);
+      let catsRes = await safeFetch(`/api/categories?store_slug=${encodeURIComponent(storeSlug)}`);
+      let cats = Array.isArray(catsRes) ? catsRes : (Array.isArray(catsRes?.categories) ? catsRes.categories : null);
       if (!Array.isArray(cats) || cats.length === 0) {
-        cats = await safeFetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+        const bySlug = await safeFetch(`/api/categories-by-slug/${encodeURIComponent(storeSlug)}`);
+        cats = Array.isArray(bySlug) ? bySlug : (Array.isArray(bySlug?.categories) ? bySlug.categories : []);
       }
       if (isMounted && Array.isArray(cats)) {
         if (cats.length > 0 || !(merchant?.themeConfig?.categoriesList?.length)) {
