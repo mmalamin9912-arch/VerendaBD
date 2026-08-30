@@ -222,27 +222,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         });
       }
 
-      // 3. API endpoint POST request with the exact same payload structure & wait for HTTP 200/201 response
-      const apiPayload = {
-        ...buildProductDbPayload(savedProduct, merchant),
-        ...payload,
-      };
-
-      const response = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiPayload),
-      });
-
-      if (!response.ok && response.status !== 200 && response.status !== 201) {
-        const errorData = await response.json().catch(() => null);
-        const errMsg = errorData?.error || `Server returned status ${response.status}`;
-        setToastNotification({
-          type: 'error',
-          message: `Failed to save product via API: ${errMsg}`
-        });
-        alert(`Failed to save product: ${errMsg}`);
-        return;
+      // 3. Direct Supabase Client insert
+      try {
+        const { supabase } = await import('../../lib/supabase');
+        if (supabase) {
+          const { data, error } = await supabase.from('products').insert([payload]);
+          if (error) {
+            alert('Supabase Error: ' + error.message);
+          } else {
+            alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
+          }
+        }
+      } catch (err: any) {
+        alert('Error: ' + err.message);
       }
 
       // 4. Update UI State only after HTTP 200/201 response before closing modal/resetting form
