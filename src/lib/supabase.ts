@@ -63,18 +63,20 @@ export const isSupabaseConfigured = Boolean(
   isValidUrl(supabaseUrl)
 );
 
-// String placeholder fallbacks so a client instance is ALWAYS created.
-// Without real credentials the client still exists (calls will simply fail at
-// runtime with an explicit Supabase error instead of the client being null).
-const FALLBACK_SUPABASE_URL = 'https://placeholder.supabase.co';
-const FALLBACK_SUPABASE_ANON_KEY = 'placeholder-anon-key';
-
-const resolvedSupabaseUrl = isSupabaseConfigured ? supabaseUrl : FALLBACK_SUPABASE_URL;
-const resolvedSupabaseAnonKey = isSupabaseConfigured ? supabaseAnonKey : FALLBACK_SUPABASE_ANON_KEY;
+// Never fall back to a placeholder URL: createClient() would silently accept
+// it and every request would fail at runtime with "TypeError: Failed to fetch".
+// Instead, fail fast with an explicit configuration error.
+if (!isSupabaseConfigured) {
+  throw new Error(
+    '[supabase] Missing or invalid environment configuration. ' +
+    'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file ' +
+    '(e.g. VITE_SUPABASE_URL=https://your-project.supabase.co) and restart the dev server.'
+  );
+}
 
 export const supabase: SupabaseClient = createClient(
-  resolvedSupabaseUrl,
-  resolvedSupabaseAnonKey,
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,
@@ -92,13 +94,6 @@ export const supabase: SupabaseClient = createClient(
 // Always returns a live client instance (never null).
 export function getSupabaseClient(): SupabaseClient {
   return supabase;
-}
-
-if (!isSupabaseConfigured) {
-  console.warn(
-    '[supabase] No valid VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY found. ' +
-    'A placeholder client was created — Supabase requests will fail until env vars are set.'
-  );
 }
 
 

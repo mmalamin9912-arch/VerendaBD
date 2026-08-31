@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductSubTab, ProductType, MerchantProfile } from '../../types';
 import { buildProductDbPayload, mapApiProduct, postCatalogJson, upsertProductToSupabase } from '../../utils/catalogPayload';
+import { resolveActiveStoreSlug } from '../../lib/activeStore';
 import {
   Boxes,
   Clock,
@@ -58,6 +59,9 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   merchant,
   platformSettings,
 }) => {
+  // Active merchant's store slug: prop (route/session) > logged-in session > legacy data.
+  const activeStoreSlug = resolveActiveStoreSlug((merchant as any)?.storeSlug || (merchant as any)?.store_slug);
+
   // Local state for product tab, views, search, filter
   const [selectedProductTypeTab, setSelectedProductTypeTab] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -94,18 +98,19 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     { id: 'bundle', label: 'Dynamic Bundle' },
   ];
 
-  // 3. Initial Data Fetch: Directly fetch existing items from Supabase products table where store_slug = 'bd' on page load
+  // 3. Initial Data Fetch: Directly fetch existing items from Supabase products table
+  // for the ACTIVE merchant's store_slug on page load
   useEffect(() => {
     let isMounted = true;
     const fetchExistingProducts = async () => {
-      // 1. Direct Supabase load where store_slug = 'bd'
+      // 1. Direct Supabase load scoped to the active store slug
       try {
         const { supabase } = await import('../../lib/supabase');
         if (supabase) {
           const { data, error } = await supabase
             .from('products')
             .select('*')
-            .eq('store_slug', 'bd');
+            .eq('store_slug', activeStoreSlug);
 
           if (error) {
             console.error('[ProductsView] Supabase initial products load error:', error.message);
@@ -124,7 +129,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeStoreSlug]);
 
   // Filter & Sort Products logic
   const filteredProducts = products.filter((p) => {
@@ -170,7 +175,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         category: savedProduct.category || 'General',
         image: savedProduct.image || anyProd.imageUrl || anyProd.image_url || '',
         imageUrl: savedProduct.image || anyProd.imageUrl || anyProd.image_url || '',
-        store_slug: 'bd'
+        store_slug: activeStoreSlug
       };
 
       const payload: Record<string, any> = {
@@ -181,7 +186,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         category: productData.category || 'General',
         image: productData.image || productData.imageUrl || '',
         image_url: productData.image || productData.imageUrl || '',
-        store_slug: 'bd'
+        store_slug: activeStoreSlug
       };
 
       // 2. Direct Supabase insert (bypass API routes entirely)

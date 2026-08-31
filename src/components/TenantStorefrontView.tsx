@@ -6,6 +6,7 @@ import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../li
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
 import { supabase } from '../lib/supabase';
+import { resolveActiveStoreSlug } from '../lib/activeStore';
 import { LanguageToggle } from './LanguageToggle';
 
 function mapSupabaseProduct(p: any): Product {
@@ -98,11 +99,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   // directly to the shared store so products and published theme changes appear
   // immediately without remounting or refreshing the page.
   const { t } = useLanguage();
+  // Effective store slug for cache keys — resolved from prop or the active merchant session.
+  const effectiveStoreSlug = resolveActiveStoreSlug(storeSlug || (merchant as any)?.storeSlug);
   const [liveStoreData, setLiveStoreData] = useState<ZidStoreData>(() => readZidStoreData(storeSlug));
   useEffect(() => subscribeToZidStoreData(setLiveStoreData, storeSlug), [storeSlug]);
   useEffect(() => {
     let active = true;
-    const effectiveSlug = String(storeSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
+    // Active store slug resolved from prop (route param) or merchant session — never hardcoded.
+    const effectiveSlug = resolveActiveStoreSlug(storeSlug || (merchant as any)?.storeSlug);
     const loadStorefront = async () => {
       try {
         // Direct Supabase load — API routes bypassed (they 500 on Vercel)
@@ -143,7 +147,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     void loadStorefront();
     const poll = window.setInterval(() => void loadStorefront(), 3000);
     return () => { active = false; window.clearInterval(poll); };
-  }, [storeSlug]);
+  }, [effectiveStoreSlug]);
 
   const themeCustomization = (liveStoreData.themeCustomization || {}) as {
     storeLogoText?: string;
@@ -192,7 +196,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
   useEffect(() => {
     let active = true;
-    const effectiveSlug = String(storeSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
+    // Active store slug resolved from prop (route param) or merchant session — never hardcoded.
+    const effectiveSlug = resolveActiveStoreSlug(storeSlug || (merchant as any)?.storeSlug);
     const fetchCatalog = async () => {
       let catData: any[] = [];
       let prodData: any[] = [];
@@ -301,7 +306,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     void fetchCatalog();
     const interval = setInterval(fetchCatalog, 3000);
     return () => { active = false; clearInterval(interval); };
-  }, [storeSlug]);
+  }, [effectiveStoreSlug]);
 
   const combinedRawProducts = [
     ...(Array.isArray(liveStoreData?.products) ? liveStoreData.products : []),

@@ -4,15 +4,15 @@ import { supabase } from '../lib/supabase';
 import AuthLayout from './AuthLayout';
 import { BrandLogo } from './BrandLogo';
 import { useLanguage } from '../lib/i18n';
-import { 
-  Mail, 
-  KeyRound, 
-  Store, 
-  MapPin, 
-  ArrowRight, 
-  CheckCircle2, 
-  RefreshCw, 
-  ShieldCheck, 
+import {
+  Mail,
+  KeyRound,
+  Store,
+  MapPin,
+  ArrowRight,
+  CheckCircle2,
+  RefreshCw,
+  ShieldCheck,
   Loader2,
   Send,
   AlertCircle,
@@ -186,7 +186,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
         const cleanEmail = session.user.email?.toLowerCase() || '';
-        
+
         const registeredList = getRegisteredUsers();
         const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
 
@@ -255,7 +255,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
   const finishLogin = (profile: MerchantProfile) => {
     const enrichedProfile = enhanceWithPrepayment(profile);
-    
+
     localStorage.setItem('zid_auth_session', JSON.stringify({
       email: enrichedProfile.email,
       loggedInAt: new Date().toISOString(),
@@ -369,8 +369,8 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
 
     if (existingProfile || existingUser) {
-      const isPasswordValid = existingUser?.password 
-        ? (existingUser.password === cleanPassword || cleanPassword.length >= 6) 
+      const isPasswordValid = existingUser?.password
+        ? (existingUser.password === cleanPassword || cleanPassword.length >= 6)
         : (cleanPassword === 'password123' || cleanPassword === '123456' || cleanPassword.length >= 6);
 
       if (isPasswordValid) {
@@ -389,7 +389,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
               subscriptionPlan: 'free_trial',
               logoUrl: existingUser?.logoUrl || defaultMerchant.logoUrl || '',
             });
-        
+
         finishLogin(userProfile);
         return;
       } else {
@@ -574,7 +574,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     setInfoNotice(null);
 
     const cleanedEmail = email.trim().toLowerCase();
-    
+
     if (!cleanedEmail || !cleanedEmail.includes('@')) {
       setErrorMsg('Please enter a valid email address');
       return;
@@ -659,7 +659,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
         token: cleanOtp,
         type: 'email',
       });
-      
+
       setIsLoading(false);
 
       if (error) {
@@ -668,7 +668,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       }
 
       setToastMsg('ভেরিফিকেশন সফল হয়েছে!');
-      
+
       // Check if already registered
       const registeredList = getRegisteredUsers();
       const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
@@ -732,6 +732,56 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const slug = storeName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mystore';
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
+
+    // Enforce: 1 store per Gmail/email AND per phone number.
+    // Query the Supabase 'stores' table BEFORE creating the store (fall back to 'merchants'
+    // if the stores table does not exist yet); block duplicates explicitly.
+    try {
+      if (supabase) {
+        const last10Digits = String(phone || '').replace(/\D/g, '').slice(-10);
+
+        const checkTable = async (table: 'stores' | 'merchants') => {
+          // 1. Email check (case-insensitive)
+          const { data: emailMatch, error: emailErr } = await supabase!
+            .from(table)
+            .select('id, email, phone')
+            .ilike('email', cleanEmail)
+            .maybeSingle();
+          if (emailErr && /does not exist|relation|schema/i.test(emailErr.message || '')) return 'missing';
+
+          // 2. Phone check — match on the last 10 digits regardless of stored formatting (+880, 01, spaces)
+          let phoneMatch: any = null;
+          if (last10Digits.length === 10) {
+            const { data } = await supabase!
+              .from(table)
+              .select('id, email, phone')
+              .ilike('phone', `%${last10Digits}%`)
+              .maybeSingle();
+            phoneMatch = data;
+          }
+
+          return Boolean(emailMatch || phoneMatch);
+        };
+
+        let duplicateFound: boolean | 'missing' = false;
+        duplicateFound = await checkTable('stores');
+        if (duplicateFound === 'missing') {
+          duplicateFound = await checkTable('merchants');
+        }
+
+        if (duplicateFound === true) {
+          alert('This Email or Phone number is already registered with another store.');
+          setErrorMsg('This Email or Phone number is already registered with another store.');
+          return;
+        }
+      }
+    } catch (dupErr) {
+      console.error('[AuthFlow] Error checking stores table for duplicates:', dupErr);
+      // Fail closed: if we cannot verify uniqueness, do not silently allow a duplicate store.
+      alert('This Email or Phone number is already registered with another store.');
+      setErrorMsg('Could not verify store uniqueness. Please try again.');
+      return;
+    }
 
     // Check for existing merchant profile in Supabase first
     let existingProfile = null;
@@ -803,7 +853,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
       {/* Main Card Container */}
       <div className="space-y-6">
-        
+
         {/* Header */}
         <div className="text-center space-y-3">
           <div className="flex justify-center mb-1">
@@ -814,11 +864,11 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
             <ShieldCheck className="w-4 h-4" />
             <span>{t('auth_badge')}</span>
           </div>
-          
+
           <h1 className="text-2xl font-black text-white tracking-tight">
             {t('auth_welcome_back')}
           </h1>
-          
+
           <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
             {t('auth_welcome_subtitle')}
           </p>
@@ -968,7 +1018,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                       Create account
                     </button>
                   </div>
-                  <p 
+                  <p
                     className="text-[10px] text-slate-500 hover:text-slate-400 cursor-pointer select-none leading-relaxed px-2"
                     onClick={() => setIsAdminModalOpen(true)}
                   >
@@ -1125,7 +1175,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                   <div className="w-12 h-12 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] flex items-center justify-center mx-auto">
                     <KeyRound className="w-6 h-6" />
                   </div>
-                  
+
                   <div className="space-y-1">
                     <h3 className="text-sm font-bold text-white">Enter 6-Digit Verification Code</h3>
                     <p className="text-xs text-slate-300 leading-relaxed">
@@ -1477,7 +1527,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
       </div>
 
       {/* Footer with Secret Admin Entrance */}
-      <div 
+      <div
         onClick={() => setIsAdminModalOpen(true)}
         className="mt-6 text-center text-[11px] text-slate-500 cursor-pointer select-none hover:text-slate-400 transition"
       >
