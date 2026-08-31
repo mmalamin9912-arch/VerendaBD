@@ -58,28 +58,47 @@ export const supabaseUrl = cleanEnvUrl(rawSupabaseUrl);
 export const supabaseAnonKey = cleanEnvKey(rawSupabaseAnonKey);
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
+  supabaseUrl &&
+  supabaseAnonKey &&
   isValidUrl(supabaseUrl)
 );
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 10
-        }
-      }
-    })
-  : null;
+// String placeholder fallbacks so a client instance is ALWAYS created.
+// Without real credentials the client still exists (calls will simply fail at
+// runtime with an explicit Supabase error instead of the client being null).
+const FALLBACK_SUPABASE_URL = 'https://placeholder.supabase.co';
+const FALLBACK_SUPABASE_ANON_KEY = 'placeholder-anon-key';
 
-export function getSupabaseClient(): SupabaseClient | null {
+const resolvedSupabaseUrl = isSupabaseConfigured ? supabaseUrl : FALLBACK_SUPABASE_URL;
+const resolvedSupabaseAnonKey = isSupabaseConfigured ? supabaseAnonKey : FALLBACK_SUPABASE_ANON_KEY;
+
+export const supabase: SupabaseClient = createClient(
+  resolvedSupabaseUrl,
+  resolvedSupabaseAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  }
+);
+
+// Always returns a live client instance (never null).
+export function getSupabaseClient(): SupabaseClient {
   return supabase;
+}
+
+if (!isSupabaseConfigured) {
+  console.warn(
+    '[supabase] No valid VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY found. ' +
+    'A placeholder client was created — Supabase requests will fail until env vars are set.'
+  );
 }
 
 
