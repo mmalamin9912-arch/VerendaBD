@@ -2,26 +2,27 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Product, WarehouseStock, ProductVariant, MerchantProfile } from '../../types';
 import { buildCategoryDbPayload, buildProductDbPayload, newCatalogId, postCatalogJson, toCatalogSlug, upsertCategoryToSupabase } from '../../utils/catalogPayload';
 import { readZidStoreData } from '../../lib/storeData';
-import { 
-  ArrowLeft, 
-  Upload, 
-  ImageIcon, 
-  Trash2, 
-  Sparkles, 
-  ChevronDown, 
-  ChevronUp, 
-  Warehouse, 
-  Tag, 
-  Eye, 
-  Globe, 
-  Save, 
-  Check, 
-  Plus, 
-  Layers, 
-  Settings, 
-  RefreshCw, 
-  FolderPlus, 
-  Info, 
+import { generateAiText, aiErrorMessage } from '../../lib/aiService';
+import {
+  ArrowLeft,
+  Upload,
+  ImageIcon,
+  Trash2,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Warehouse,
+  Tag,
+  Eye,
+  Globe,
+  Save,
+  Check,
+  Plus,
+  Layers,
+  Settings,
+  RefreshCw,
+  FolderPlus,
+  Info,
   ExternalLink,
   Bold,
   Italic,
@@ -272,7 +273,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
   const [selectedOptionName, setSelectedOptionName] = useState<string>('Color');
   const [customOptionInput, setCustomOptionInput] = useState<string>('');
   const [isCreatingOption, setIsCreatingOption] = useState<boolean>(false);
-  
+
   // AI States
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false);
   const [isEnhancingImage, setIsEnhancingImage] = useState(false);
@@ -296,41 +297,24 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       const productInfo = `Title: ${title || titleBn}. Category: ${category}. Short Description: ${shortDescEn || shortDescBn || 'N/A'}`;
       const promptEn = `Generate a catchy, SEO-friendly, professional e-commerce product description for: ${productInfo}. Language: English. Focus on highlighting quality and benefits.`;
       const promptBn = `Generate a catchy, SEO-friendly, professional e-commerce product description for: ${productInfo}. Language: Bengali. Focus on highlighting quality and benefits.`;
-      
-      const [responseEn, responseBn] = await Promise.all([
-        fetch('/api/ai/generate-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: promptEn,
-            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text, no extra commentary or filler.`
-          }),
-        }).then(async r => {
-          if (!r.ok) {
-            console.warn('Server responded with error, falling back.');
-            return { text: 'Crafted with premium materials, this high-grade item offers exceptional comfort, modern aesthetics, and lasting reliability.' };
-          }
-          return r.json();
-        }),
-        fetch('/api/ai/generate-text', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: promptBn,
-            systemInstruction: `You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text in Bengali, no extra commentary or filler.`
-          }),
-        }).then(async r => {
-          if (!r.ok) {
-            console.warn('Server responded with error, falling back.');
-            return { text: 'উন্নত মানের উপকরণে তৈরি এই পণ্যটি আপনাকে দেবে অসাধারণ আরাম, আধুনিক শৈলী এবং দীর্ঘস্থায়ী স্থায়িত্ব।' };
-          }
-          return r.json();
-        })
+
+      // Client helper surfaces explicit errors for missing/invalid API key etc.
+      const [resultEn, resultBn] = await Promise.all([
+        generateAiText(promptEn, 'You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text, no extra commentary or filler.'),
+        generateAiText(promptBn, 'You are an expert e-commerce copywriter. Return ONLY the high-quality, persuasive description text in Bengali, no extra commentary or filler.')
       ]);
 
-      if (responseEn.text) setDescriptionEn(responseEn.text);
-      if (responseBn.text) setDescriptionBn(responseBn.text);
-      
+      // Fail fast with a clear message if the API key is missing/invalid or the
+      // service is unreachable — no silent canned-text fallback.
+      const failed = [resultEn, resultBn].find(r => !r.ok);
+      if (failed) {
+        alert(aiErrorMessage(failed));
+        return;
+      }
+
+      if (resultEn.text) setDescriptionEn(resultEn.text);
+      if (resultBn.text) setDescriptionBn(resultBn.text);
+
     } catch (error) {
       console.error('AI Generation Error:', error);
       alert('Failed to generate AI description. Please try again.');
@@ -387,7 +371,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       console.error('AI Pricing Error:', error);
     }
   };
-  
+
   // Separate Data Arrays for Each Option Type
   const [colorOptions, setColorOptions] = useState<string[]>(['Red', 'Blue', 'Black', 'White', 'Navy', 'Emerald']);
   const [sizeOptions, setSizeOptions] = useState<string[]>(['S', 'M', 'L', 'XL', 'XXL']);
@@ -777,7 +761,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
   const isFeatureLocked = (featureKey: 'aiContent' | 'aiWhatsApp' | 'aiBgRemover') => {
     const isProOnly = platformSettings?.[`${featureKey}ProOnly`];
     if (!isProOnly) return false;
-    
+
     const currentPlan = merchant?.subscriptionPlan || 'free_trial';
     // 'free_trial' and 'starter_3m' are considered "Free/Basic" for this simulation
     const isProPlan = currentPlan !== 'free_trial' && currentPlan !== 'starter_3m';
@@ -836,7 +820,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
           >
             Cancel
           </button>
-          
+
           <button
             type="submit"
             onClick={() => setStatus('Draft')}
@@ -858,10 +842,10 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Left Main Column */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Card 1: Product Media & Images (Reorder: media uploads first) */}
           <div className="bg-[#202533] border border-[#2E3548] p-5 sm:p-6 rounded-2xl space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#2E3548] pb-3">
@@ -1318,7 +1302,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
           {/* Lower Accordion Cards Stack */}
           <div className="bg-[#202533] border border-[#2E3548] rounded-2xl overflow-hidden divide-y divide-[#2E3548] shadow-xl">
-            
+
             {/* Accordion 1: Advanced Information */}
             <div>
               <button
@@ -1340,7 +1324,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
               {openSection === 'advanced' && (
                 <div className="p-4 sm:p-5 bg-[#181B26] space-y-5 text-xs border-t border-[#2E3548]">
-                  
+
                   {/* Top Tax Alert Banner */}
                   <div className="bg-amber-900/30 border border-amber-500/30 p-3.5 rounded-xl flex items-center justify-between text-xs text-amber-200">
                     <div className="flex items-center gap-2">
@@ -1580,7 +1564,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
               {openSection === 'variants' && (
                 <div className="p-4 sm:p-5 bg-[#181B26] space-y-5 text-xs border-t border-[#2E3548]">
-                  
+
                   {/* Option Name Dropdown */}
                   <div className="space-y-3">
                     <label className="block text-slate-300 font-bold">Option Name</label>
@@ -1689,7 +1673,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
                       <p className="text-[11px] text-slate-400">
                         Assign an image URL to each selected color variant. Selecting a color on the storefront will immediately display this image.
                       </p>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {selectedColorValues.map((color) => {
                           const currentUrl = colorImages[color] || '';
@@ -1885,7 +1869,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
               {openSection === 'customization' && (
                 <div className="p-4 sm:p-5 bg-[#181B26] space-y-4 text-xs border-t border-[#2E3548]">
-                  
+
                   {/* Customization Fields List / Empty State */}
                   {customizationFields.length === 0 ? (
                     <div className="bg-[#202533] border border-dashed border-[#2E3548] p-6 rounded-2xl text-center space-y-2">
@@ -2049,7 +2033,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
               {openSection === 'seo' && (
                 <div className="p-4 sm:p-5 bg-[#181B26] space-y-4 text-xs border-t border-[#2E3548]">
-                  
+
                   {/* Feature Banner for Store Growth */}
                   <div className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 p-3.5 rounded-xl text-blue-200 flex items-center justify-between">
                     <div>
@@ -2126,7 +2110,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
               {openSection === 'custom_fields' && (
                 <div className="p-4 sm:p-5 bg-[#181B26] space-y-4 text-xs border-t border-[#2E3548]">
-                  
+
                   {/* Banner inside Custom Fields as strictly requested */}
                   <div className="bg-purple-900/30 border border-purple-500/30 p-3.5 rounded-xl space-y-1.5 text-purple-200">
                     <p className="text-xs">
@@ -2296,7 +2280,7 @@ export const SingleProductForm: React.FC<SingleProductFormProps> = ({
 
         {/* Right Side Column - Live Storefront Card Preview & Settings */}
         <div className="space-y-6">
-          
+
           {/* Live Store Product Preview Card */}
           <div className="bg-[#202533] border border-[#2E3548] p-5 rounded-2xl space-y-3 sticky top-24 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#2E3548] pb-3">
