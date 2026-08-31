@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductSubTab, ProductType, MerchantProfile } from '../../types';
 import { buildProductDbPayload, mapApiProduct, postCatalogJson, upsertProductToSupabase } from '../../utils/catalogPayload';
-import { 
-  Boxes, 
-  Clock, 
-  Warehouse, 
-  History, 
-  Sliders, 
-  FileText, 
-  Layers, 
-  Plus, 
-  Search, 
-  LayoutGrid, 
-  List, 
-  Filter, 
-  ArrowUpDown, 
-  Edit2, 
-  Trash2, 
-  CheckCircle2, 
-  AlertTriangle, 
+import {
+  Boxes,
+  Clock,
+  Warehouse,
+  History,
+  Sliders,
+  FileText,
+  Layers,
+  Plus,
+  Search,
+  LayoutGrid,
+  List,
+  Filter,
+  ArrowUpDown,
+  Edit2,
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
   X,
   Package,
   Ticket,
@@ -118,18 +118,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         console.error('[ProductsView] Direct Supabase fetch exception:', sbErr);
       }
 
-      // 2. Fallback fetch from API endpoint
-      try {
-        const res = await fetch('/api/products?store_slug=bd');
-        if (res.ok) {
-          const apiData = await res.json();
-          if (isMounted && Array.isArray(apiData) && apiData.length > 0) {
-            onUpdateProducts(apiData.map((p: any) => mapApiProduct(p)));
-          }
-        }
-      } catch (apiErr) {
-        console.error('[ProductsView] API load error:', apiErr);
-      }
     };
 
     fetchExistingProducts();
@@ -185,36 +173,49 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         store_slug: 'bd'
       };
 
-      const payload = {
+      const payload: Record<string, any> = {
         name: productData.name,
         price: Number(productData.price) || 0,
+        stock: Number(productData.stock || productData.quantity) || 0,
         stock_quantity: Number(productData.stock || productData.quantity) || 0,
         category: productData.category || 'General',
+        image: productData.image || productData.imageUrl || '',
         image_url: productData.image || productData.imageUrl || '',
         store_slug: 'bd'
       };
 
-      // 2. Direct Supabase insert with fallback schema mapping
+      // 2. Direct Supabase insert (bypass API routes entirely)
       let supabaseErrorMsg: string | null = null;
+      let inserted = false;
       try {
         const { supabase } = await import('../../lib/supabase');
         if (supabase) {
-          const { error } = await supabase.from('products').insert([payload]);
+          const { data, error } = await supabase.from('products').insert([payload]).select();
           if (error) {
             console.error('[ProductsView] Supabase insert error:', error.message, error);
             supabaseErrorMsg = error.message;
-            alert('Supabase Error: ' + error.message);
+            // Explicit browser alert on schema error or RLS policy rejection
+            alert(
+              `Supabase insert failed: ${error.message}\n\n` +
+              `Hints:\n- Schema error: verify the products table has columns name, price, stock, category, image, store_slug\n` +
+              `- RLS rejection: add an INSERT policy for anon/authenticated roles on products`
+            );
           } else {
-            alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
+            inserted = true;
+            if (data && data[0]) {
+              payload.id = (data[0] as any).id;
+            }
           }
+        } else {
+          alert('Supabase client is not configured. Product was NOT saved to the database.');
+          supabaseErrorMsg = 'Supabase client not configured';
         }
       } catch (e: any) {
         console.error('[ProductsView] Supabase exception:', e);
-        alert('Exception Error: ' + (e?.message || e));
         supabaseErrorMsg = e?.message || 'Supabase exception';
+        alert('Supabase exception: ' + supabaseErrorMsg);
       }
 
-      // Display explicit toast if Supabase insert fails (e.g., column missing or RLS policy rejection)
       if (supabaseErrorMsg) {
         setToastNotification({
           type: 'error',
@@ -222,22 +223,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
         });
       }
 
-      // 3. Direct Supabase Client insert
-      try {
-        const { supabase } = await import('../../lib/supabase');
-        if (supabase) {
-          const { data, error } = await supabase.from('products').insert([payload]);
-          if (error) {
-            alert('Supabase Error: ' + error.message);
-          } else {
-            alert('প্রোডাক্ট সফলভাবে সেভ হয়েছে!');
-          }
-        }
-      } catch (err: any) {
-        alert('Error: ' + err.message);
-      }
-
-      // 4. Update UI State only after HTTP 200/201 response before closing modal/resetting form
+      // 3. Update UI State after persistence
       const updatedProduct = mapApiProduct({
         ...savedProduct,
         ...productData,
@@ -272,12 +258,6 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
     if (confirm('Are you sure you want to delete this product listing?')) {
       const updatedList = products.filter(p => p.id !== id);
       onUpdateProducts(updatedList);
-      try {
-        await fetch(`/api/products/${id}`, { method: 'DELETE' });
-        await fetch(`/api/products?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      } catch (e) {
-        console.warn('Delete product sync warning:', e);
-      }
       try {
         const { supabase } = await import('../../lib/supabase');
         if (supabase) {
@@ -320,7 +300,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Toast / Alert Feedback Banner */}
       {toastNotification && (
         <div className={`p-4 rounded-2xl flex items-center justify-between gap-3 border shadow-xl animate-in fade-in duration-200 ${
@@ -358,8 +338,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               onClick={() => handleSubTabChange(sub.id)}
               className={`
                 flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer
-                ${isActive 
-                  ? 'bg-[#00D68F] text-slate-950 shadow-md shadow-[#00D68F]/20' 
+                ${isActive
+                  ? 'bg-[#00D68F] text-slate-950 shadow-md shadow-[#00D68F]/20'
                   : 'text-slate-300 hover:text-white hover:bg-[#282E3F]'
                 }
               `}
@@ -415,8 +395,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                     onClick={() => setSelectedProductTypeTab(tab.id)}
                     className={`
                       px-3.5 py-2 text-xs font-bold transition-all border-b-2 whitespace-nowrap cursor-pointer
-                      ${isActive 
-                        ? 'border-[#00D68F] text-[#00D68F]' 
+                      ${isActive
+                        ? 'border-[#00D68F] text-[#00D68F]'
                         : 'border-transparent text-slate-400 hover:text-slate-200'
                       }
                     `}
@@ -446,8 +426,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 <button
                   onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
                   className={`p-2 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    filterCategory !== 'all' 
-                      ? 'bg-[#00D68F]/20 text-[#00D68F] border-[#00D68F]/40' 
+                    filterCategory !== 'all'
+                      ? 'bg-[#00D68F]/20 text-[#00D68F] border-[#00D68F]/40'
                       : 'bg-[#181B26] border-[#2E3548] text-slate-300 hover:text-white'
                   }`}
                 >
@@ -666,7 +646,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
                 >
                   <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-[#181B26]">
                     <img src={p.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200'} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    
+
                     <span className={`absolute top-2 left-2 text-[9px] font-black px-2 py-0.5 rounded-full ${
                       p.status === 'Active' ? 'bg-[#00D68F] text-slate-950' : 'bg-slate-700 text-slate-300'
                     }`}>

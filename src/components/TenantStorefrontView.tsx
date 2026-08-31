@@ -105,42 +105,40 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     const effectiveSlug = String(storeSlug || 'bd').split(':')[0].trim().toLowerCase() || 'bd';
     const loadStorefront = async () => {
       try {
-        const [storefrontRes, productsRes] = await Promise.all([
-          fetch(`/api/storefront/${encodeURIComponent(effectiveSlug)}`, {
-            cache: 'no-store',
-            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-          }).catch(() => null),
-          fetch(`/api/products?store_slug=${encodeURIComponent(effectiveSlug)}`, {
-            cache: 'no-store',
-            headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
-          }).catch(() => null)
-        ]);
-        
+        // Direct Supabase load — API routes bypassed (they 500 on Vercel)
         let apiProducts: any[] = [];
-        if (productsRes && productsRes.ok && productsRes.headers.get('content-type')?.includes('application/json')) {
-          const fetched = await productsRes.json().catch(() => null);
-          if (Array.isArray(fetched)) {
-            apiProducts = fetched;
+        const slugsToQuery = Array.from(new Set([
+          effectiveSlug,
+          effectiveSlug.toLowerCase(),
+          'bd',
+          'verandabd',
+          'default'
+        ])).filter(Boolean);
+        const { data: prodRows, error: prodErr } = await supabase
+          .from('products')
+          .select('*')
+          .in('store_slug', slugsToQuery);
+        if (prodErr) {
+          console.warn('[TenantStorefrontView] Supabase products load error:', prodErr.message);
+          if (String(prodErr.message || '').toLowerCase().includes('row-level') || String(prodErr.message || '').toLowerCase().includes('permission')) {
+            alert(`Supabase read failed (possible RLS rejection): ${prodErr.message}`);
           }
-        }
-
-        let serverData: Record<string, unknown> = {};
-        if (storefrontRes.ok && storefrontRes.headers.get('content-type')?.includes('application/json')) {
-          const payload = await storefrontRes.json();
-          serverData = (payload?.storefront || payload?.tenant || payload || {}) as Record<string, unknown>;
+        } else if (Array.isArray(prodRows)) {
+          apiProducts = prodRows;
         }
 
         if (active) {
           const existing = readZidStoreData(storeSlug);
           const merged = {
             ...existing,
-            ...serverData,
-            products: Array.isArray(apiProducts) ? apiProducts : (existing?.products || []),
+            products: Array.isArray(apiProducts) && apiProducts.length > 0 ? apiProducts : (existing?.products || []),
           };
           writeZidStoreData(merged as ZidStoreData, storeSlug);
           setLiveStoreData(merged as ZidStoreData);
         }
-      } catch { /* local slug-scoped cache remains the offline fallback */ }
+      } catch (e: any) { /* local slug-scoped cache remains the offline fallback */
+        console.warn('[TenantStorefrontView] storefront load exception:', e?.message || e);
+      }
     };
     void loadStorefront();
     const poll = window.setInterval(() => void loadStorefront(), 3000);
@@ -199,38 +197,33 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       let catData: any[] = [];
       let prodData: any[] = [];
 
-      // 1. Fetch from Backend API endpoints & localStorage first
+      // 1. Direct Supabase client load — API routes bypassed (they 500 on Vercel)
       try {
-        const [catRes1, catRes2, prodRes, storefrontRes] = await Promise.all([
-          fetch(`/api/categories?store_slug=${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/categories-by-slug/${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/products?store_slug=${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
-          fetch(`/api/storefront/${encodeURIComponent(effectiveSlug)}`, { cache: 'no-store' }).catch(() => null),
-        ]);
+        if (supabase) {
+          const slugsToQuery = Array.from(new Set([effectiveSlug, effectiveSlug?.toLowerCase?.(), 'bd', 'verandabd', 'default'])).filter(Boolean);
+          const [catRes, prodRes] = await Promise.all([
+            supabase.from('categories').select('*').in('store_slug', slugsToQuery),
+            supabase.from('products').select('*').in('store_slug', slugsToQuery).eq('status', 'active')
+          ]);
 
-        if (catRes1 && catRes1.ok) {
-          const json1 = await catRes1.json().catch(() => null);
-          const list = json1?.categories || json1;
-          if (Array.isArray(list) && list.length > 0) catData.push(...list);
-        }
-        if (catRes2 && catRes2.ok) {
-          const json2 = await catRes2.json().catch(() => null);
-          if (Array.isArray(json2) && json2.length > 0) catData.push(...json2);
-        }
-        if (prodRes && prodRes.ok) {
-          const pJson = await prodRes.json().catch(() => null);
-          if (Array.isArray(pJson) && pJson.length > 0) prodData.push(...pJson);
-        }
-        if (storefrontRes && storefrontRes.ok) {
-          const sJson = await storefrontRes.json().catch(() => null);
-          const sf = sJson?.storefront || sJson?.tenant || sJson;
-          if (sf) {
-            if (Array.isArray(sf.categories)) catData.push(...sf.categories);
-            if (Array.isArray(sf.products)) prodData.push(...sf.products);
+          if (catRes && catRes.error) {
+            console.warn('[TenantStorefrontView] Supabase categories load error:', catRes.error.message);
+            if (String(catRes.error.message || '').toLowerCase().includes('row-level') || String(catRes.error.message || '').toLowerCase().includes('permission')) {
+              alert(`Supabase categories read failed (possible RLS rejection): ${catRes.error.message}`);
+            }
           }
+          if (prodRes && prodRes.error) {
+            console.warn('[TenantStorefrontView] Supabase products load error:', prodRes.error.message);
+            if (String(prodRes.error.message || '').toLowerCase().includes('row-level') || String(prodRes.error.message || '').toLowerCase().includes('permission')) {
+              alert(`Supabase products read failed (possible RLS rejection): ${prodRes.error.message}`);
+            }
+          }
+
+          if (catRes && catRes.data && Array.isArray(catRes.data)) catData.push(...catRes.data);
+          if (prodRes && prodRes.data && Array.isArray(prodRes.data)) prodData.push(...prodRes.data);
         }
-      } catch (e) {
-        console.warn('API catalog fetch warning:', e);
+      } catch (e: any) {
+        console.warn('Supabase catalog fetch warning:', e?.message || e);
       }
 
       // Check localStorage fallbacks
@@ -266,7 +259,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         console.warn('LocalStorage fallback warning:', e);
       }
 
-      // 2. Fetch from Supabase client if available
+      // 2. Fetch from Supabase client if available (deduplicated above)
       try {
         if (supabase) {
           const slugsToQuery = Array.from(new Set([storeSlug, storeSlug?.toLowerCase?.(), 'bd', 'verandabd', 'default'])).filter(Boolean);
@@ -793,17 +786,17 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       if ((p.title || '').toLowerCase().includes(q) || ((p as any).name || '').toLowerCase().includes(q)) return true;
-      
+
       const pCatLower = (p.category || '').toLowerCase();
       if (pCatLower.includes(q)) return true;
-      
+
       const matchedCat = rawStorefrontCategories.find(c => c.name.toLowerCase() === q);
       if (matchedCat) {
         const pCatId = p.categoryId || p.category_id;
         if (pCatId && matchedCat.id && pCatId === matchedCat.id) return true;
         if (q === 'home' && (!pCatLower || pCatLower === 'home' || pCatLower === 'general')) return true;
       }
-      
+
       return false;
     });
 
@@ -873,13 +866,13 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
           <div className="py-2.5 px-3.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
-              <button 
+              <button
                 className="p-1.5 -ml-1 text-slate-300 hover:text-amber-400 rounded-lg shrink-0 transition"
                 onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(!isMobileMenuOpen); }}
               >
                 <Menu className="w-5 h-5" />
               </button>
-              
+
               {/* Stacked Branding Hierarchy */}
               <div className="flex flex-col min-w-0">
                 <BrandLogo size="sm" showSubtitle={false} isDarkMode={true} />
@@ -945,7 +938,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   className="w-full rounded-xl pl-10 pr-8 py-2.5 text-xs bg-slate-950 text-slate-100 border border-slate-700/80 focus:border-amber-400 outline-none shadow-inner font-medium"
                 />
                 {searchQuery && (
-                  <button 
+                  <button
                     onClick={() => setSearchQuery('')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 text-xs font-bold"
                   >
@@ -983,18 +976,18 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
       {/* Main Content Area */}
       <main className="w-full">
-        
+
         {/* Catalog View */}
         {checkoutStep === 'catalog' && (
           <>
             {mobileTab === 'home' && (
             <div className="space-y-6 pb-6">
-            
+
             {/* Hero Banner (Luxury Dark Aesthetic) */}
             <div className="w-full h-[220px] relative overflow-hidden bg-slate-950 border-b border-slate-800/80">
-              <img 
-                src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"} 
-                alt="Hero Banner" 
+              <img
+                src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"}
+                alt="Hero Banner"
                 className="w-full h-full object-cover opacity-50 scale-105 transition-transform duration-700 hover:scale-100"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/50 to-transparent flex items-end p-5">
@@ -1014,7 +1007,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             </div>
 
             <div className="px-4 space-y-7">
-              
+
               {/* Interactive Category Sliding Carousel */}
               <section className="space-y-3">
                 <div className="flex justify-between items-center px-0.5">
@@ -1028,14 +1021,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
                   {/* Chevron scroll buttons */}
                   <div className="flex items-center gap-1">
-                    <button 
+                    <button
                       onClick={() => scrollCategories('left')}
                       className="p-1.5 rounded-lg bg-slate-800/80 text-slate-300 hover:text-amber-400 border border-slate-700/60 transition cursor-pointer"
                       aria-label="Scroll left"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                       onClick={() => scrollCategories('right')}
                       className="p-1.5 rounded-lg bg-slate-800/80 text-slate-300 hover:text-amber-400 border border-slate-700/60 transition cursor-pointer"
                       aria-label="Scroll right"
@@ -1044,8 +1037,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     </button>
                   </div>
                 </div>
-                
-                <div 
+
+                <div
                   ref={categoryCarouselRef}
                   className="flex items-center gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x"
                 >
@@ -1078,8 +1071,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     const productCount = (cat as any)?.productCount ?? allActiveProducts.filter(p => p.category === catName).length;
 
                     return (
-                      <div 
-                        key={catName || `cat-${i}`} 
+                      <div
+                        key={catName || `cat-${i}`}
                         onClick={() => {
                           setActiveCategoryFilter(isSelected ? 'all' : (catName || String(catId)));
                         }}
@@ -1138,7 +1131,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       <p className="text-xs text-slate-500">{t('sf_no_products_desc')}</p>
                     </div>
                   ) : displayProducts.map(p => (
-                    <div 
+                    <div
                       key={p.id}
                       className="group flex flex-col justify-between bg-slate-900/80 backdrop-blur-md rounded-2xl overflow-hidden border border-slate-800/80 hover:border-amber-500/40 hover:shadow-[0_0_25px_rgba(212,175,55,0.15)] transition-all duration-300 relative"
                     >
@@ -1171,19 +1164,19 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       </div>
 
                       {/* Image Container with Hover Effects */}
-                      <div 
+                      <div
                         className="relative aspect-square bg-slate-950/80 overflow-hidden cursor-pointer"
                         onClick={() => setQuickViewProduct(p)}
                       >
-                        <img 
-                          src={p.image || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80"} 
-                          alt={p.title} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100" 
+                        <img
+                          src={p.image || "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=600&q=80"}
+                          alt={p.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out opacity-90 group-hover:opacity-100"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60 group-hover:opacity-30 transition-opacity" />
-                        
+
                         {/* Hover Quick View Trigger */}
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); setQuickViewProduct(p); }}
                           className="absolute bottom-2.5 right-2.5 p-2 rounded-xl bg-slate-900/80 backdrop-blur-md text-slate-200 hover:text-amber-400 border border-slate-700/80 opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-110"
                           title="Quick View"
@@ -1196,14 +1189,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       <div className="p-3 space-y-2 flex-1 flex flex-col justify-between bg-slate-900/40">
                         <div>
                           <span className="text-[9px] font-extrabold text-amber-400 uppercase tracking-widest">{p.category || 'Collection'}</span>
-                          <h4 
+                          <h4
                             className="font-bold text-xs text-slate-100 line-clamp-2 leading-snug cursor-pointer hover:text-amber-400 transition mt-0.5"
                             onClick={() => setQuickViewProduct(p)}
                           >
                             {p.title}
                           </h4>
                         </div>
-                        
+
                         <div className="pt-2 border-t border-slate-800/80 flex items-end justify-between gap-2">
                           <div className="space-y-0.5">
                             <div className="text-sm font-black text-amber-400 tracking-tight">
@@ -1215,7 +1208,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                               </div>
                             )}
                           </div>
-                          
+
                           <button
                             onClick={(e) => { e.stopPropagation(); handleAddToCart(p); }}
                             className="bg-gradient-to-r from-amber-400 via-[#00D68F] to-emerald-400 text-slate-950 font-black text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-md hover:shadow-amber-400/20 hover:scale-105 active:scale-95 transition cursor-pointer"
@@ -1729,9 +1722,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Return to Catalog
             </button>
-            
+
             <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-800/80 p-4 shadow-2xl space-y-6 text-slate-100">
-              
+
               <div>
                 <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-amber-400" />
@@ -1743,7 +1736,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               {/* Order Summary Items */}
               <div className="bg-slate-950 rounded-xl p-3 border border-slate-800/80 space-y-3">
                 <h4 className="text-[10px] font-black text-amber-400 uppercase tracking-wider">Order Summary</h4>
-                
+
                 {cart.length > 0 ? (
                   cart.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-3 py-1">
@@ -1764,7 +1757,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     <div className="text-xs font-black text-amber-400 shrink-0">৳{(selectedProduct.priceBDT ?? 0).toLocaleString()}</div>
                   </div>
                 ) : null}
-                
+
                 <div className="border-t border-slate-800 pt-2 flex justify-between items-center text-xs">
                   <span className="font-bold text-slate-400">Total Payable:</span>
                   <span className="text-base font-black text-amber-400">৳{totalAmount.toLocaleString()}</span>
@@ -2085,9 +2078,9 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-emerald-100">
               <Check className="w-8 h-8 text-[#00D68F]" />
             </div>
-            
+
             <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Order Placed Successfully!</h3>
-            
+
             <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3 mb-6">
               <p className="text-xs text-slate-600">
                 Thank you <strong className="text-slate-900">{custName}</strong>. Your order has been placed.
@@ -2409,8 +2402,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   {cart.reduce((s, i) => s + i.quantity, 0)} items
                 </span>
               </h3>
-              <button 
-                onClick={() => setIsCartOpen(false)} 
+              <button
+                onClick={() => setIsCartOpen(false)}
                 className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl transition cursor-pointer border border-slate-700/60"
               >
                 <X className="w-4 h-4" />
@@ -2422,7 +2415,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                 <div className="text-center py-24 text-slate-500 space-y-3">
                   <ShoppingBag className="w-16 h-16 mx-auto opacity-20 text-slate-400" />
                   <p className="text-sm font-bold text-slate-400">Your shopping cart is currently empty.</p>
-                  <button 
+                  <button
                     onClick={() => setIsCartOpen(false)}
                     className="text-xs font-black text-amber-400 bg-amber-400/10 px-4 py-2 rounded-xl border border-amber-400/20 hover:bg-amber-400/20 transition cursor-pointer"
                   >
@@ -2437,7 +2430,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       <div>
                         <div className="flex justify-between items-start gap-2">
                           <h4 className="font-bold text-xs text-slate-100 line-clamp-1">{item.product.title}</h4>
-                          <button 
+                          <button
                             onClick={() => handleUpdateCartQty(item.product.id, -item.quantity)}
                             className="text-slate-500 hover:text-rose-400 transition cursor-pointer shrink-0"
                             title="Remove item"
@@ -2453,15 +2446,15 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/60">
                         <span className="text-[10px] text-slate-400 font-mono">৳{(item.product.priceBDT ?? 0).toLocaleString()} each</span>
                         <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1">
-                          <button 
-                            onClick={() => handleUpdateCartQty(item.product.id, -1)} 
+                          <button
+                            onClick={() => handleUpdateCartQty(item.product.id, -1)}
                             className="font-black px-1 text-slate-400 hover:text-amber-400 transition cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="text-xs font-black text-slate-100 min-w-[16px] text-center">{item.quantity}</span>
-                          <button 
-                            onClick={() => handleUpdateCartQty(item.product.id, 1)} 
+                          <button
+                            onClick={() => handleUpdateCartQty(item.product.id, 1)}
                             className="font-black px-1 text-slate-400 hover:text-amber-400 transition cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
