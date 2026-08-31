@@ -329,7 +329,7 @@ export const initialPlatformSettings: PlatformSettings = {
 
 export const initialPlatformAnnouncement: any = {
   id: 'ann-1',
-  message: 'Welcome to the platform! Enjoy your free trial.',
+  message: 'Welcome to your dashboard! Enjoy your subscription.',
   isActive: true,
   type: 'Info',
   targetAudience: 'All Merchants',

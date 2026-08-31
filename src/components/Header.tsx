@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MerchantProfile, SubscriptionRequest } from '../types';
 import { calculateRemainingDays, getPlanDisplayName, getPlanDurationInDays, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
 import { supabase } from '../lib/supabase';
 import { BrandLogo } from './BrandLogo';
-import { 
-  Sparkles, 
-  ExternalLink, 
-  Bell, 
-  Globe, 
-  Clock, 
+import {
+  Sparkles,
+  ExternalLink,
+  Bell,
+  Globe,
+  Clock,
   ChevronRight,
   LogOut,
   Search,
@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Filter Orders, Products, Merchants
-  const filteredOrders = orders.filter((o: any) => 
+  const filteredOrders = orders.filter((o: any) =>
     o.id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     o.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     o.customerPhone?.includes(searchQuery)
@@ -122,8 +122,6 @@ export const Header: React.FC<HeaderProps> = ({
     )
   );
 
-  const isPaid = isPaidSubscriptionActive(merchant);
-
   // Supabase fetched active subscription record
   const [supabaseSub, setSupabaseSub] = useState<{
     plan_started_at?: string;
@@ -138,6 +136,14 @@ export const Header: React.FC<HeaderProps> = ({
     subscription_end_date?: string;
     trial_ends_at?: string;
   } | null>(null);
+
+  const isPaid = useMemo(() => {
+    // Paid if the local merchant profile OR the live Supabase record shows a paid plan.
+    // This prevents the FREE TRIAL banner from showing after the merchant has purchased a plan.
+    if (isPaidSubscriptionActive(merchant)) return true;
+    const subPlan = supabaseSub?.subscription_plan;
+    return Boolean(subPlan && subPlan !== 'free_trial' && subPlan !== 'trial');
+  }, [merchant, supabaseSub]);
 
   // 1. Connect to Supabase: Fetch active merchant's real subscription record directly from Supabase & Listen to Realtime changes
   useEffect(() => {
@@ -236,6 +242,34 @@ export const Header: React.FC<HeaderProps> = ({
   // Stable fallback start time ref initialized ONCE per component instance
   const initialMountTimeRef = useRef<number>(Date.now());
 
+  // Persisted stable plan start timestamp. Prevents the countdown from resetting to
+  // 30/29 days on every page refresh: the first time we resolve a start time for this
+  // merchant we freeze it in localStorage keyed by email, and reuse it afterwards.
+  const getStablePlanStartMs = (rawStartTime: any): number => {
+    const parsed = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
+      ? new Date(rawStartTime).getTime()
+      : 0;
+    if (parsed > 0) {
+      try {
+        const key = `zid_plan_start_${(merchant?.email || 'user').toLowerCase()}`;
+        const stored = Number(localStorage.getItem(key) || 0);
+        // Keep the earliest known start (registration/plan purchase date)
+        if (!stored || parsed < stored) localStorage.setItem(key, String(parsed));
+      } catch { /* storage unavailable */ }
+      return parsed;
+    }
+    try {
+      const key = `zid_plan_start_${(merchant?.email || 'user').toLowerCase()}`;
+      const stored = Number(localStorage.getItem(key) || 0);
+      if (stored > 0) return stored;
+      const fallback = initialMountTimeRef.current;
+      localStorage.setItem(key, String(fallback));
+      return fallback;
+    } catch {
+      return initialMountTimeRef.current;
+    }
+  };
+
   // Real-time ticking countdown clock state
   const [timeLeft, setTimeLeft] = useState<{
     days: number;
@@ -267,9 +301,7 @@ export const Header: React.FC<HeaderProps> = ({
         supabaseSub?.plan_start_date ||
         supabaseSub?.created_at;
 
-      const planStartTimeMs = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
-        ? new Date(rawStartTime).getTime()
-        : initialMountTimeRef.current;
+      const planStartTimeMs = getStablePlanStartMs(rawStartTime);
 
       const explicitExpiry =
         merchant?.expires_at ||
@@ -289,7 +321,8 @@ export const Header: React.FC<HeaderProps> = ({
         targetTimestamp = explicitExpiryMs;
       } else {
         const calculatedFromStart = planStartTimeMs + durationMs;
-        targetTimestamp = calculatedFromStart > Date.now() ? calculatedFromStart : (Date.now() + durationMs);
+        // Never re-anchor to "now": if the calculated window has passed, show it expired.
+        targetTimestamp = calculatedFromStart;
       }
     } else {
       // For free trial (30 days)
@@ -309,9 +342,7 @@ export const Header: React.FC<HeaderProps> = ({
           merchant?.trialStartDate ||
           merchant?.createdAt;
 
-        const trialStartTimeMs = rawStartTime && !isNaN(new Date(rawStartTime).getTime())
-          ? new Date(rawStartTime).getTime()
-          : initialMountTimeRef.current;
+        const trialStartTimeMs = getStablePlanStartMs(rawStartTime);
 
         targetTimestamp = trialStartTimeMs + (30 * 24 * 60 * 60 * 1000);
       }
@@ -560,8 +591,8 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="font-semibold text-slate-200">{trialDaysTotal - trialDaysRemaining}/{trialDaysTotal} d</span>
                 </div>
                 <div className="w-full h-1.5 bg-[#161923] rounded-full overflow-hidden border border-[#2E3548]">
-                  <div 
-                    className="h-full bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] rounded-full transition-all duration-500" 
+                  <div
+                    className="h-full bg-gradient-to-r from-[#BF953F] via-[#FCF6BA] to-[#B38728] rounded-full transition-all duration-500"
                     style={{ width: `${trialPercentage}%` }}
                   />
                 </div>
@@ -679,7 +710,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="w-full bg-[#181B26] text-xs text-slate-200 pl-9 pr-16 py-2 rounded-xl border border-[#2E3548] focus:border-[#D4AF37] focus:outline-none transition"
             />
             {searchQuery ? (
-              <button 
+              <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-2.5 text-slate-400 hover:text-white text-xs cursor-pointer"
               >
@@ -813,7 +844,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Notifications Button */}
           <div className="relative">
-            <button 
+            <button
               onClick={() => setShowNotifications(!showNotifications)}
               className="p-2 text-slate-300 hover:text-white bg-[#252B3B] hover:bg-[#2E3548] rounded-xl border border-[#3A435E] relative transition cursor-pointer"
               title="Notifications"
@@ -848,8 +879,8 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onToggleTheme}
             className={`p-2 rounded-xl border transition cursor-pointer ${
-              isDarkMode 
-                ? 'text-slate-300 hover:text-white bg-[#252B3B] hover:bg-[#2E3548] border-[#3A435E]' 
+              isDarkMode
+                ? 'text-slate-300 hover:text-white bg-[#252B3B] hover:bg-[#2E3548] border-[#3A435E]'
                 : 'text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border-slate-300'
             }`}
             title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
@@ -889,15 +920,15 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="hidden xl:block text-left">
               <div className="text-xs font-bold text-white leading-tight">{merchant?.storeName || 'My Store'}</div>
               <div className="flex items-center gap-2">
-                <a 
-                  href={`https://zidbdsaas2026.vercel.app/e/${merchant?.storeSlug || ''}`} 
-                  target="_blank" 
+                <a
+                  href={`https://zidbdsaas2026.vercel.app/e/${merchant?.storeSlug || ''}`}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-[10px] text-[#E6C587] font-mono leading-tight hover:underline cursor-pointer"
                 >
                   zidbdsaas2026.vercel.app/e/{merchant?.storeSlug || ''}
                 </a>
-                <button 
+                <button
                   onClick={(e) => {
                     e.preventDefault();
                     navigator.clipboard.writeText(`https://zidbdsaas2026.vercel.app/e/${merchant?.storeSlug || ''}`);
@@ -940,7 +971,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button 
+                <button
                   onClick={() => {
                     if (confirm('Are you sure you want to clear the entire chat history?')) {
                       setAiResponses([{
@@ -954,7 +985,7 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
-                <button 
+                <button
                   onClick={() => setShowAiModal(false)}
                   className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-[#2E3548] transition-colors"
                 >
@@ -965,8 +996,8 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="p-4 overflow-y-auto flex-1 space-y-3 max-h-[350px] min-h-[300px] bg-[#181B26] custom-scrollbar">
               {aiResponses.map((res, i) => (
-                <div 
-                  key={i} 
+                <div
+                  key={i}
                   className={`flex ${res.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed ${
@@ -1000,7 +1031,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 ))}
               </div>
-              
+
               <form onSubmit={handleAiSend} className="flex gap-2">
                 <input
                   type="text"

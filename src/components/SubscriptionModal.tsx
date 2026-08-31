@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import { MerchantProfile, SubscriptionPlan, SubscriptionRequest, AdminPaymentGatewayConfig } from '../types';
 import { subscriptionPlans } from '../data/initialData';
 import { calculateRemainingDays, getPlanDisplayName, isPaidSubscriptionActive } from '../utils/subscriptionUtils';
-import { 
-  X, 
-  Check, 
-  Sparkles, 
-  ShieldCheck, 
-  CreditCard, 
-  Building2, 
-  FileText, 
-  Copy, 
-  ArrowRight, 
-  Download, 
-  Clock, 
+import {
+  X,
+  Check,
+  Sparkles,
+  ShieldCheck,
+  CreditCard,
+  Building2,
+  FileText,
+  Copy,
+  ArrowRight,
+  Download,
+  Clock,
   AlertCircle,
   QrCode
 } from 'lucide-react';
@@ -95,7 +95,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-4xl bg-[#1D212E] border border-[#2E3548] rounded-2xl shadow-2xl overflow-hidden my-8">
-        
+
         {/* Modal Top Header */}
         <div className="p-4 bg-gradient-to-r from-[#202535] via-[#282E40] to-[#202535] border-b border-[#2E3548] flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -137,7 +137,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 const isPaid = isPaidSubscriptionActive(merchant);
                 const paidDaysRemaining = merchant?.subscriptionExpiry ? calculateRemainingDays(merchant.subscriptionExpiry) : 0;
                 const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
-                const trialDaysRemaining = trialEndsAtDate 
+                const trialDaysRemaining = trialEndsAtDate
                   ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
                   : (merchant?.trialDaysRemaining ?? 0);
 
@@ -177,7 +177,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                               )}
                             </>
                           ) : (
-                            <>{trialDaysRemaining} Days Left (Free Trial)</>
+                            <>{trialDaysRemaining} Days Left (Trial)</>
                           )}
                         </p>
                       </div>
@@ -196,8 +196,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                       onClick={() => setSelectedPlanId(plan.id)}
                       className={`
                         relative bg-[#202533] rounded-xl p-3 border cursor-pointer transition-all duration-200 flex flex-col justify-between
-                        ${isSelected 
-                          ? 'border-[#D4AF37] ring-1 ring-[#D4AF37]/20 bg-gradient-to-b from-[#202533] to-[#252C3E]' 
+                        ${isSelected
+                          ? 'border-[#D4AF37] ring-1 ring-[#D4AF37]/20 bg-gradient-to-b from-[#202533] to-[#252C3E]'
                           : 'border-[#2E3548] hover:border-slate-500 hover:bg-[#252B3B]'
                         }
                       `}
@@ -468,7 +468,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                     <p className="text-xs text-slate-300 leading-relaxed">
                       Scan the QR code below to pay <span className="text-white font-bold">৳{currentPlan.price.toLocaleString()} BDT</span> to Zid Admin.
                     </p>
-                    
+
                     {adminPaymentConfig.qrImageUrl ? (
                       <div className="mx-auto w-48 h-48 p-2 bg-white rounded-2xl shadow-xl">
                         <img src={adminPaymentConfig.qrImageUrl} alt="QR Code" className="w-full h-full object-contain" />
@@ -478,7 +478,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                         QR Code not available
                       </div>
                     )}
-                    
+
                     <div className="text-[10px] text-slate-400 uppercase font-black">
                       {adminPaymentConfig.qrTitle || 'Bangla QR Payment'}
                     </div>
@@ -493,7 +493,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                         {gateway.details}
                       </p>
                     </div>
-                    
+
                     {gateway.qrCodeUrl && (
                       <div className="space-y-3 text-center">
                         <div className="mx-auto w-40 h-40 p-2 bg-white rounded-xl shadow-lg">
