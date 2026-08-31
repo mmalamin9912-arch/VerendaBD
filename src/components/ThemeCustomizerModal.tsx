@@ -1,33 +1,35 @@
 import React, { useState, useRef } from 'react';
 import { GalleryImage, MerchantProfile } from '../types';
 import { TenantStorefrontView } from './TenantStorefrontView';
-import { 
-  ArrowLeft, 
-  Check, 
-  ChevronDown, 
-  ChevronRight, 
-  Monitor, 
-  Smartphone, 
-  Tablet, 
-  History, 
-  Sparkles, 
-  Globe, 
-  Eye, 
-  EyeOff, 
-  Plus, 
-  Trash2, 
-  GripVertical, 
-  RotateCcw, 
-  Sliders, 
-  Layers, 
-  Layout, 
-  ShoppingBag, 
-  Search, 
-  Menu as MenuIcon, 
-  X, 
-  CheckCircle2, 
-  Image as ImageIcon, 
-  Maximize2, 
+import { writeZidStoreData } from '../lib/storeData';
+import { supabase } from '../lib/supabase';
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Monitor,
+  Smartphone,
+  Tablet,
+  History,
+  Sparkles,
+  Globe,
+  Eye,
+  EyeOff,
+  Plus,
+  Trash2,
+  GripVertical,
+  RotateCcw,
+  Sliders,
+  Layers,
+  Layout,
+  ShoppingBag,
+  Search,
+  Menu as MenuIcon,
+  X,
+  CheckCircle2,
+  Image as ImageIcon,
+  Maximize2,
   ExternalLink,
   ChevronUp,
   Save,
@@ -512,39 +514,82 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
     setShowPublishConfirmModal(true);
   };
 
-  const performPublish = () => {
+  const performPublish = async () => {
     setShowPublishConfirmModal(false);
     setHasUnsavedChanges(false);
     setHistoryLogs((prev) => [`Published theme customization at ${new Date().toLocaleTimeString()}`, ...prev]);
-    
-    if (merchant && onPublish) {
-      const themeConfig = {
-        storeLogoText, logoImageUrl, desktopLogoUrl, mobileLogoUrl, logoHeight,
-        headerSticky, headerBgColor, hideLanguage, hideCountry, showSearchBar,
-        showAnnouncement, announcementText, announcementBg, announcementLink, isMarquee, marqueeSpeed, announcementItems,
-        showHeroBanner, carouselTransition, desktopCarouselHeight, mobileCarouselHeight, activeSlideIndex, slides, heroTitle, heroSubtitle, heroCtaText, heroImage,
-        showCategories, categoriesHeading, categoriesSubtitle, categoriesLayout, categoriesSelection, categoriesItemsPerRow, categoriesShowItemCount, categoriesMoreButtonText, categoriesShowMoreButton, categoriesBgImage, categoriesOverlayOpacity, categoriesList,
-        showFeaturedGrid, featuredHeading, productColumns,
-        showCountdown, countdownTitle, countdownEndDate, countdownBgImage, countdownOverlayOpacity, countdownHours, countdownDiscount,
-        showGallery, galleryHeading, galleryImages,
-        showSocialBlock, socialTagline, facebookHandle, instagramHandle, whatsappNumber, tiktokHandle, youtubeHandle, showFacebook, showInstagram, showWhatsapp, showTikTok, showYouTube, socialButtonStyle,
-        showVideo, videoTitle, videoUrl, videoCoverImage, videoFileUrl, videoAutoplay, videoMuted,
-        footerLogoText, footerTagline, footerLinksTitle, footerLinks, footerAboutText, dhakaAddress, contactPhone, contactEmail, showPaymentBadges,
-        contentSectionsOrder, mainSectionsOrder, headerSectionsOrder, footerSectionsOrder
-      };
 
-      const updatedMerchant = {
-        ...merchant,
-        storeName: storeLogoText,
-        heroTitle,
-        heroSubtitle,
-        heroImage,
-        announcementText,
-        themeConfig,
-      };
+    // Build the updated merchant profile + theme config (always, so persistence works)
+    const themeConfig: Record<string, unknown> = {
+      storeLogoText, logoImageUrl, desktopLogoUrl, mobileLogoUrl, logoHeight,
+      headerSticky, headerBgColor, hideLanguage, hideCountry, showSearchBar,
+      showAnnouncement, announcementText, announcementBg, announcementLink, isMarquee, marqueeSpeed, announcementItems,
+      showHeroBanner, carouselTransition, desktopCarouselHeight, mobileCarouselHeight, activeSlideIndex, slides, heroTitle, heroSubtitle, heroCtaText, heroImage,
+      showCategories, categoriesHeading, categoriesSubtitle, categoriesLayout, categoriesSelection, categoriesItemsPerRow, categoriesShowItemCount, categoriesMoreButtonText, categoriesShowMoreButton, categoriesBgImage, categoriesOverlayOpacity, categoriesList,
+      showFeaturedGrid, featuredHeading, productColumns,
+      showCountdown, countdownTitle, countdownEndDate, countdownBgImage, countdownOverlayOpacity, countdownHours, countdownDiscount,
+      showGallery, galleryHeading, galleryImages,
+      showSocialBlock, socialTagline, facebookHandle, instagramHandle, whatsappNumber, tiktokHandle, youtubeHandle, showFacebook, showInstagram, showWhatsapp, showTikTok, showYouTube, socialButtonStyle,
+      showVideo, videoTitle, videoUrl, videoCoverImage, videoFileUrl, videoAutoplay, videoMuted,
+      footerLogoText, footerTagline, footerLinksTitle, footerLinks, footerAboutText, dhakaAddress, contactPhone, contactEmail, showPaymentBadges,
+      contentSectionsOrder, mainSectionsOrder, headerSectionsOrder, footerSectionsOrder
+    };
+
+    const updatedMerchant: MerchantProfile = merchant ? {
+      ...merchant,
+      storeName: storeLogoText,
+      heroTitle,
+      heroSubtitle,
+      heroImage,
+      announcementText,
+      themeConfig,
+    } : ({} as MerchantProfile);
+
+    if (merchant && onPublish) {
       onPublish(updatedMerchant);
     }
-    
+
+    // Persist the published theme to the slug-scoped shared store so the live
+    // storefront (and other tabs) pick it up instantly via storage/CustomEvent.
+    try {
+      const slug = (updatedMerchant.storeSlug || updatedMerchant.storeName || 'my-store')
+        .toLowerCase().replace(/[^a-z0-9]/g, '');
+      writeZidStoreData(
+        { merchant: updatedMerchant, themeCustomization: themeConfig as Record<string, unknown> },
+        slug
+      );
+    } catch (e) {
+      console.warn('[ThemeCustomizer] Shared store write failed:', e);
+    }
+
+    // Persist to Supabase 'merchants' table (theme_config + hero/announcement fields)
+    // so the customer-facing storefront renders the saved theme after reload.
+    try {
+      if (supabase && merchant?.email) {
+        const { error: themeSaveErr } = await supabase
+          .from('merchants')
+          .upsert({
+            email: updatedMerchant.email.trim().toLowerCase(),
+            store_name: updatedMerchant.storeName,
+            store_slug: (updatedMerchant.storeSlug || updatedMerchant.storeName || 'my-store')
+              .toLowerCase().replace(/[^a-z0-9]/g, ''),
+            theme_config: themeConfig,
+            hero_title: heroTitle,
+            hero_subtitle: heroSubtitle,
+            hero_image: heroImage,
+            announcement_text: announcementText,
+            logo_url: logoImageUrl || desktopLogoUrl || mobileLogoUrl || '',
+            active_theme_id: updatedMerchant.activeThemeId || null,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'email' });
+        if (themeSaveErr) {
+          console.warn('[ThemeCustomizer] Supabase theme save notice:', themeSaveErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn('[ThemeCustomizer] Supabase theme save exception:', e);
+    }
+
     triggerToast('Theme changes published live to storefront successfully!');
   };
 
@@ -810,7 +855,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#12151E] flex flex-col h-screen w-screen overflow-hidden text-slate-100 font-sans">
-      
+
       {/* 1. TOP HEADER BAR */}
       <header className="h-14 bg-[#181B26] border-b border-[#2E3548] px-4 flex items-center justify-between gap-3 shrink-0 z-20 select-none">
         {/* Left Controls: Back Button & Theme status */}
@@ -894,7 +939,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
             <Clock className="w-3.5 h-3.5" />
             <span>Unsaved changes pending</span>
           </div>
-          <button 
+          <button
             onClick={handlePublish}
             className="bg-[#D4AF37] text-slate-950 font-bold px-3 py-1 rounded-lg text-xs hover:bg-[#FCF6BA] cursor-pointer transition"
           >
@@ -926,7 +971,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 {drillDownSection ? 'Section Editor' : 'Home page sections'}
               </h2>
             </div>
-            <button 
+            <button
               onClick={() => {
                 setAnnouncementText('🎉 Free Nationwide Shipping across Bangladesh on Orders Over ৳2,000!');
                 setHeroTitle('Eid Ul Adha Special Collection 2026');
@@ -972,9 +1017,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer select-none">Sticky Navigation Bar</label>
-                        <input 
-                          type="checkbox" 
-                          checked={headerSticky} 
+                        <input
+                          type="checkbox"
+                          checked={headerSticky}
                           onChange={(e) => setHeaderSticky(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
@@ -982,9 +1027,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer select-none">Hide Language</label>
-                        <input 
-                          type="checkbox" 
-                          checked={hideLanguage} 
+                        <input
+                          type="checkbox"
+                          checked={hideLanguage}
                           onChange={(e) => setHideLanguage(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
@@ -992,9 +1037,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer select-none">Hide Country</label>
-                        <input 
-                          type="checkbox" 
-                          checked={hideCountry} 
+                        <input
+                          type="checkbox"
+                          checked={hideCountry}
                           onChange={(e) => setHideCountry(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
@@ -1002,9 +1047,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer select-none">Show Search Bar</label>
-                        <input 
-                          type="checkbox" 
-                          checked={showSearchBar} 
+                        <input
+                          type="checkbox"
+                          checked={showSearchBar}
                           onChange={(e) => setShowSearchBar(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
@@ -1014,15 +1059,15 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <label className="text-slate-400 text-[11px] block">Header Background Color</label>
                         <PremiumLockedWrapper>
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="color" 
-                              value={headerBgColor} 
-                              onChange={(e) => setHeaderBgColor(e.target.value)} 
+                            <input
+                              type="color"
+                              value={headerBgColor}
+                              onChange={(e) => setHeaderBgColor(e.target.value)}
                               className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer"
                             />
-                            <input 
-                              type="text" 
-                              value={headerBgColor} 
+                            <input
+                              type="text"
+                              value={headerBgColor}
                               onChange={(e) => setHeaderBgColor(e.target.value)}
                               className="bg-[#202533] border border-[#2E3548] text-white px-2 py-1 rounded text-xs font-mono uppercase w-24"
                             />
@@ -1049,9 +1094,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Store Logo Text</label>
-                        <input 
-                          type="text" 
-                          value={storeLogoText} 
+                        <input
+                          type="text"
+                          value={storeLogoText}
                           onChange={(e) => setStoreLogoText(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -1065,8 +1110,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         {desktopLogoUrl && (
                           <div className="flex items-center gap-2 p-2 bg-[#202533] border border-[#2E3548] rounded-lg">
                             <img src={desktopLogoUrl} alt="Desktop Logo Preview" className="h-7 max-w-[100px] object-contain bg-slate-900 p-1 rounded" />
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => setDesktopLogoUrl('')}
                               className="ml-auto text-red-400 hover:text-red-300 text-xs font-bold cursor-pointer"
                             >
@@ -1075,20 +1120,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           </div>
                         )}
                         <div className="flex items-center gap-1.5">
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             placeholder="Image URL or upload..."
-                            value={desktopLogoUrl} 
+                            value={desktopLogoUrl}
                             onChange={(e) => setDesktopLogoUrl(e.target.value)}
                             className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                           <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                             <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                             <span>Upload</span>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              className="hidden" 
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -1114,8 +1159,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         {mobileLogoUrl && (
                           <div className="flex items-center gap-2 p-2 bg-[#202533] border border-[#2E3548] rounded-lg">
                             <img src={mobileLogoUrl} alt="Mobile Logo Preview" className="h-6 max-w-[80px] object-contain bg-slate-900 p-1 rounded" />
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => setMobileLogoUrl('')}
                               className="ml-auto text-red-400 hover:text-red-300 text-xs font-bold cursor-pointer"
                             >
@@ -1124,20 +1169,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           </div>
                         )}
                         <div className="flex items-center gap-1.5">
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             placeholder="Image URL or upload..."
-                            value={mobileLogoUrl} 
+                            value={mobileLogoUrl}
                             onChange={(e) => setMobileLogoUrl(e.target.value)}
                             className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                           <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                             <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                             <span>Upload</span>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              className="hidden" 
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -1160,11 +1205,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <span>Logo Height</span>
                           <span>{logoHeight}px</span>
                         </div>
-                        <input 
-                          type="range" 
-                          min="20" 
-                          max="60" 
-                          value={logoHeight} 
+                        <input
+                          type="range"
+                          min="20"
+                          max="60"
+                          value={logoHeight}
                           onChange={(e) => setLogoHeight(Number(e.target.value))}
                           className="w-full accent-[#D4AF37]"
                         />
@@ -1199,9 +1244,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer">Marquee Scrolling Effect</label>
-                        <input 
-                          type="checkbox" 
-                          checked={isMarquee} 
+                        <input
+                          type="checkbox"
+                          checked={isMarquee}
                           onChange={(e) => setIsMarquee(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
@@ -1213,11 +1258,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Scroll Duration (s)</span>
                             <span>{marqueeSpeed}s</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="5" 
-                            max="40" 
-                            value={marqueeSpeed} 
+                          <input
+                            type="range"
+                            min="5"
+                            max="40"
+                            value={marqueeSpeed}
                             onChange={(e) => setMarqueeSpeed(Number(e.target.value))}
                             className="w-full accent-[#D4AF37]"
                           />
@@ -1229,8 +1274,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                           {announcementItems.map((itemText, idx) => (
                             <div key={idx} className="flex items-center gap-1.5 bg-[#202533] p-2 rounded-lg border border-[#2E3548]">
-                              <input 
-                                type="text" 
+                              <input
+                                type="text"
                                 value={itemText}
                                 onChange={(e) => {
                                   const updated = [...announcementItems];
@@ -1239,8 +1284,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                 }}
                                 className="flex-1 bg-transparent text-white text-xs font-semibold focus:outline-none"
                               />
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => setAnnouncementItems(prev => prev.filter((_, i) => i !== idx))}
                                 className="text-red-400 hover:text-red-300 p-0.5 cursor-pointer shrink-0"
                                 title="Remove item"
@@ -1252,10 +1297,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         </div>
 
                         <div className="flex gap-1.5 pt-1">
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             placeholder="Add announcement text..."
-                            value={newAnnouncementInput} 
+                            value={newAnnouncementInput}
                             onChange={(e) => setNewAnnouncementInput(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && newAnnouncementInput.trim()) {
@@ -1284,15 +1329,15 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="space-y-1">
                         <label className="text-slate-400 text-[11px] block">Background Banner Color</label>
                         <div className="flex items-center gap-2">
-                          <input 
-                            type="color" 
-                            value={announcementBg} 
-                            onChange={(e) => setAnnouncementBg(e.target.value)} 
+                          <input
+                            type="color"
+                            value={announcementBg}
+                            onChange={(e) => setAnnouncementBg(e.target.value)}
                             className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer"
                           />
-                          <input 
-                            type="text" 
-                            value={announcementBg} 
+                          <input
+                            type="text"
+                            value={announcementBg}
                             onChange={(e) => setAnnouncementBg(e.target.value)}
                             className="bg-[#202533] border border-[#2E3548] text-white px-2 py-1 rounded text-xs font-mono uppercase w-24"
                           />
@@ -1333,8 +1378,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             type="button"
                             onClick={() => setCarouselTransition('slide')}
                             className={`px-3 py-2 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                              carouselTransition === 'slide' 
-                                ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]' 
+                              carouselTransition === 'slide'
+                                ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
                                 : 'bg-[#202533] border-[#2E3548] text-slate-300 hover:bg-[#282E3F]'
                             }`}
                           >
@@ -1344,8 +1389,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             type="button"
                             onClick={() => setCarouselTransition('fade')}
                             className={`px-3 py-2 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                              carouselTransition === 'fade' 
-                                ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]' 
+                              carouselTransition === 'fade'
+                                ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
                                 : 'bg-[#202533] border-[#2E3548] text-slate-300 hover:bg-[#282E3F]'
                             }`}
                           >
@@ -1360,11 +1405,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Desktop Height</span>
                             <span>{desktopCarouselHeight}px</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="300" 
-                            max="650" 
-                            value={desktopCarouselHeight} 
+                          <input
+                            type="range"
+                            min="300"
+                            max="650"
+                            value={desktopCarouselHeight}
                             onChange={(e) => setDesktopCarouselHeight(Number(e.target.value))}
                             className="w-full accent-[#D4AF37]"
                           />
@@ -1374,11 +1419,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Mobile Height</span>
                             <span>{mobileCarouselHeight}px</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="200" 
-                            max="450" 
-                            value={mobileCarouselHeight} 
+                          <input
+                            type="range"
+                            min="200"
+                            max="450"
+                            value={mobileCarouselHeight}
                             onChange={(e) => setMobileCarouselHeight(Number(e.target.value))}
                             className="w-full accent-[#D4AF37]"
                           />
@@ -1392,7 +1437,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                           {slides.map((slideItem, idx) => (
-                            <div 
+                            <div
                               key={slideItem.id}
                               className={`p-2.5 rounded-xl border transition ${
                                 activeSlideIndex === idx ? 'bg-[#202533] border-[#D4AF37]' : 'bg-[#181B26] border-[#2E3548]'
@@ -1404,8 +1449,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   <span className="font-bold text-white text-xs truncate max-w-[130px]">{slideItem.title}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                  <button 
-                                    type="button" 
+                                  <button
+                                    type="button"
                                     onClick={() => {
                                       setActiveSlideIndex(idx);
                                       setHeroTitle(slideItem.title);
@@ -1420,8 +1465,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                     {activeSlideIndex === idx ? 'Active' : 'Preview'}
                                   </button>
                                   {slides.length > 1 && (
-                                    <button 
-                                      type="button" 
+                                    <button
+                                      type="button"
                                       onClick={() => {
                                         const filtered = slides.filter((_, i) => i !== idx);
                                         setSlides(filtered);
@@ -1439,10 +1484,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               </div>
 
                               <div className="space-y-1.5 text-xs">
-                                <input 
-                                  type="text" 
+                                <input
+                                  type="text"
                                   placeholder="Title"
-                                  value={slideItem.title} 
+                                  value={slideItem.title}
                                   onChange={(e) => {
                                     const updatedVal = e.target.value;
                                     setSlides(prev => prev.map((item, i) => i === idx ? { ...item, title: updatedVal } : item));
@@ -1450,10 +1495,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   }}
                                   className="w-full bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                 />
-                                <input 
-                                  type="text" 
+                                <input
+                                  type="text"
                                   placeholder="Subtitle"
-                                  value={slideItem.subtitle} 
+                                  value={slideItem.subtitle}
                                   onChange={(e) => {
                                     const updatedVal = e.target.value;
                                     setSlides(prev => prev.map((item, i) => i === idx ? { ...item, subtitle: updatedVal } : item));
@@ -1462,10 +1507,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   className="w-full bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                 />
                                 <div className="flex gap-1.5">
-                                  <input 
-                                    type="text" 
+                                  <input
+                                    type="text"
                                     placeholder="CTA Text"
-                                    value={slideItem.ctaText} 
+                                    value={slideItem.ctaText}
                                     onChange={(e) => {
                                       const updatedVal = e.target.value;
                                       setSlides(prev => prev.map((item, i) => i === idx ? { ...item, ctaText: updatedVal } : item));
@@ -1473,10 +1518,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                     }}
                                     className="w-1/2 bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                   />
-                                  <input 
-                                    type="text" 
+                                  <input
+                                    type="text"
                                     placeholder="CTA Link"
-                                    value={slideItem.ctaLink} 
+                                    value={slideItem.ctaLink}
                                     onChange={(e) => {
                                       const updatedVal = e.target.value;
                                       setSlides(prev => prev.map((item, i) => i === idx ? { ...item, ctaLink: updatedVal } : item));
@@ -1485,10 +1530,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   />
                                 </div>
                                 <div className="flex items-center gap-1.5 pt-1">
-                                  <input 
-                                    type="text" 
+                                  <input
+                                    type="text"
                                     placeholder="Slide Image URL..."
-                                    value={slideItem.image} 
+                                    value={slideItem.image}
                                     onChange={(e) => {
                                       const updatedVal = e.target.value;
                                       setSlides(prev => prev.map((item, i) => i === idx ? { ...item, image: updatedVal } : item));
@@ -1499,10 +1544,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   <label className="bg-[#282E3F] hover:bg-[#32394E] text-slate-200 text-[10px] font-bold px-2 py-1.5 rounded cursor-pointer shrink-0 flex items-center gap-1 border border-[#3A435E]">
                                     <Upload className="w-3 h-3 text-[#D4AF37]" />
                                     <span>Upload</span>
-                                    <input 
-                                      type="file" 
-                                      accept="image/*" 
-                                      className="hidden" 
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
                                       onChange={(e) => {
                                         const file = e.target.files?.[0];
                                         if (file) {
@@ -1581,7 +1626,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* Layout */}
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Display Layout</label>
-                        <select 
+                        <select
                           value={categoriesLayout}
                           onChange={(e) => setCategoriesLayout(e.target.value as 'Carousel' | 'Grid' | 'List')}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
@@ -1596,18 +1641,18 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="space-y-3">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Title</label>
-                          <input 
-                            type="text" 
-                            value={categoriesHeading} 
+                          <input
+                            type="text"
+                            value={categoriesHeading}
                             onChange={(e) => setCategoriesHeading(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Subtitle</label>
-                          <input 
-                            type="text" 
-                            value={categoriesSubtitle} 
+                          <input
+                            type="text"
+                            value={categoriesSubtitle}
                             onChange={(e) => setCategoriesSubtitle(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -1617,7 +1662,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* Selection Logic */}
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Select Categories</label>
-                        <select 
+                        <select
                           value={categoriesSelection}
                           onChange={(e) => setCategoriesSelection(e.target.value as 'All' | 'Featured' | 'Manual')}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
@@ -1637,19 +1682,19 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="space-y-3 pt-2 border-t border-[#2E3548]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Items per row</label>
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             value={categoriesItemsPerRow}
                             onChange={(e) => setCategoriesItemsPerRow(parseInt(e.target.value))}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <label className="flex items-center gap-2 text-slate-300 font-semibold">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={categoriesShowItemCount}
                             onChange={(e) => setCategoriesShowItemCount(e.target.checked)}
-                            className="accent-[#D4AF37]" 
+                            className="accent-[#D4AF37]"
                           />
                           Display Category Item Count
                         </label>
@@ -1658,18 +1703,18 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* More Button */}
                       <div className="space-y-2 pt-2 border-t border-[#2E3548]">
                         <label className="flex items-center gap-2 text-slate-300 font-semibold">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={categoriesShowMoreButton}
                             onChange={(e) => setCategoriesShowMoreButton(e.target.checked)}
-                            className="accent-[#D4AF37]" 
+                            className="accent-[#D4AF37]"
                           />
                           Display More Button
                         </label>
                         <div className="space-y-1">
                           <label className="text-slate-400 text-[10px] block">More Button Text</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={categoriesMoreButtonText}
                             onChange={(e) => setCategoriesMoreButtonText(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
@@ -1718,9 +1763,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* Title */}
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Section Title</label>
-                        <input 
-                          type="text" 
-                          value={featuredHeading} 
+                        <input
+                          type="text"
+                          value={featuredHeading}
                           onChange={(e) => setFeaturedHeading(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -1750,8 +1795,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         </label>
                         <div className="space-y-1">
                           <label className="text-slate-400 text-[10px] block">More Button Text</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             defaultValue="View More"
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -1787,9 +1832,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Timer Heading Title</label>
-                        <input 
-                          type="text" 
-                          value={countdownTitle} 
+                        <input
+                          type="text"
+                          value={countdownTitle}
                           onChange={(e) => setCountdownTitle(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -1797,9 +1842,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Discount Highlight Text</label>
-                        <input 
-                          type="text" 
-                          value={countdownDiscount} 
+                        <input
+                          type="text"
+                          value={countdownDiscount}
                           onChange={(e) => setCountdownDiscount(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -1810,11 +1855,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <span>Remaining Hours (Demo)</span>
                           <span className="text-[#D4AF37] font-mono">{countdownHours}h</span>
                         </div>
-                        <input 
-                          type="range" 
-                          min="1" 
-                          max="72" 
-                          value={countdownHours} 
+                        <input
+                          type="range"
+                          min="1"
+                          max="72"
+                          value={countdownHours}
                           onChange={(e) => setCountdownHours(Number(e.target.value))}
                           className="w-full accent-[#D4AF37]"
                         />
@@ -1824,8 +1869,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <div className="flex justify-between items-center">
                           <label className="text-slate-300 font-semibold block">Section Background Image</label>
                           {countdownBgImage && (
-                            <button 
-                              type="button" 
+                            <button
+                              type="button"
                               onClick={() => setCountdownBgImage('')}
                               className="text-red-400 hover:text-red-300 text-[10px] font-bold cursor-pointer"
                             >
@@ -1834,20 +1879,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           )}
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             placeholder="Background Image URL or upload..."
-                            value={countdownBgImage} 
+                            value={countdownBgImage}
                             onChange={(e) => setCountdownBgImage(e.target.value)}
                             className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                           <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                             <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                             <span>Upload</span>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              className="hidden" 
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
@@ -1869,19 +1914,19 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 )}
 
                 {/* 8. Gallery */}
-                <input 
-                  type="file" 
-                  ref={galleryAddInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={(e) => handleGalleryImageUpload(e, 'add')} 
+                <input
+                  type="file"
+                  ref={galleryAddInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={(e) => handleGalleryImageUpload(e, 'add')}
                 />
-                <input 
-                  type="file" 
-                  ref={galleryUpdateInputRef} 
-                  className="hidden" 
-                  accept="image/*" 
-                  onChange={(e) => handleGalleryImageUpload(e, 'update', updatingGalleryIndex ?? undefined)} 
+                <input
+                  type="file"
+                  ref={galleryUpdateInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={(e) => handleGalleryImageUpload(e, 'update', updatingGalleryIndex ?? undefined)}
                 />
                 {drillDownSection === 'c_gallery' && (
                   <div className="bg-[#202533] border border-[#2E3548] rounded-2xl p-4 space-y-4">
@@ -1908,9 +1953,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Section Heading</label>
-                        <input 
-                          type="text" 
-                          value={galleryHeading} 
+                        <input
+                          type="text"
+                          value={galleryHeading}
                           onChange={(e) => setGalleryHeading(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -1931,18 +1976,18 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           {galleryImages.map((img, idx) => (
                             <div key={idx} className="bg-[#202533] p-2 rounded-lg border border-[#2E3548] space-y-2">
                               <div className="flex items-center gap-2">
-                                <img 
-                                  src={img.url} 
-                                  alt={`Gallery ${idx + 1}`} 
-                                  className="w-12 h-12 object-cover rounded-lg border border-[#2E3548] cursor-pointer hover:border-[#D4AF37] transition" 
+                                <img
+                                  src={img.url}
+                                  alt={`Gallery ${idx + 1}`}
+                                  className="w-12 h-12 object-cover rounded-lg border border-[#2E3548] cursor-pointer hover:border-[#D4AF37] transition"
                                   onClick={() => {
                                     setUpdatingGalleryIndex(idx);
                                     galleryUpdateInputRef.current?.click();
                                   }}
                                 />
                                 <div className="flex-1 space-y-1">
-                                  <input 
-                                    type="text" 
+                                  <input
+                                    type="text"
                                     value={img.url}
                                     onChange={(e) => {
                                       const newImages = [...galleryImages];
@@ -1953,8 +1998,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                     placeholder="Image URL"
                                   />
                                   <div className="flex gap-1">
-                                    <input 
-                                      type="text" 
+                                    <input
+                                      type="text"
                                       value={img.caption || ''}
                                       onChange={(e) => {
                                         const newImages = [...galleryImages];
@@ -1964,8 +2009,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                       className="w-full bg-[#131620] border border-[#2E3548] text-white p-1 rounded-md text-[10px]"
                                       placeholder="Caption"
                                     />
-                                    <input 
-                                      type="text" 
+                                    <input
+                                      type="text"
                                       value={img.link || ''}
                                       onChange={(e) => {
                                         const newImages = [...galleryImages];
@@ -2020,16 +2065,16 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-4 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Social Tagline</label>
-                        <input 
-                          type="text" 
-                          value={socialTagline} 
+                        <input
+                          type="text"
+                          value={socialTagline}
                           onChange={(e) => setSocialTagline(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Button Style</label>
-                        <select 
+                        <select
                           value={socialButtonStyle}
                           onChange={(e) => setSocialButtonStyle(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
@@ -2052,16 +2097,16 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <label className="text-slate-300 font-semibold block flex items-center gap-1.5">
                               {item.icon} {item.label} Handle
                             </label>
-                            <input 
-                              type="text" 
-                              value={item.value} 
+                            <input
+                              type="text"
+                              value={item.value}
                               onChange={(e) => item.onChange(e.target.value)}
                               className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                             />
                           </div>
                           <div className="mt-5">
-                            <input 
-                              type="checkbox" 
+                            <input
+                              type="checkbox"
                               checked={item.show}
                               onChange={(e) => item.setShow(e.target.checked)}
                               className="accent-[#D4AF37] w-4 h-4 cursor-pointer"
@@ -2074,12 +2119,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 )}
 
                 {/* 10. Video */}
-                <input 
-                  type="file" 
-                  ref={videoInputRef} 
-                  className="hidden" 
-                  accept="video/*" 
-                  onChange={handleVideoUpload} 
+                <input
+                  type="file"
+                  ref={videoInputRef}
+                  className="hidden"
+                  accept="video/*"
+                  onChange={handleVideoUpload}
                 />
                 {drillDownSection === 'c_video' && (
                   <div className="bg-[#202533] border border-[#2E3548] rounded-2xl p-4 space-y-4">
@@ -2106,9 +2151,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Video Section Title</label>
-                        <input 
-                          type="text" 
-                          value={videoTitle} 
+                        <input
+                          type="text"
+                          value={videoTitle}
                           onChange={(e) => setVideoTitle(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -2116,14 +2161,14 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="space-y-2">
                         <label className="text-slate-300 font-semibold block">Video Source</label>
                         <div className="flex gap-2">
-                          <input 
-                            type="text" 
-                            value={videoUrl} 
+                          <input
+                            type="text"
+                            value={videoUrl}
                             onChange={(e) => setVideoUrl(e.target.value)}
                             className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                             placeholder="Video URL (YouTube/Vimeo)"
                           />
-                          <button 
+                          <button
                             type="button"
                             onClick={() => videoInputRef.current?.click()}
                             className="bg-[#282E3F] border border-[#3A435E] text-white p-2 rounded-lg text-xs font-semibold hover:bg-[#3A435E] transition"
@@ -2141,9 +2186,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="space-y-2 pt-2 border-t border-[#2E3548]">
                         <label className="flex items-center justify-between">
                           <span className="font-semibold text-slate-200">Autoplay Video</span>
-                          <input 
-                            type="checkbox" 
-                            checked={videoAutoplay} 
+                          <input
+                            type="checkbox"
+                            checked={videoAutoplay}
                             onChange={(e) => {
                               setVideoAutoplay(e.target.checked);
                               if (e.target.checked) setVideoMuted(true);
@@ -2153,9 +2198,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         </label>
                         <label className="flex items-center justify-between">
                           <span className="font-semibold text-slate-200">Mute Video by Default</span>
-                          <input 
-                            type="checkbox" 
-                            checked={videoMuted} 
+                          <input
+                            type="checkbox"
+                            checked={videoMuted}
                             onChange={(e) => setVideoMuted(e.target.checked)}
                             className="w-4 h-4 accent-[#D4AF37]"
                           />
@@ -2181,9 +2226,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Footer Brand Slogan</label>
-                        <input 
-                          type="text" 
-                          value={footerTagline} 
+                        <input
+                          type="text"
+                          value={footerTagline}
                           onChange={(e) => setFooterTagline(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -2229,9 +2274,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">About Text</label>
-                        <textarea 
+                        <textarea
                           rows={3}
-                          value={footerAboutText} 
+                          value={footerAboutText}
                           onChange={(e) => setFooterAboutText(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
@@ -2256,36 +2301,36 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Store Address</label>
-                        <input 
-                          type="text" 
-                          value={dhakaAddress} 
+                        <input
+                          type="text"
+                          value={dhakaAddress}
                           onChange={(e) => setDhakaAddress(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Customer Support Phone</label>
-                        <input 
-                          type="text" 
-                          value={contactPhone} 
+                        <input
+                          type="text"
+                          value={contactPhone}
                           onChange={(e) => setContactPhone(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Support Email</label>
-                        <input 
-                          type="text" 
-                          value={contactEmail} 
+                        <input
+                          type="text"
+                          value={contactEmail}
                           onChange={(e) => setContactEmail(e.target.value)}
                           className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                         />
                       </div>
                       <div className="flex items-center justify-between p-2 bg-[#202533] rounded-lg border border-[#2E3548]">
                         <span className="font-semibold text-slate-200">Show bKash / Nagad Badges</span>
-                        <input 
-                          type="checkbox" 
-                          checked={showPaymentBadges} 
+                        <input
+                          type="checkbox"
+                          checked={showPaymentBadges}
                           onChange={(e) => setShowPaymentBadges(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37]"
                         />
@@ -2338,7 +2383,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
               <div className="space-y-4">
 
             {/* ---------------- 1. HEADER SECTION ---------------- */}
-            <div 
+            <div
               data-drag-group="mainSections"
               data-drag-index={0}
               draggable={true}
@@ -2353,12 +2398,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 className="w-full p-3.5 flex items-center justify-between bg-[#252B3B] hover:bg-[#2E3548] transition cursor-pointer text-left group"
               >
                 <div className="flex items-center gap-2">
-                  <GripVertical 
+                  <GripVertical
                     onTouchStart={(e) => handleTouchStart(e, 'mainSections', 0)}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
-                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                   />
                   <div className="flex items-center gap-0.5">
                     <button
@@ -2403,7 +2448,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (hSec.id === 'settings') {
                       return (
                         /* Sub-item 1.1: Header Settings */
-                        <div 
+                        <div
                           key="h-settings"
                           data-drag-group="headerSections"
                           data-drag-index={hIdx}
@@ -2424,12 +2469,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'headerSections', hIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('headerSections', hIdx); }} disabled={hIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2446,7 +2491,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (hSec.id === 'logo') {
                       return (
                         /* Sub-item 1.2: Logo */
-                        <div 
+                        <div
                           key="h-logo"
                           data-drag-group="headerSections"
                           data-drag-index={hIdx}
@@ -2467,12 +2512,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'headerSections', hIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('headerSections', hIdx); }} disabled={hIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2489,7 +2534,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (hSec.id === 'announcement') {
                       return (
                         /* Sub-item 1.3: Announcement Bar */
-                        <div 
+                        <div
                           key="h-announcement"
                           data-drag-group="headerSections"
                           data-drag-index={hIdx}
@@ -2510,12 +2555,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'headerSections', hIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('headerSections', hIdx); }} disabled={hIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2549,7 +2594,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
             </div>
 
             {/* ---------------- 2. PAGE CONTENT SECTION ---------------- */}
-            <div 
+            <div
               data-drag-group="mainSections"
               data-drag-index={1}
               draggable={true}
@@ -2564,12 +2609,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 className="w-full p-3.5 flex items-center justify-between bg-[#252B3B] hover:bg-[#2E3548] transition cursor-pointer text-left group"
               >
                 <div className="flex items-center gap-2">
-                  <GripVertical 
+                  <GripVertical
                     onTouchStart={(e) => handleTouchStart(e, 'mainSections', 1)}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
-                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                   />
                   <div className="flex items-center gap-0.5">
                     <button
@@ -2603,7 +2648,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (cSec.id === 'carousel') {
                       return (
                         /* 2.1: Image Carousel */
-                        <div 
+                        <div
                           key="c-carousel"
                           data-drag-group="contentSections"
                           data-drag-index={cIdx}
@@ -2623,12 +2668,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2654,7 +2699,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                     {activeContentSub === 'carousel' && (
                       <div className="p-3 border-t border-[#2E3548] space-y-3 bg-[#131620]">
-                        
+
                         {/* Transition Type */}
                         <div className="space-y-1.5">
                           <label className="text-slate-300 font-semibold block">Transition Effect</label>
@@ -2663,8 +2708,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               type="button"
                               onClick={() => setCarouselTransition('slide')}
                               className={`px-3 py-2 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                                carouselTransition === 'slide' 
-                                  ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]' 
+                                carouselTransition === 'slide'
+                                  ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
                                   : 'bg-[#202533] border-[#2E3548] text-slate-300 hover:bg-[#282E3F]'
                               }`}
                             >
@@ -2674,8 +2719,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               type="button"
                               onClick={() => setCarouselTransition('fade')}
                               className={`px-3 py-2 rounded-lg text-xs font-bold border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                                carouselTransition === 'fade' 
-                                  ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]' 
+                                carouselTransition === 'fade'
+                                  ? 'bg-[#D4AF37]/10 border-[#D4AF37] text-[#D4AF37]'
                                   : 'bg-[#202533] border-[#2E3548] text-slate-300 hover:bg-[#282E3F]'
                               }`}
                             >
@@ -2691,11 +2736,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               <span>Desktop Height</span>
                               <span className="text-[#D4AF37] font-mono">{desktopCarouselHeight}px</span>
                             </div>
-                            <input 
-                              type="range" 
-                              min="250" 
-                              max="700" 
-                              value={desktopCarouselHeight} 
+                            <input
+                              type="range"
+                              min="250"
+                              max="700"
+                              value={desktopCarouselHeight}
                               onChange={(e) => setDesktopCarouselHeight(Number(e.target.value))}
                               className="w-full accent-[#D4AF37]"
                             />
@@ -2706,11 +2751,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               <span>Mobile Height</span>
                               <span className="text-[#D4AF37] font-mono">{mobileCarouselHeight}px</span>
                             </div>
-                            <input 
-                              type="range" 
-                              min="180" 
-                              max="500" 
-                              value={mobileCarouselHeight} 
+                            <input
+                              type="range"
+                              min="180"
+                              max="500"
+                              value={mobileCarouselHeight}
                               onChange={(e) => setMobileCarouselHeight(Number(e.target.value))}
                               className="w-full accent-[#D4AF37]"
                             />
@@ -2726,8 +2771,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                             {slides.map((s, idx) => (
-                              <div 
-                                key={s.id} 
+                              <div
+                                key={s.id}
                                 data-drag-group="slides"
                                 data-drag-index={idx}
                                 draggable={true}
@@ -2741,12 +2786,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                               >
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center gap-1.5">
-                                    <GripVertical 
+                                    <GripVertical
                                       onTouchStart={(e) => handleTouchStart(e, 'slides', idx)}
                                       onTouchMove={handleTouchMove}
                                       onTouchEnd={handleTouchEnd}
                                       onTouchCancel={handleTouchEnd}
-                                      className="w-3.5 h-3.5 text-slate-500 hover:text-[#D4AF37] cursor-grab active:cursor-grabbing touch-none" 
+                                      className="w-3.5 h-3.5 text-slate-500 hover:text-[#D4AF37] cursor-grab active:cursor-grabbing touch-none"
                                     />
                                     <div className="flex items-center gap-0.5">
                                       <button type="button" onClick={() => moveItemUp('slides', idx)} disabled={idx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2872,10 +2917,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                       />
                                       <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2 py-1.5 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                                         <Upload className="w-3 h-3 text-[#D4AF37]" />
-                                        <input 
-                                          type="file" 
-                                          accept="image/*" 
-                                          className="hidden" 
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
                                           onChange={(e) => {
                                             const file = e.target.files?.[0];
                                             if (file) {
@@ -2935,7 +2980,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'categories') {
                   return (
                   /* 2.2: Categories */
-                  <div 
+                  <div
                     key="c-categories"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -2955,12 +3000,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -2988,9 +3033,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-3 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Section Heading</label>
-                          <input 
-                            type="text" 
-                            value={categoriesHeading} 
+                          <input
+                            type="text"
+                            value={categoriesHeading}
                             onChange={(e) => setCategoriesHeading(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3001,8 +3046,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <div className="flex justify-between items-center">
                             <label className="text-slate-300 font-semibold block">Section Background Image</label>
                             {categoriesBgImage && (
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => setCategoriesBgImage('')}
                                 className="text-red-400 hover:text-red-300 text-[10px] font-bold cursor-pointer"
                               >
@@ -3011,20 +3056,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             )}
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Background Image URL or upload..."
-                              value={categoriesBgImage} 
+                              value={categoriesBgImage}
                               onChange={(e) => setCategoriesBgImage(e.target.value)}
                               className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                             />
                             <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                               <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                               <span>Upload</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
@@ -3048,11 +3093,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Overlay Opacity</span>
                             <span className="text-[#D4AF37] font-mono">{categoriesOverlayOpacity}%</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="100" 
-                            value={categoriesOverlayOpacity} 
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={categoriesOverlayOpacity}
                             onChange={(e) => setCategoriesOverlayOpacity(Number(e.target.value))}
                             className="w-full accent-[#D4AF37]"
                           />
@@ -3070,7 +3115,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'products') {
                   return (
                   /* 2.3: Products */
-                  <div 
+                  <div
                     key="c-products"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -3090,12 +3135,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3123,17 +3168,17 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-2.5 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Grid Section Title</label>
-                          <input 
-                            type="text" 
-                            value={featuredHeading} 
+                          <input
+                            type="text"
+                            value={featuredHeading}
                             onChange={(e) => setFeaturedHeading(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Columns Layout</label>
-                          <select 
-                            value={productColumns} 
+                          <select
+                            value={productColumns}
                             onChange={(e) => setProductColumns(Number(e.target.value))}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           >
@@ -3151,7 +3196,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'countdown') {
                   return (
                   /* 2.4: Countdown Timer */
-                  <div 
+                  <div
                     key="c-countdown"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -3171,12 +3216,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3204,9 +3249,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-3 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Timer Header Title</label>
-                          <input 
-                            type="text" 
-                            value={countdownTitle} 
+                          <input
+                            type="text"
+                            value={countdownTitle}
                             onChange={(e) => setCountdownTitle(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3214,9 +3259,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Special Discount Code Text</label>
-                          <input 
-                            type="text" 
-                            value={countdownDiscount} 
+                          <input
+                            type="text"
+                            value={countdownDiscount}
                             onChange={(e) => setCountdownDiscount(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3228,9 +3273,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <Calendar className="w-3.5 h-3.5 text-red-400" />
                             <span>End Date & Time Picker</span>
                           </label>
-                          <input 
-                            type="datetime-local" 
-                            value={countdownEndDate} 
+                          <input
+                            type="datetime-local"
+                            value={countdownEndDate}
                             onChange={(e) => setCountdownEndDate(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs [color-scheme:dark]"
                           />
@@ -3241,8 +3286,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <div className="flex justify-between items-center">
                             <label className="text-slate-300 font-semibold block">Background Image Uploader</label>
                             {countdownBgImage && (
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => setCountdownBgImage('')}
                                 className="text-red-400 hover:text-red-300 text-[10px] font-bold cursor-pointer"
                               >
@@ -3251,20 +3296,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             )}
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Background image URL..."
-                              value={countdownBgImage} 
+                              value={countdownBgImage}
                               onChange={(e) => setCountdownBgImage(e.target.value)}
                               className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                             />
                             <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                               <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                               <span>Upload</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
@@ -3288,11 +3333,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Overlay Opacity</span>
                             <span className="text-[#D4AF37] font-mono">{countdownOverlayOpacity}%</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="0" 
-                            max="100" 
-                            value={countdownOverlayOpacity} 
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={countdownOverlayOpacity}
                             onChange={(e) => setCountdownOverlayOpacity(Number(e.target.value))}
                             className="w-full accent-red-400"
                           />
@@ -3303,11 +3348,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Simulated Hours Remaining</span>
                             <span>{countdownHours} hrs</span>
                           </div>
-                          <input 
-                            type="range" 
-                            min="1" 
-                            max="72" 
-                            value={countdownHours} 
+                          <input
+                            type="range"
+                            min="1"
+                            max="72"
+                            value={countdownHours}
                             onChange={(e) => setCountdownHours(Number(e.target.value))}
                             className="w-full accent-red-400"
                           />
@@ -3321,7 +3366,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'gallery') {
                   return (
                   /* 2.5: Gallery */
-                  <div 
+                  <div
                     key="c-gallery"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -3341,12 +3386,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3374,9 +3419,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-2.5 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Gallery Section Heading</label>
-                          <input 
-                            type="text" 
-                            value={galleryHeading} 
+                          <input
+                            type="text"
+                            value={galleryHeading}
                             onChange={(e) => setGalleryHeading(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3391,7 +3436,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'brand_social') {
                   return (
                   /* 2.6: Logo & Social Media */
-                  <div 
+                  <div
                     key="c-brand_social"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -3411,12 +3456,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3444,36 +3489,36 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-2.5 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Social Tagline</label>
-                          <input 
-                            type="text" 
-                            value={socialTagline} 
+                          <input
+                            type="text"
+                            value={socialTagline}
                             onChange={(e) => setSocialTagline(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Facebook URL</label>
-                          <input 
-                            type="text" 
-                            value={facebookHandle} 
+                          <input
+                            type="text"
+                            value={facebookHandle}
                             onChange={(e) => setFacebookHandle(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Instagram Handle</label>
-                          <input 
-                            type="text" 
-                            value={instagramHandle} 
+                          <input
+                            type="text"
+                            value={instagramHandle}
                             onChange={(e) => setInstagramHandle(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">WhatsApp Support</label>
-                          <input 
-                            type="text" 
-                            value={whatsappNumber} 
+                          <input
+                            type="text"
+                            value={whatsappNumber}
                             onChange={(e) => setWhatsappNumber(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3487,7 +3532,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (cSec.id === 'video') {
                   return (
                   /* 2.7: Video */
-                  <div 
+                  <div
                     key="c-video"
                     data-drag-group="contentSections"
                     data-drag-index={cIdx}
@@ -3507,12 +3552,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'contentSections', cIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('contentSections', cIdx); }} disabled={cIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3540,9 +3585,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       <div className="p-3 border-t border-[#2E3548] space-y-3 bg-[#131620]">
                         <div className="space-y-1">
                           <label className="text-slate-300 font-semibold block">Video Title</label>
-                          <input 
-                            type="text" 
-                            value={videoTitle} 
+                          <input
+                            type="text"
+                            value={videoTitle}
                             onChange={(e) => setVideoTitle(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
@@ -3553,8 +3598,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <div className="flex justify-between items-center">
                             <label className="text-slate-300 font-semibold block">Cover Image Uploader</label>
                             {videoCoverImage && (
-                              <button 
-                                type="button" 
+                              <button
+                                type="button"
                                 onClick={() => setVideoCoverImage('')}
                                 className="text-red-400 hover:text-red-300 text-[10px] font-bold cursor-pointer"
                               >
@@ -3569,20 +3614,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             </div>
                           )}
                           <div className="flex items-center gap-1.5">
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Cover image URL..."
-                              value={videoCoverImage} 
+                              value={videoCoverImage}
                               onChange={(e) => setVideoCoverImage(e.target.value)}
                               className="flex-1 bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                             />
                             <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                               <Upload className="w-3.5 h-3.5 text-[#D4AF37]" />
                               <span>Upload</span>
-                              <input 
-                                type="file" 
-                                accept="image/*" 
-                                className="hidden" 
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
@@ -3604,10 +3649,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <div className="space-y-1.5">
                           <label className="text-slate-300 font-semibold block">Video File Uploader / URL</label>
                           <div className="flex items-center gap-1.5">
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Video file or YouTube URL..."
-                              value={videoFileUrl || videoUrl} 
+                              value={videoFileUrl || videoUrl}
                               onChange={(e) => {
                                 setVideoUrl(e.target.value);
                                 setVideoFileUrl(e.target.value);
@@ -3617,10 +3662,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <label className="bg-[#282E3F] hover:bg-[#32394E] border border-[#3A435E] text-slate-200 text-xs font-bold px-2.5 py-2 rounded-lg cursor-pointer shrink-0 flex items-center gap-1 transition">
                               <Film className="w-3.5 h-3.5 text-pink-400" />
                               <span>Upload</span>
-                              <input 
-                                type="file" 
-                                accept="video/*" 
-                                className="hidden" 
+                              <input
+                                type="file"
+                                accept="video/*"
+                                className="hidden"
                                 onChange={(e) => {
                                   const file = e.target.files?.[0];
                                   if (file) {
@@ -3647,9 +3692,9 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <span>Autoplay Video</span>
                             <span className="text-[10px] text-slate-400 font-normal">(Muted)</span>
                           </label>
-                          <input 
-                            type="checkbox" 
-                            checked={videoAutoplay} 
+                          <input
+                            type="checkbox"
+                            checked={videoAutoplay}
                             onChange={(e) => setVideoAutoplay(e.target.checked)}
                             className="w-4 h-4 accent-pink-500 cursor-pointer"
                           />
@@ -3666,8 +3711,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
 
                   {/* Render Custom Added Sections */}
                   {addedSections.map((sec, idx) => (
-                    <div 
-                      key={sec.id} 
+                    <div
+                      key={sec.id}
                       data-drag-group="addedSections"
                       data-drag-index={idx}
                       draggable={true}
@@ -3680,12 +3725,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       } ${dragGroup === 'addedSections' && draggedIndex === idx ? 'opacity-40 border-dashed border-[#D4AF37]' : ''}`}
                     >
                       <div className="flex items-center gap-2 font-bold">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'addedSections', idx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 hover:text-[#D4AF37] cursor-grab active:cursor-grabbing touch-none shrink-0" 
+                          className="w-3.5 h-3.5 text-slate-500 hover:text-[#D4AF37] cursor-grab active:cursor-grabbing touch-none shrink-0"
                         />
                         <div className="flex items-center gap-0.5 shrink-0">
                           <button type="button" onClick={() => moveItemUp('addedSections', idx)} disabled={idx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3693,7 +3738,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         </div>
                         <span>{sec.name}</span>
                       </div>
-                      <button 
+                      <button
                         onClick={() => setAddedSections((prev) => prev.filter((item) => item.id !== sec.id))}
                         className="text-red-400 hover:text-red-300 p-1"
                       >
@@ -3716,7 +3761,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
             </div>
 
             {/* ---------------- 3. FOOTER SECTION ---------------- */}
-            <div 
+            <div
               data-drag-group="mainSections"
               data-drag-index={2}
               draggable={true}
@@ -3731,12 +3776,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 className="w-full p-3.5 flex items-center justify-between bg-[#252B3B] hover:bg-[#2E3548] transition cursor-pointer text-left group"
               >
                 <div className="flex items-center gap-2">
-                  <GripVertical 
+                  <GripVertical
                     onTouchStart={(e) => handleTouchStart(e, 'mainSections', 2)}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
-                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                    className="w-4 h-4 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                   />
                   <div className="flex items-center gap-0.5">
                     <button
@@ -3770,7 +3815,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (fSec.id === 'logo') {
                       return (
                         /* 3.1 Footer Logo */
-                        <div 
+                        <div
                           key="f-logo"
                           data-drag-group="footerSections"
                           data-drag-index={fIdx}
@@ -3791,12 +3836,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'footerSections', fIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('footerSections', fIdx); }} disabled={fIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3813,7 +3858,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 if (fSec.id === 'link_groups') {
                   return (
                   /* 3.2 Link Groups */
-                  <div 
+                  <div
                     key="f-link_groups"
                     data-drag-group="footerSections"
                     data-drag-index={fIdx}
@@ -3834,12 +3879,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                     >
                       <div className="flex items-center gap-2">
-                        <GripVertical 
+                        <GripVertical
                           onTouchStart={(e) => handleTouchStart(e, 'footerSections', fIdx)}
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           onTouchCancel={handleTouchEnd}
-                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                          className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                         />
                         <div className="flex items-center gap-0.5">
                           <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('footerSections', fIdx); }} disabled={fIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3856,7 +3901,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (fSec.id === 'about_us') {
                       return (
                         /* 3.3 About Us */
-                        <div 
+                        <div
                           key="f-about_us"
                           data-drag-group="footerSections"
                           data-drag-index={fIdx}
@@ -3877,12 +3922,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'footerSections', fIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('footerSections', fIdx); }} disabled={fIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3899,7 +3944,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     if (fSec.id === 'contact_info') {
                       return (
                         /* 3.4 Contact Information */
-                        <div 
+                        <div
                           key="f-contact_info"
                           data-drag-group="footerSections"
                           data-drag-index={fIdx}
@@ -3920,12 +3965,12 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             className="w-full p-3 flex items-center justify-between hover:bg-[#202533] transition cursor-pointer text-left group"
                           >
                             <div className="flex items-center gap-2">
-                              <GripVertical 
+                              <GripVertical
                                 onTouchStart={(e) => handleTouchStart(e, 'footerSections', fIdx)}
                                 onTouchMove={handleTouchMove}
                                 onTouchEnd={handleTouchEnd}
                                 onTouchCancel={handleTouchEnd}
-                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none" 
+                                className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#D4AF37] cursor-grab active:cursor-grabbing transition touch-none"
                               />
                               <div className="flex items-center gap-0.5">
                                 <button type="button" onClick={(e) => { e.stopPropagation(); moveItemUp('footerSections', fIdx); }} disabled={fIdx === 0} className="p-0.5 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer"><ChevronUp className="w-3 h-3" /></button>
@@ -3955,7 +4000,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
         <main className="flex-1 bg-[#080A10] flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden relative w-full h-full min-w-0 min-h-0 select-none">
           {/* Responsive Preview Wrapper Frame with auto-fit containment */}
           <div className="w-full h-full max-w-full max-h-full flex flex-col items-center justify-center relative my-auto min-h-0 transition-all duration-300 ease-out p-1 sm:p-2">
-            <div 
+            <div
               className={`
                 bg-white text-slate-900 shadow-2xl transition-all duration-300 border flex flex-col overflow-hidden relative mx-auto my-auto
                 ${deviceMode === 'desktop' ? 'w-full max-w-[1240px] h-full max-h-[calc(100vh-90px)] border-[#2E3548] rounded-2xl ring-1 ring-slate-800' : ''}
@@ -4045,7 +4090,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
       {showAddSectionModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex justify-end animate-fade-in">
           <div className="bg-[#131620] border-l border-[#2E3548] w-full max-w-2xl h-full flex flex-col shadow-2xl relative">
-            
+
             {/* Drawer Sticky Header */}
             <div className="p-5 border-b border-[#2E3548] bg-[#181B26] space-y-3 shrink-0">
               <div className="flex items-center justify-between">
@@ -4061,11 +4106,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     <span>Add Section to Homepage</span>
                   </h3>
                 </div>
-                <button 
+                <button
                   onClick={() => {
                     setShowAddSectionModal(false);
                     setSectionSearchQuery('');
-                  }} 
+                  }}
                   className="p-2 text-slate-400 hover:text-white bg-[#202533] hover:bg-[#282E3F] rounded-xl border border-[#2E3548] transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
@@ -4302,8 +4347,8 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     }
                   }
                 ]
-                  .filter(item => 
-                    item.name.toLowerCase().includes(sectionSearchQuery.toLowerCase()) || 
+                  .filter(item =>
+                    item.name.toLowerCase().includes(sectionSearchQuery.toLowerCase()) ||
                     item.desc.toLowerCase().includes(sectionSearchQuery.toLowerCase()) ||
                     item.badge.toLowerCase().includes(sectionSearchQuery.toLowerCase())
                   )
@@ -4353,7 +4398,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           </div>
                         </div>
 
-                        <button 
+                        <button
                           type="button"
                           className="w-full bg-[#252B3B] group-hover:bg-[#D4AF37] text-slate-300 group-hover:text-slate-950 font-extrabold text-xs py-2 rounded-xl border border-[#32394E] group-hover:border-[#D4AF37] transition flex items-center justify-center gap-1.5 cursor-pointer"
                         >
@@ -4371,7 +4416,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                 <div className="text-center py-10 space-y-2">
                   <Search className="w-8 h-8 text-slate-600 mx-auto" />
                   <p className="text-xs text-slate-400">No sections found matching "<span className="text-white font-bold">{sectionSearchQuery}</span>"</p>
-                  <button 
+                  <button
                     onClick={() => setSectionSearchQuery('')}
                     className="text-[#D4AF37] text-xs font-bold hover:underline cursor-pointer"
                   >

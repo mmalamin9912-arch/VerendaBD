@@ -131,6 +131,44 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
           apiProducts = prodRows;
         }
 
+        // Load the merchant's saved themeConfig from Supabase so published
+        // theme images/colors/text render on the customer storefront after reload.
+        try {
+          const existingBefore = readZidStoreData(storeSlug);
+          const cleanEmail = String(merchant?.email || '').trim().toLowerCase();
+          if (supabase && cleanEmail) {
+            const { data: themeRow } = await supabase
+              .from('merchants')
+              .select('theme_config, hero_title, hero_subtitle, hero_image, announcement_text, logo_url, active_theme_id')
+              .ilike('email', cleanEmail)
+              .maybeSingle();
+            if (themeRow && active) {
+              const existing = existingBefore;
+              const dbMerchant = {
+                ...existing,
+                themeConfig: themeRow.theme_config || existing?.themeConfig || {},
+                heroTitle: themeRow.hero_title || existing?.merchant?.heroTitle,
+                heroSubtitle: themeRow.hero_subtitle || existing?.merchant?.heroSubtitle,
+                heroImage: themeRow.hero_image || existing?.merchant?.heroImage,
+                announcementText: themeRow.announcement_text || existing?.merchant?.announcementText,
+                logoUrl: themeRow.logo_url || existing?.merchant?.logoUrl,
+                activeThemeId: themeRow.active_theme_id || existing?.merchant?.activeThemeId,
+              };
+              const mergedTheme = {
+                ...existing,
+                merchant: dbMerchant,
+                themeCustomization: themeRow.theme_config || existing?.themeCustomization || {},
+                products: Array.isArray(apiProducts) && apiProducts.length > 0 ? apiProducts : (existing?.products || []),
+              };
+              writeZidStoreData(mergedTheme as ZidStoreData, storeSlug);
+              setLiveStoreData(mergedTheme as ZidStoreData);
+              return; // theme-merged data already includes products
+            }
+          }
+        } catch (themeErr: any) {
+          console.warn('[TenantStorefrontView] theme_config load warning:', themeErr?.message || themeErr);
+        }
+
         if (active) {
           const existing = readZidStoreData(storeSlug);
           const merged = {
@@ -158,6 +196,18 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     announcementText?: string;
     primaryColor?: string;
     themePrimaryColor?: string;
+    announcementBg?: string;
+    showAnnouncement?: boolean;
+    isMarquee?: boolean;
+    marqueeSpeed?: number;
+    announcementItems?: string[];
+    showHeroBanner?: boolean;
+    heroCtaText?: string;
+    slides?: Array<{ id: string; title: string; subtitle: string; ctaText: string; ctaLink: string; image: string; }>;
+    activeSlideIndex?: number;
+    categoriesList?: Array<{ name: string; image: string; count: string; }>;
+    showSearchBar?: boolean;
+    headerBgColor?: string;
   };
   const storefrontMerchant: MerchantProfile = {
     ...merchant,
@@ -181,6 +231,26 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     : (Array.isArray(themes) ? themes : []);
   const activeTheme = (storefrontThemes || []).find((theme) => theme?.id === storefrontMerchant.activeThemeId) || storefrontThemes[0];
   const merchantThemeConfig = (storefrontMerchant.themeConfig || liveStoreData.themeCustomization || {}) as Record<string, unknown>;
+  // Resolved theme settings: themeConfig (from editor/Supabase) > themeCustomization > hardcoded defaults
+  const resolvedTheme = {
+    announcementBg: (typeof merchantThemeConfig.announcementBg === 'string' && merchantThemeConfig.announcementBg) || '#D4AF37',
+    showAnnouncement: merchantThemeConfig.showAnnouncement !== false,
+    isMarquee: merchantThemeConfig.isMarquee !== false,
+    marqueeSpeed: typeof merchantThemeConfig.marqueeSpeed === 'number' ? merchantThemeConfig.marqueeSpeed : 22,
+    announcementItems: Array.isArray(merchantThemeConfig.announcementItems) && merchantThemeConfig.announcementItems.length > 0
+      ? (merchantThemeConfig.announcementItems as string[])
+      : [storefrontMerchant.announcementText || 'Welcome to SlateBD Luxury Store'],
+    showHeroBanner: merchantThemeConfig.showHeroBanner !== false,
+    heroCtaText: (typeof merchantThemeConfig.heroCtaText === 'string' && merchantThemeConfig.heroCtaText) || 'Shop Now',
+    slides: Array.isArray(merchantThemeConfig.slides) && merchantThemeConfig.slides.length > 0
+      ? (merchantThemeConfig.slides as Array<{ id: string; title: string; subtitle: string; ctaText: string; ctaLink: string; image: string; }>)
+      : [],
+    activeSlideIndex: typeof merchantThemeConfig.activeSlideIndex === 'number' ? merchantThemeConfig.activeSlideIndex : 0,
+    categoriesList: Array.isArray(merchantThemeConfig.categoriesList) ? (merchantThemeConfig.categoriesList as Array<{ name: string; image: string; count: string; }>) : []
+  };
+  const activeHeroSlide = resolvedTheme.slides.length > 0
+    ? resolvedTheme.slides[Math.min(resolvedTheme.activeSlideIndex, resolvedTheme.slides.length - 1)]
+    : null;
   const primaryColor = (
     (typeof merchantThemeConfig.primaryColor === 'string' && merchantThemeConfig.primaryColor) ||
     (typeof merchantThemeConfig.themePrimaryColor === 'string' && merchantThemeConfig.themePrimaryColor) ||
@@ -858,16 +928,29 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
         {/* Top Header Bar (Luxury Dark Glassmorphism) */}
         <header className="sticky top-0 z-40 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800/80 shadow-2xl">
-          {/* Top Announcement Bar */}
-          <div className="bg-gradient-to-r from-amber-500 via-[#00D68F] to-amber-500 text-slate-950 py-1.5 px-3 overflow-hidden whitespace-nowrap relative text-[11px] font-black uppercase tracking-wider shadow-md">
-            <div className="zid-marquee-track inline-flex items-center">
-              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to SlateBD Luxury Store"}</span>
-              <span className="mx-2">✦</span>
-              <span className="mx-2">Free Delivery on Orders Over ৳3,000</span>
-              <span className="mx-2">✦</span>
-              <span className="mx-2">{storefrontMerchant.announcementText || "Welcome to SlateBD Luxury Store"}</span>
+          {/* Top Announcement Bar — themed from Theme Editor settings */}
+          {resolvedTheme.showAnnouncement && (
+          <div
+            className="py-1.5 px-3 overflow-hidden whitespace-nowrap relative text-[11px] font-black uppercase tracking-wider shadow-md"
+            style={{ backgroundColor: resolvedTheme.announcementBg, color: '#0f172a' }}
+          >
+            <div
+              className="zid-marquee-track inline-flex items-center"
+              style={resolvedTheme.isMarquee ? { animationDuration: `${resolvedTheme.marqueeSpeed}s` } : { animation: 'none' }}
+            >
+              {[0, 1].map((half) => (
+                <React.Fragment key={half}>
+                  {resolvedTheme.announcementItems.map((item, i) => (
+                    <React.Fragment key={`${half}-${i}`}>
+                      <span className="mx-2">{item}</span>
+                      <span className="mx-2">✦</span>
+                    </React.Fragment>
+                  ))}
+                </React.Fragment>
+              ))}
             </div>
           </div>
+          )}
 
           <div className="py-2.5 px-3.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0 cursor-pointer" onClick={() => { setCheckoutStep('catalog'); setMobileTab('home'); }}>
@@ -988,10 +1071,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             {mobileTab === 'home' && (
             <div className="space-y-6 pb-6">
 
-            {/* Hero Banner (Luxury Dark Aesthetic) */}
+            {/* Hero Banner (Luxury Dark Aesthetic) — themed from Theme Editor settings */}
+            {resolvedTheme.showHeroBanner && (
             <div className="w-full h-[220px] relative overflow-hidden bg-slate-950 border-b border-slate-800/80">
               <img
-                src={storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"}
+                src={activeHeroSlide?.image || storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"}
                 alt="Hero Banner"
                 className="w-full h-full object-cover opacity-50 scale-105 transition-transform duration-700 hover:scale-100"
               />
@@ -1002,14 +1086,20 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     {t('sf_new_arrivals')}
                   </span>
                   <h2 className="text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md">
-                    {storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
+                    {activeHeroSlide?.title || storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
                   </h2>
                   <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                    {storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
+                    {activeHeroSlide?.subtitle || storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
                   </p>
+                  {activeHeroSlide?.ctaText && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-black text-[#00D68F]">
+                      {activeHeroSlide.ctaText} <ArrowRight className="w-3 h-3" />
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
+            )}
 
             <div className="px-4 space-y-7">
 
