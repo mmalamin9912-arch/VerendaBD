@@ -306,6 +306,46 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
   // Dynamic added sections
   const [addedSections, setAddedSections] = useState<Array<{ id: string; name: string }>>([]);
 
+  // ---------------- SYNC HELPERS ----------------
+  // Keep announcement text, header settings and hero fields in sync with the
+  // live preview and mark unsaved changes on every editor interaction.
+  const markDirty = () => setHasUnsavedChanges(true);
+
+  const updateAnnouncementText = (text: string) => {
+    setAnnouncementText(text);
+    // The storefront renders announcementItems (or falls back to announcementText),
+    // so keep the first item mirrored to the main text field.
+    setAnnouncementItems(prev => {
+      if (prev.length === 0) return text.trim() ? [text] : [];
+      const updated = [...prev];
+      updated[0] = text;
+      return updated;
+    });
+    // Keep the active slide-independent merchant announcement synced in shared store too.
+    markDirty();
+  };
+
+  const updateAnnouncementItems = (itemsOrUpdater: string[] | ((prev: string[]) => string[])) => {
+    setAnnouncementItems(prev => {
+      const next = typeof itemsOrUpdater === 'function' ? itemsOrUpdater(prev) : itemsOrUpdater;
+      setAnnouncementText(next[0] ?? '');
+      return next;
+    });
+    markDirty();
+  };
+
+  const updateHeaderSticky = (val: boolean) => { setHeaderSticky(val); markDirty(); };
+  const updateShowSearchBar = (val: boolean) => { setShowSearchBar(val); markDirty(); };
+  const updateShowAnnouncement = (val: boolean) => { setShowAnnouncement(val); markDirty(); };
+  const updateAnnouncementBg = (val: string) => { setAnnouncementBg(val); markDirty(); };
+  const updateHeaderBgColor = (val: string) => { setHeaderBgColor(val); markDirty(); };
+  const updateHideLanguage = (val: boolean) => { setHideLanguage(val); markDirty(); };
+  const updateHideCountry = (val: boolean) => { setHideCountry(val); markDirty(); };
+
+  const updateHeroTitle = (val: string) => { setHeroTitle(val); markDirty(); };
+  const updateHeroSubtitle = (val: string) => { setHeroSubtitle(val); markDirty(); };
+  const updateHeroImage = (val: string) => { setHeroImage(val); markDirty(); };
+
   // ---------------- DRAG AND DROP REORDER STATES & HANDLERS ----------------
   // Top Level Main Sections Order
   const [mainSectionsOrder, setMainSectionsOrder] = useState<Array<{ id: 'header' | 'content' | 'footer'; name: string; number: string }>>([
@@ -584,6 +624,38 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
           }, { onConflict: 'email' });
         if (themeSaveErr) {
           console.warn('[ThemeCustomizer] Supabase theme save notice:', themeSaveErr.message);
+        }
+
+        // Also persist to the 'stores' table (used for tenant storefront lookups).
+        const storeRow = {
+          email: updatedMerchant.email.trim().toLowerCase(),
+          store_name: updatedMerchant.storeName,
+          store_slug: (updatedMerchant.storeSlug || updatedMerchant.storeName || 'my-store')
+            .toLowerCase().replace(/[^a-z0-9]/g, ''),
+          theme_config: themeConfig,
+          hero_title: heroTitle,
+          hero_subtitle: heroSubtitle,
+          hero_image: heroImage,
+          announcement_text: announcementText,
+          logo_url: logoImageUrl || desktopLogoUrl || mobileLogoUrl || '',
+          active_theme_id: updatedMerchant.activeThemeId || null,
+          updated_at: new Date().toISOString()
+        };
+        const { error: storesSaveErr } = await supabase
+          .from('stores')
+          .upsert(storeRow, { onConflict: 'email' });
+        if (storesSaveErr) {
+          console.warn('[ThemeCustomizer] Supabase stores save notice:', storesSaveErr.message);
+          // 'stores' may not exist or may not have an email unique constraint —
+          // retry as an update targeted by slug, then by insert fallback.
+          const { error: updErr } = await supabase
+            .from('stores')
+            .update(storeRow)
+            .eq('store_slug', storeRow.store_slug);
+          if (updErr) {
+            const { error: insErr } = await supabase.from('stores').insert(storeRow);
+            if (insErr) console.warn('[ThemeCustomizer] Supabase stores insert notice:', insErr.message);
+          }
         }
       }
     } catch (e) {
@@ -1020,7 +1092,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <input
                           type="checkbox"
                           checked={headerSticky}
-                          onChange={(e) => setHeaderSticky(e.target.checked)}
+                          onChange={(e) => updateHeaderSticky(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
                       </div>
@@ -1030,7 +1102,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <input
                           type="checkbox"
                           checked={hideLanguage}
-                          onChange={(e) => setHideLanguage(e.target.checked)}
+                          onChange={(e) => updateHideLanguage(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
                       </div>
@@ -1040,7 +1112,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <input
                           type="checkbox"
                           checked={hideCountry}
-                          onChange={(e) => setHideCountry(e.target.checked)}
+                          onChange={(e) => updateHideCountry(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
                       </div>
@@ -1050,7 +1122,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                         <input
                           type="checkbox"
                           checked={showSearchBar}
-                          onChange={(e) => setShowSearchBar(e.target.checked)}
+                          onChange={(e) => updateShowSearchBar(e.target.checked)}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
                       </div>
@@ -1062,13 +1134,13 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             <input
                               type="color"
                               value={headerBgColor}
-                              onChange={(e) => setHeaderBgColor(e.target.value)}
+                              onChange={(e) => updateHeaderBgColor(e.target.value)}
                               className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer"
                             />
                             <input
                               type="text"
                               value={headerBgColor}
-                              onChange={(e) => setHeaderBgColor(e.target.value)}
+                              onChange={(e) => updateHeaderBgColor(e.target.value)}
                               className="bg-[#202533] border border-[#2E3548] text-white px-2 py-1 rounded text-xs font-mono uppercase w-24"
                             />
                           </div>
@@ -1233,7 +1305,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setShowAnnouncement(!showAnnouncement)}
+                        onClick={() => updateShowAnnouncement(!showAnnouncement)}
                         className="p-1.5 rounded-lg bg-[#282E3F] border border-[#3A435E] text-slate-400 hover:text-white transition cursor-pointer"
                         title={showAnnouncement ? "Hide Announcement Bar" : "Show Announcement Bar"}
                       >
@@ -1242,12 +1314,35 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                     </div>
 
                     <div className="space-y-3 bg-[#131620] p-3 rounded-xl border border-[#2E3548] text-xs">
+                      {/* Primary Announcement Text — directly connected to live preview + publish */}
+                      <div className="space-y-1">
+                        <label className="text-slate-300 font-semibold block">Announcement Bar Text</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 🎉 Free shipping on orders over ৳2,000!"
+                          value={announcementText}
+                          onChange={(e) => updateAnnouncementText(e.target.value)}
+                          className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
+                        />
+                        <p className="text-[10px] text-slate-500">This text appears instantly in the live preview and is saved to your storefront on publish.</p>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-300 font-semibold cursor-pointer">Show Announcement Bar</label>
+                        <input
+                          type="checkbox"
+                          checked={showAnnouncement}
+                          onChange={(e) => updateShowAnnouncement(e.target.checked)}
+                          className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
+                        />
+                      </div>
+
                       <div className="flex items-center justify-between">
                         <label className="text-slate-300 font-semibold cursor-pointer">Marquee Scrolling Effect</label>
                         <input
                           type="checkbox"
                           checked={isMarquee}
-                          onChange={(e) => setIsMarquee(e.target.checked)}
+                          onChange={(e) => { setIsMarquee(e.target.checked); markDirty(); }}
                           className="w-4 h-4 accent-[#D4AF37] cursor-pointer"
                         />
                       </div>
@@ -1263,7 +1358,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             min="5"
                             max="40"
                             value={marqueeSpeed}
-                            onChange={(e) => setMarqueeSpeed(Number(e.target.value))}
+                            onChange={(e) => { setMarqueeSpeed(Number(e.target.value)); markDirty(); }}
                             className="w-full accent-[#D4AF37]"
                           />
                         </div>
@@ -1280,13 +1375,13 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                 onChange={(e) => {
                                   const updated = [...announcementItems];
                                   updated[idx] = e.target.value;
-                                  setAnnouncementItems(updated);
+                                  updateAnnouncementItems(updated);
                                 }}
                                 className="flex-1 bg-transparent text-white text-xs font-semibold focus:outline-none"
                               />
                               <button
                                 type="button"
-                                onClick={() => setAnnouncementItems(prev => prev.filter((_, i) => i !== idx))}
+                                onClick={() => updateAnnouncementItems(prev => prev.filter((_, i) => i !== idx))}
                                 className="text-red-400 hover:text-red-300 p-0.5 cursor-pointer shrink-0"
                                 title="Remove item"
                               >
@@ -1305,7 +1400,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && newAnnouncementInput.trim()) {
                                 e.preventDefault();
-                                setAnnouncementItems(prev => [...prev, newAnnouncementInput.trim()]);
+                                updateAnnouncementItems(prev => [...prev, newAnnouncementInput.trim()]);
                                 setNewAnnouncementInput('');
                               }
                             }}
@@ -1315,7 +1410,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                             type="button"
                             onClick={() => {
                               if (newAnnouncementInput.trim()) {
-                                setAnnouncementItems(prev => [...prev, newAnnouncementInput.trim()]);
+                                updateAnnouncementItems(prev => [...prev, newAnnouncementInput.trim()]);
                                 setNewAnnouncementInput('');
                               }
                             }}
@@ -1332,13 +1427,13 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                           <input
                             type="color"
                             value={announcementBg}
-                            onChange={(e) => setAnnouncementBg(e.target.value)}
+                            onChange={(e) => updateAnnouncementBg(e.target.value)}
                             className="w-7 h-7 rounded bg-transparent border-0 cursor-pointer"
                           />
                           <input
                             type="text"
                             value={announcementBg}
-                            onChange={(e) => setAnnouncementBg(e.target.value)}
+                            onChange={(e) => updateAnnouncementBg(e.target.value)}
                             className="bg-[#202533] border border-[#2E3548] text-white px-2 py-1 rounded text-xs font-mono uppercase w-24"
                           />
                         </div>
@@ -1491,7 +1586,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   onChange={(e) => {
                                     const updatedVal = e.target.value;
                                     setSlides(prev => prev.map((item, i) => i === idx ? { ...item, title: updatedVal } : item));
-                                    if (activeSlideIndex === idx) setHeroTitle(updatedVal);
+                                    if (activeSlideIndex === idx) updateHeroTitle(updatedVal);
                                   }}
                                   className="w-full bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                 />
@@ -1502,7 +1597,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                   onChange={(e) => {
                                     const updatedVal = e.target.value;
                                     setSlides(prev => prev.map((item, i) => i === idx ? { ...item, subtitle: updatedVal } : item));
-                                    if (activeSlideIndex === idx) setHeroSubtitle(updatedVal);
+                                    if (activeSlideIndex === idx) updateHeroSubtitle(updatedVal);
                                   }}
                                   className="w-full bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                 />
@@ -1514,7 +1609,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                     onChange={(e) => {
                                       const updatedVal = e.target.value;
                                       setSlides(prev => prev.map((item, i) => i === idx ? { ...item, ctaText: updatedVal } : item));
-                                      if (activeSlideIndex === idx) setHeroCtaText(updatedVal);
+                                      if (activeSlideIndex === idx) { setHeroCtaText(updatedVal); markDirty(); }
                                     }}
                                     className="w-1/2 bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                   />
@@ -1537,7 +1632,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                     onChange={(e) => {
                                       const updatedVal = e.target.value;
                                       setSlides(prev => prev.map((item, i) => i === idx ? { ...item, image: updatedVal } : item));
-                                      if (activeSlideIndex === idx) setHeroImage(updatedVal);
+                                      if (activeSlideIndex === idx) updateHeroImage(updatedVal);
                                     }}
                                     className="flex-1 bg-[#131620] border border-[#2E3548] text-white p-1.5 rounded text-xs"
                                   />
@@ -1556,7 +1651,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                             if (event.target?.result) {
                                               const newImg = event.target.result as string;
                                               setSlides(prev => prev.map((item, i) => i === idx ? { ...item, image: newImg } : item));
-                                              if (activeSlideIndex === idx) setHeroImage(newImg);
+                                              if (activeSlideIndex === idx) updateHeroImage(newImg);
                                             }
                                           };
                                           reader.readAsDataURL(file);
@@ -2852,7 +2947,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                       onChange={(e) => {
                                         const newTitle = e.target.value;
                                         setSlides(prev => prev.map((item, i) => i === idx ? { ...item, title: newTitle } : item));
-                                        if (activeSlideIndex === idx) setHeroTitle(newTitle);
+                                        if (activeSlideIndex === idx) updateHeroTitle(newTitle);
                                       }}
                                       className="w-full bg-[#181B26] border border-[#2E3548] text-white p-1.5 rounded-lg text-xs"
                                     />
@@ -2866,7 +2961,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                       onChange={(e) => {
                                         const newSub = e.target.value;
                                         setSlides(prev => prev.map((item, i) => i === idx ? { ...item, subtitle: newSub } : item));
-                                        if (activeSlideIndex === idx) setHeroSubtitle(newSub);
+                                        if (activeSlideIndex === idx) updateHeroSubtitle(newSub);
                                       }}
                                       className="w-full bg-[#181B26] border border-[#2E3548] text-white p-1.5 rounded-lg text-xs"
                                     />
@@ -2881,7 +2976,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                         onChange={(e) => {
                                           const newCta = e.target.value;
                                           setSlides(prev => prev.map((item, i) => i === idx ? { ...item, ctaText: newCta } : item));
-                                          if (activeSlideIndex === idx) setHeroCtaText(newCta);
+                                          if (activeSlideIndex === idx) { setHeroCtaText(newCta); markDirty(); }
                                         }}
                                         className="w-full bg-[#181B26] border border-[#2E3548] text-white p-1.5 rounded-lg text-xs"
                                       />
@@ -2911,7 +3006,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                         onChange={(e) => {
                                           const newImg = e.target.value;
                                           setSlides(prev => prev.map((item, i) => i === idx ? { ...item, image: newImg } : item));
-                                          if (activeSlideIndex === idx) setHeroImage(newImg);
+                                          if (activeSlideIndex === idx) updateHeroImage(newImg);
                                         }}
                                         className="flex-1 bg-[#181B26] border border-[#2E3548] text-white p-1.5 rounded-lg text-xs"
                                       />
@@ -2929,7 +3024,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                                                 if (event.target?.result) {
                                                   const newImg = event.target.result as string;
                                                   setSlides(prev => prev.map((item, i) => i === idx ? { ...item, image: newImg } : item));
-                                                  if (activeSlideIndex === idx) setHeroImage(newImg);
+                                                  if (activeSlideIndex === idx) updateHeroImage(newImg);
                                                 }
                                               };
                                               reader.readAsDataURL(file);

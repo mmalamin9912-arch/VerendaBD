@@ -133,15 +133,42 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
         // Load the merchant's saved themeConfig from Supabase so published
         // theme images/colors/text render on the customer storefront after reload.
+        // Reads from 'stores' first (Theme Editor publish target), falls back to 'merchants'.
         try {
           const existingBefore = readZidStoreData(storeSlug);
           const cleanEmail = String(merchant?.email || '').trim().toLowerCase();
-          if (supabase && cleanEmail) {
-            const { data: themeRow } = await supabase
-              .from('merchants')
-              .select('theme_config, hero_title, hero_subtitle, hero_image, announcement_text, logo_url, active_theme_id')
-              .ilike('email', cleanEmail)
-              .maybeSingle();
+          if (supabase && (cleanEmail || effectiveSlug)) {
+            const themeFields = 'theme_config, hero_title, hero_subtitle, hero_image, announcement_text, logo_url, active_theme_id';
+            let themeRow: any = null;
+
+            // 1. Look up by store slug in the 'stores' table
+            if (effectiveSlug) {
+              const { data: bySlug } = await supabase
+                .from('stores')
+                .select(themeFields)
+                .eq('store_slug', effectiveSlug)
+                .maybeSingle();
+              if (bySlug) themeRow = bySlug;
+            }
+
+            // 2. Fall back to email lookup in 'stores', then 'merchants'
+            if (!themeRow && cleanEmail) {
+              const { data: byEmail } = await supabase
+                .from('stores')
+                .select(themeFields)
+                .ilike('email', cleanEmail)
+                .maybeSingle();
+              if (byEmail) themeRow = byEmail;
+            }
+            if (!themeRow && cleanEmail) {
+              const { data: merchantRow } = await supabase
+                .from('merchants')
+                .select(themeFields)
+                .ilike('email', cleanEmail)
+                .maybeSingle();
+              if (merchantRow) themeRow = merchantRow;
+            }
+
             if (themeRow && active) {
               const existing = existingBefore;
               const dbMerchant = {
@@ -203,6 +230,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     announcementItems?: string[];
     showHeroBanner?: boolean;
     heroCtaText?: string;
+    headerSticky?: boolean;
+    showAnnouncementText?: string;
     slides?: Array<{ id: string; title: string; subtitle: string; ctaText: string; ctaLink: string; image: string; }>;
     activeSlideIndex?: number;
     categoriesList?: Array<{ name: string; image: string; count: string; }>;
@@ -233,14 +262,22 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   const merchantThemeConfig = (storefrontMerchant.themeConfig || liveStoreData.themeCustomization || {}) as Record<string, unknown>;
   // Resolved theme settings: themeConfig (from editor/Supabase) > themeCustomization > hardcoded defaults
   const resolvedTheme = {
+    headerSticky: merchantThemeConfig.headerSticky !== false,
+    showSearchBar: merchantThemeConfig.showSearchBar !== false,
     announcementBg: (typeof merchantThemeConfig.announcementBg === 'string' && merchantThemeConfig.announcementBg) || '#D4AF37',
     showAnnouncement: merchantThemeConfig.showAnnouncement !== false,
+    announcementText: (typeof merchantThemeConfig.announcementText === 'string' && merchantThemeConfig.announcementText)
+      || storefrontMerchant.announcementText
+      || '',
     isMarquee: merchantThemeConfig.isMarquee !== false,
     marqueeSpeed: typeof merchantThemeConfig.marqueeSpeed === 'number' ? merchantThemeConfig.marqueeSpeed : 22,
     announcementItems: Array.isArray(merchantThemeConfig.announcementItems) && merchantThemeConfig.announcementItems.length > 0
       ? (merchantThemeConfig.announcementItems as string[])
       : [storefrontMerchant.announcementText || 'Welcome to SlateBD Luxury Store'],
     showHeroBanner: merchantThemeConfig.showHeroBanner !== false,
+    heroTitle: (typeof merchantThemeConfig.heroTitle === 'string' && merchantThemeConfig.heroTitle) || storefrontMerchant.heroTitle || '',
+    heroSubtitle: (typeof merchantThemeConfig.heroSubtitle === 'string' && merchantThemeConfig.heroSubtitle) || storefrontMerchant.heroSubtitle || '',
+    heroImage: (typeof merchantThemeConfig.heroImage === 'string' && merchantThemeConfig.heroImage) || storefrontMerchant.heroImage || '',
     heroCtaText: (typeof merchantThemeConfig.heroCtaText === 'string' && merchantThemeConfig.heroCtaText) || 'Shop Now',
     slides: Array.isArray(merchantThemeConfig.slides) && merchantThemeConfig.slides.length > 0
       ? (merchantThemeConfig.slides as Array<{ id: string; title: string; subtitle: string; ctaText: string; ctaLink: string; image: string; }>)
@@ -927,7 +964,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         `}</style>
 
         {/* Top Header Bar (Luxury Dark Glassmorphism) */}
-        <header className="sticky top-0 z-40 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800/80 shadow-2xl">
+        <header className={`${resolvedTheme.headerSticky ? 'sticky top-0' : ''} z-40 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800/80 shadow-2xl`}>
           {/* Top Announcement Bar — themed from Theme Editor settings */}
           {resolvedTheme.showAnnouncement && (
           <div
@@ -974,6 +1011,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               <button
                 onClick={() => setIsSearchOpen(!isSearchOpen)}
                 className="p-1.5 text-slate-300 hover:text-amber-400 transition rounded-lg hover:bg-slate-800/80 border border-transparent hover:border-slate-700/60"
+                style={resolvedTheme.showSearchBar ? undefined : { display: 'none' }}
               >
                 <Search className="w-5 h-5" />
               </button>
@@ -1075,7 +1113,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
             {resolvedTheme.showHeroBanner && (
             <div className="w-full h-[220px] relative overflow-hidden bg-slate-950 border-b border-slate-800/80">
               <img
-                src={activeHeroSlide?.image || storefrontMerchant.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"}
+                src={activeHeroSlide?.image || resolvedTheme.heroImage || "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=800&q=80"}
                 alt="Hero Banner"
                 className="w-full h-full object-cover opacity-50 scale-105 transition-transform duration-700 hover:scale-100"
               />
@@ -1086,10 +1124,10 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                     {t('sf_new_arrivals')}
                   </span>
                   <h2 className="text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md">
-                    {activeHeroSlide?.title || storefrontMerchant.heroTitle || t('sf_hero_fallback_title')}
+                    {activeHeroSlide?.title || resolvedTheme.heroTitle || t('sf_hero_fallback_title')}
                   </h2>
                   <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
-                    {activeHeroSlide?.subtitle || storefrontMerchant.heroSubtitle || t('sf_hero_fallback_subtitle')}
+                    {activeHeroSlide?.subtitle || resolvedTheme.heroSubtitle || t('sf_hero_fallback_subtitle')}
                   </p>
                   {activeHeroSlide?.ctaText && (
                     <span className="inline-flex items-center gap-1 text-[11px] font-black text-[#00D68F]">
