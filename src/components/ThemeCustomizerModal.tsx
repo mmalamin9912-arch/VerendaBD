@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GalleryImage, MerchantProfile } from '../types';
 import { TenantStorefrontView } from './TenantStorefrontView';
 import { writeZidStoreData } from '../lib/storeData';
@@ -219,6 +219,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
   const [showFeaturedGrid, setShowFeaturedGrid] = useState(merchant?.themeConfig?.showFeaturedGrid ?? true);
   const [featuredHeading, setFeaturedHeading] = useState(merchant?.themeConfig?.featuredHeading ?? 'Featured Products');
   const [productColumns, setProductColumns] = useState(merchant?.themeConfig?.productColumns ?? 4);
+  const [productsLayout, setProductsLayout] = useState(merchant?.themeConfig?.productsLayout ?? 'Grid');
+  const [productsSelection, setProductsSelection] = useState(merchant?.themeConfig?.productsSelection ?? 'On sale products');
+  const [productsShowMoreButton, setProductsShowMoreButton] = useState(merchant?.themeConfig?.productsShowMoreButton ?? true);
+  const [productsMoreButtonText, setProductsMoreButtonText] = useState(merchant?.themeConfig?.productsMoreButtonText ?? 'View More');
 
   // 4. Countdown Timer
   const [showCountdown, setShowCountdown] = useState(merchant?.themeConfig?.showCountdown ?? true);
@@ -539,6 +543,30 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
   const [contactEmail, setContactEmail] = useState(merchant?.themeConfig?.contactEmail ?? '');
   const [showPaymentBadges, setShowPaymentBadges] = useState(merchant?.themeConfig?.showPaymentBadges ?? true);
 
+  // Mark the theme dirty whenever ANY section setting changes, so live-editing
+  // every section input instantly flags unsaved changes (single source of truth).
+  const isInitialThemeMount = useRef(true);
+  useEffect(() => {
+    if (isInitialThemeMount.current) { isInitialThemeMount.current = false; return; }
+    setHasUnsavedChanges(true);
+  }, [
+    storeLogoText, logoImageUrl, desktopLogoUrl, mobileLogoUrl, logoHeight,
+    headerSticky, headerBgColor, hideLanguage, hideCountry, showSearchBar,
+    showAnnouncement, announcementText, announcementBg, announcementLink, isMarquee, marqueeSpeed, announcementItems,
+    showHeroBanner, carouselTransition, desktopCarouselHeight, mobileCarouselHeight, activeSlideIndex, slides,
+    heroTitle, heroSubtitle, heroCtaText, heroImage,
+    showCategories, categoriesHeading, categoriesSubtitle, categoriesLayout, categoriesSelection, categoriesItemsPerRow,
+    categoriesShowItemCount, categoriesShowMoreButton, categoriesMoreButtonText, categoriesBgImage, categoriesOverlayOpacity, categoriesList,
+    showFeaturedGrid, featuredHeading, productColumns, productsLayout, productsSelection, productsShowMoreButton, productsMoreButtonText,
+    showCountdown, countdownTitle, countdownEndDate, countdownBgImage, countdownOverlayOpacity, countdownHours, countdownDiscount,
+    showGallery, galleryHeading, galleryImages,
+    showSocialBlock, socialTagline, facebookHandle, instagramHandle, whatsappNumber, tiktokHandle, youtubeHandle,
+    showFacebook, showInstagram, showWhatsapp, showTikTok, showYouTube, socialButtonStyle,
+    showVideo, videoTitle, videoUrl, videoCoverImage, videoFileUrl, videoAutoplay, videoMuted,
+    footerLogoText, footerTagline, footerLinksTitle, footerLinks, footerAboutText, dhakaAddress, contactPhone, contactEmail, showPaymentBadges,
+    contentSectionsOrder, mainSectionsOrder, headerSectionsOrder, footerSectionsOrder
+  ]);
+
   if (!isOpen) return null;
 
   const triggerToast = (msg: string) => {
@@ -566,7 +594,7 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
       showAnnouncement, announcementText, announcementBg, announcementLink, isMarquee, marqueeSpeed, announcementItems,
       showHeroBanner, carouselTransition, desktopCarouselHeight, mobileCarouselHeight, activeSlideIndex, slides, heroTitle, heroSubtitle, heroCtaText, heroImage,
       showCategories, categoriesHeading, categoriesSubtitle, categoriesLayout, categoriesSelection, categoriesItemsPerRow, categoriesShowItemCount, categoriesMoreButtonText, categoriesShowMoreButton, categoriesBgImage, categoriesOverlayOpacity, categoriesList,
-      showFeaturedGrid, featuredHeading, productColumns,
+      showFeaturedGrid, featuredHeading, productColumns, productsLayout, productsSelection, productsShowMoreButton, productsMoreButtonText,
       showCountdown, countdownTitle, countdownEndDate, countdownBgImage, countdownOverlayOpacity, countdownHours, countdownDiscount,
       showGallery, galleryHeading, galleryImages,
       showSocialBlock, socialTagline, facebookHandle, instagramHandle, whatsappNumber, tiktokHandle, youtubeHandle, showFacebook, showInstagram, showWhatsapp, showTikTok, showYouTube, socialButtonStyle,
@@ -880,6 +908,10 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
       showFeaturedGrid,
       featuredHeading,
       productColumns,
+      productsLayout,
+      productsSelection,
+      productsShowMoreButton,
+      productsMoreButtonText,
       showCountdown,
       countdownTitle,
       countdownEndDate,
@@ -1848,7 +1880,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* Layout */}
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Layout</label>
-                        <select className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs">
+                        <select
+                          value={productsLayout}
+                          onChange={(e) => setProductsLayout(e.target.value as 'Carousel' | 'Grid' | 'List')}
+                          className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs cursor-pointer"
+                        >
                           <option>Carousel</option>
                           <option>Grid</option>
                           <option>List</option>
@@ -1869,7 +1905,11 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* Product Selection */}
                       <div className="space-y-1">
                         <label className="text-slate-300 font-semibold block">Select Products</label>
-                        <select className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs">
+                        <select
+                          value={productsSelection}
+                          onChange={(e) => setProductsSelection(e.target.value)}
+                          className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs cursor-pointer"
+                        >
                           <option>On sale products</option>
                           <option>Recent products</option>
                           <option>Category products</option>
@@ -1885,14 +1925,20 @@ export const ThemeCustomizerModal: React.FC<ThemeCustomizerModalProps> = ({
                       {/* More Button */}
                       <div className="space-y-2 pt-2 border-t border-[#2E3548]">
                         <label className="flex items-center gap-2 text-slate-300 font-semibold">
-                          <input type="checkbox" className="accent-[#D4AF37]" />
+                          <input
+                            type="checkbox"
+                            checked={productsShowMoreButton}
+                            onChange={(e) => setProductsShowMoreButton(e.target.checked)}
+                            className="accent-[#D4AF37]"
+                          />
                           Display More Button
                         </label>
                         <div className="space-y-1">
                           <label className="text-slate-400 text-[10px] block">More Button Text</label>
                           <input
                             type="text"
-                            defaultValue="View More"
+                            value={productsMoreButtonText}
+                            onChange={(e) => setProductsMoreButtonText(e.target.value)}
                             className="w-full bg-[#202533] border border-[#2E3548] text-white p-2 rounded-lg text-xs"
                           />
                         </div>

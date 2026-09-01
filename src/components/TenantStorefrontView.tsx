@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MerchantProfile, Product, BankAccount, MobileBankingConfig, CodConfig, Order, OrderItem, ThemeConfig } from '../types';
 import { buildCategoryDbPayload, buildProductDbPayload, maxCatalogId, packCatalogItem, toCatalogSlug, ensureCategory, mapApiProduct, mapApiCategory } from '../utils/catalogPayload';
-import { ShoppingBag, X, Check, Copy, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, ChevronRight, ChevronLeft, Trash2, Flame, Eye, Plus, Minus, Tag, Zap, Loader2 } from 'lucide-react';
+import { ShoppingBag, X, Check, Copy, CreditCard, Building2, Smartphone, ShieldCheck, Search, Globe, Phone, MapPin, ArrowRight, ArrowLeft, ExternalLink, Clock, Menu, User, Lock, Sparkles, PackageCheck, LogOut, Home, Star, Share2, RotateCcw, MessageSquare, MessageCircle, ChevronRight, ChevronLeft, Trash2, Flame, Eye, Plus, Minus, Tag, Zap, Loader2, Facebook, Instagram, Youtube, Music, Play } from 'lucide-react';
 import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber } from '../lib/whatsappOtpService';
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { readZidStoreData, subscribeToZidStoreData, writeZidStoreData, type ZidStoreData } from '../lib/storeData';
@@ -237,6 +237,50 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
     categoriesList?: Array<{ name: string; image: string; count: string; }>;
     showSearchBar?: boolean;
     headerBgColor?: string;
+    showCategories?: boolean;
+    categoriesHeading?: string;
+    categoriesSubtitle?: string;
+    categoriesLayout?: string;
+    categoriesItemsPerRow?: number;
+    showFeaturedGrid?: boolean;
+    featuredHeading?: string;
+    productColumns?: number;
+    productsLayout?: string;
+    showCountdown?: boolean;
+    countdownTitle?: string;
+    countdownDiscount?: string;
+    countdownHours?: number;
+    countdownEndDate?: string;
+    countdownBgImage?: string;
+    countdownOverlayOpacity?: number;
+    showGallery?: boolean;
+    galleryHeading?: string;
+    galleryImages?: Array<{ url: string; caption?: string; link?: string; }>;
+    showSocialBlock?: boolean;
+    socialTagline?: string;
+    facebookHandle?: string;
+    instagramHandle?: string;
+    whatsappNumber?: string;
+    tiktokHandle?: string;
+    youtubeHandle?: string;
+    showFacebook?: boolean;
+    showInstagram?: boolean;
+    showWhatsapp?: boolean;
+    showTikTok?: boolean;
+    showYouTube?: boolean;
+    showVideo?: boolean;
+    videoTitle?: string;
+    videoUrl?: string;
+    videoFileUrl?: string;
+    videoAutoplay?: boolean;
+    videoMuted?: boolean;
+    footerLogoText?: string;
+    footerAboutText?: string;
+    footerLinksTitle?: string;
+    footerLinks?: string[];
+    contactPhone?: string;
+    contactEmail?: string;
+    dhakaAddress?: string;
   };
   const storefrontMerchant: MerchantProfile = {
     ...merchant,
@@ -283,7 +327,51 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       ? (merchantThemeConfig.slides as Array<{ id: string; title: string; subtitle: string; ctaText: string; ctaLink: string; image: string; }>)
       : [],
     activeSlideIndex: typeof merchantThemeConfig.activeSlideIndex === 'number' ? merchantThemeConfig.activeSlideIndex : 0,
-    categoriesList: Array.isArray(merchantThemeConfig.categoriesList) ? (merchantThemeConfig.categoriesList as Array<{ name: string; image: string; count: string; }>) : []
+    categoriesList: Array.isArray(merchantThemeConfig.categoriesList) ? (merchantThemeConfig.categoriesList as Array<{ name: string; image: string; count: string; }>) : [],
+    showCategories: merchantThemeConfig.showCategories !== false,
+    categoriesHeading: (typeof merchantThemeConfig.categoriesHeading === 'string' && merchantThemeConfig.categoriesHeading) || 'Popular Categories',
+    categoriesSubtitle: (typeof merchantThemeConfig.categoriesSubtitle === 'string' && merchantThemeConfig.categoriesSubtitle) || 'Shop by category',
+    categoriesLayout: (typeof merchantThemeConfig.categoriesLayout === 'string' && merchantThemeConfig.categoriesLayout) || 'Carousel',
+    categoriesItemsPerRow: typeof merchantThemeConfig.categoriesItemsPerRow === 'number' ? merchantThemeConfig.categoriesItemsPerRow : 4,
+    showFeaturedGrid: merchantThemeConfig.showFeaturedGrid !== false,
+    featuredHeading: (typeof merchantThemeConfig.featuredHeading === 'string' && merchantThemeConfig.featuredHeading) || 'Featured Products',
+    productColumns: typeof merchantThemeConfig.productColumns === 'number' ? merchantThemeConfig.productColumns : 2,
+    productsLayout: (typeof merchantThemeConfig.productsLayout === 'string' && merchantThemeConfig.productsLayout) || 'Grid',
+    showCountdown: merchantThemeConfig.showCountdown !== false,
+    countdownTitle: (typeof merchantThemeConfig.countdownTitle === 'string' && merchantThemeConfig.countdownTitle) || '⚡ Flash Sale Ends In:',
+    countdownDiscount: (typeof merchantThemeConfig.countdownDiscount === 'string' && merchantThemeConfig.countdownDiscount) || 'Extra 15% OFF!',
+    countdownHours: typeof merchantThemeConfig.countdownHours === 'number' ? merchantThemeConfig.countdownHours : 14,
+    countdownEndDate: typeof merchantThemeConfig.countdownEndDate === 'string' ? merchantThemeConfig.countdownEndDate : '',
+    countdownBgImage: (typeof merchantThemeConfig.countdownBgImage === 'string' && merchantThemeConfig.countdownBgImage) || '',
+    countdownOverlayOpacity: typeof merchantThemeConfig.countdownOverlayOpacity === 'number' ? merchantThemeConfig.countdownOverlayOpacity : 60,
+    showGallery: merchantThemeConfig.showGallery !== false,
+    galleryHeading: (typeof merchantThemeConfig.galleryHeading === 'string' && merchantThemeConfig.galleryHeading) || 'Gallery',
+    galleryImages: Array.isArray(merchantThemeConfig.galleryImages) ? (merchantThemeConfig.galleryImages as Array<{ url: string; caption?: string; link?: string; }>) : [],
+    showSocialBlock: merchantThemeConfig.showSocialBlock !== false,
+    socialTagline: (typeof merchantThemeConfig.socialTagline === 'string' && merchantThemeConfig.socialTagline) || 'Follow us for daily updates',
+    facebookHandle: (typeof merchantThemeConfig.facebookHandle === 'string' && merchantThemeConfig.facebookHandle) || '',
+    instagramHandle: (typeof merchantThemeConfig.instagramHandle === 'string' && merchantThemeConfig.instagramHandle) || '',
+    whatsappNumber: (typeof merchantThemeConfig.whatsappNumber === 'string' && merchantThemeConfig.whatsappNumber) || '',
+    tiktokHandle: (typeof merchantThemeConfig.tiktokHandle === 'string' && merchantThemeConfig.tiktokHandle) || '',
+    youtubeHandle: (typeof merchantThemeConfig.youtubeHandle === 'string' && merchantThemeConfig.youtubeHandle) || '',
+    showFacebook: merchantThemeConfig.showFacebook !== false,
+    showInstagram: merchantThemeConfig.showInstagram !== false,
+    showWhatsapp: merchantThemeConfig.showWhatsapp !== false,
+    showTikTok: merchantThemeConfig.showTikTok !== false,
+    showYouTube: merchantThemeConfig.showYouTube !== false,
+    showVideo: merchantThemeConfig.showVideo !== false,
+    videoTitle: (typeof merchantThemeConfig.videoTitle === 'string' && merchantThemeConfig.videoTitle) || '',
+    videoUrl: (typeof merchantThemeConfig.videoUrl === 'string' && merchantThemeConfig.videoUrl) || '',
+    videoFileUrl: (typeof merchantThemeConfig.videoFileUrl === 'string' && merchantThemeConfig.videoFileUrl) || '',
+    videoAutoplay: merchantThemeConfig.videoAutoplay === true,
+    videoMuted: merchantThemeConfig.videoMuted !== false,
+    footerLogoText: (typeof merchantThemeConfig.footerLogoText === 'string' && merchantThemeConfig.footerLogoText) || '',
+    footerAboutText: (typeof merchantThemeConfig.footerAboutText === 'string' && merchantThemeConfig.footerAboutText) || '',
+    footerLinksTitle: (typeof merchantThemeConfig.footerLinksTitle === 'string' && merchantThemeConfig.footerLinksTitle) || 'Quick Links',
+    footerLinks: Array.isArray(merchantThemeConfig.footerLinks) ? (merchantThemeConfig.footerLinks as string[]) : [],
+    contactPhone: (typeof merchantThemeConfig.contactPhone === 'string' && merchantThemeConfig.contactPhone) || '',
+    contactEmail: (typeof merchantThemeConfig.contactEmail === 'string' && merchantThemeConfig.contactEmail) || '',
+    dhakaAddress: (typeof merchantThemeConfig.dhakaAddress === 'string' && merchantThemeConfig.dhakaAddress) || ''
   };
   const activeHeroSlide = resolvedTheme.slides.length > 0
     ? resolvedTheme.slides[Math.min(resolvedTheme.activeSlideIndex, resolvedTheme.slides.length - 1)]
@@ -467,6 +555,30 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
+  // Live countdown seconds remaining (driven by themeConfig countdownHours / countdownEndDate)
+  const [countdownRemaining, setCountdownRemaining] = useState<number>(() => {
+    const cfg = ((merchant as any)?.themeConfig || {}) as any;
+    if (cfg.countdownEndDate) {
+      const diff = Math.max(0, new Date(cfg.countdownEndDate).getTime() - Date.now());
+      return Math.floor(diff / 1000);
+    }
+    return (typeof cfg.countdownHours === 'number' ? cfg.countdownHours : 14) * 3600;
+  });
+  useEffect(() => {
+    const timer = window.setInterval(() => setCountdownRemaining((s) => Math.max(0, s - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  // Re-sync the countdown when a saved countdownEndDate/hours loads from Supabase
+  useEffect(() => {
+    if (resolvedTheme.countdownEndDate) {
+      const diff = new Date(resolvedTheme.countdownEndDate).getTime() - Date.now();
+      if (!Number.isNaN(diff)) setCountdownRemaining(Math.max(0, Math.floor(diff / 1000)));
+    }
+  }, [resolvedTheme.countdownEndDate, resolvedTheme.countdownHours]);
+  const countdownH = Math.floor(countdownRemaining / 3600);
+  const countdownM = Math.floor((countdownRemaining % 3600) / 60);
+  const countdownS = countdownRemaining % 60;
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('all');
   const categoryCarouselRef = React.useRef<HTMLDivElement>(null);
   const scrollCategories = (direction: 'left' | 'right') => {
@@ -1141,15 +1253,16 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
             <div className="px-4 space-y-7">
 
-              {/* Interactive Category Sliding Carousel */}
+              {/* Interactive Category Section — themed from Theme Editor */}
+              {resolvedTheme.showCategories && (
               <section className="space-y-3">
                 <div className="flex justify-between items-center px-0.5">
                   <div>
                     <h2 className="text-sm font-black text-slate-100 tracking-tight uppercase flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-amber-400" />
-                      {t('sf_popular_categories')}
+                      {resolvedTheme.categoriesHeading || t('sf_popular_categories')}
                     </h2>
-                    <p className="text-[11px] text-slate-400">{t('sf_shop_by_category')}</p>
+                    <p className="text-[11px] text-slate-400">{resolvedTheme.categoriesSubtitle || t('sf_shop_by_category')}</p>
                   </div>
 
                   {/* Chevron scroll buttons */}
@@ -1173,7 +1286,14 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
                 <div
                   ref={categoryCarouselRef}
-                  className="flex items-center gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x"
+                  className={
+                    resolvedTheme.categoriesLayout === 'Grid'
+                      ? "grid gap-3"
+                      : resolvedTheme.categoriesLayout === 'List'
+                        ? "flex flex-col gap-2"
+                        : "flex items-center gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x"
+                  }
+                  style={resolvedTheme.categoriesLayout === 'Grid' ? { gridTemplateColumns: `repeat(${Math.max(2, Math.min(resolvedTheme.categoriesItemsPerRow, 4))}, minmax(0, 1fr))` } : undefined}
                 >
                   {/* 'All Items' pill */}
                   <div
@@ -1233,14 +1353,16 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   })}
                 </div>
               </section>
+              )}
 
-              {/* Product Grid (Luxury Dark Cards with Stock & Price Highlights) */}
+              {/* Products Section (Grid / Carousel / List) — themed from Theme Editor */}
+              {resolvedTheme.showFeaturedGrid && (
               <section id="storefront-products-section" className="space-y-3.5">
                 <div className="flex justify-between items-center border-b border-slate-800/80 pb-2.5">
                   <div>
                     <h2 className="text-base font-black text-slate-100 uppercase tracking-tight flex items-center gap-2">
                       <ShoppingBag className="w-4 h-4 text-[#00D68F]" />
-                      {t('sf_products')}
+                      {resolvedTheme.featuredHeading || t('sf_products')}
                     </h2>
                     <p className="text-[11px] text-slate-400">
                       {activeCategoryFilter !== 'all' ? `Filtered by ${activeCategoryFilter}` : t('sf_discover_collection')}
@@ -1256,9 +1378,18 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div
+                  className={
+                    resolvedTheme.productsLayout === 'List'
+                      ? "flex flex-col gap-3"
+                      : resolvedTheme.productsLayout === 'Carousel'
+                        ? "flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x"
+                        : "grid grid-cols-2 gap-3"
+                  }
+                  style={resolvedTheme.productsLayout === 'Carousel' ? undefined : undefined}
+                >
                   {displayProducts.length === 0 ? (
-                    <div className="col-span-2 rounded-2xl border border-dashed border-slate-800 bg-slate-900/50 px-4 py-12 text-center space-y-2">
+                    <div className={`${resolvedTheme.productsLayout === 'List' ? '' : 'col-span-2'} rounded-2xl border border-dashed border-slate-800 bg-slate-900/50 px-4 py-12 text-center space-y-2`}>
                       <ShoppingBag className="mx-auto h-10 w-10 text-slate-600" />
                       <h3 className="text-sm font-black text-slate-200">{t('sf_no_products')}</h3>
                       <p className="text-xs text-slate-500">{t('sf_no_products_desc')}</p>
@@ -1266,7 +1397,11 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   ) : displayProducts.map(p => (
                     <div
                       key={p.id}
-                      className="group flex flex-col justify-between bg-slate-900/80 backdrop-blur-md rounded-2xl overflow-hidden border border-slate-800/80 hover:border-amber-500/40 hover:shadow-[0_0_25px_rgba(212,175,55,0.15)] transition-all duration-300 relative"
+                      className={`group flex flex-col justify-between bg-slate-900/80 backdrop-blur-md rounded-2xl overflow-hidden border border-slate-800/80 hover:border-amber-500/40 hover:shadow-[0_0_25px_rgba(212,175,55,0.15)] transition-all duration-300 relative ${
+                        resolvedTheme.productsLayout === 'Carousel' ? 'snap-start shrink-0 w-[220px]' : ''
+                      } ${
+                        resolvedTheme.productsLayout === 'List' ? 'flex-row items-center' : ''
+                      }`}
                     >
                       {/* Status & Stock Badges */}
                       <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between pointer-events-none">
@@ -1355,6 +1490,125 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
                   ))}
                 </div>
               </section>
+              )}
+
+              {/* Countdown Timer Section — themed from Theme Editor */}
+              {resolvedTheme.showCountdown && (
+              <section
+                className="relative rounded-2xl overflow-hidden border border-rose-500/30 p-5 text-center space-y-2"
+                style={
+                  resolvedTheme.countdownBgImage
+                    ? { backgroundImage: `url(${resolvedTheme.countdownBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                    : undefined
+                }
+              >
+                {resolvedTheme.countdownBgImage && (
+                  <div className="absolute inset-0 bg-slate-950" style={{ opacity: resolvedTheme.countdownOverlayOpacity / 100 }} />
+                )}
+                <div className="relative space-y-2">
+                  <h3 className="text-base font-black text-white uppercase tracking-wide">{resolvedTheme.countdownTitle}</h3>
+                  {resolvedTheme.countdownDiscount && (
+                    <span className="inline-block bg-gradient-to-r from-rose-500 to-amber-400 text-slate-950 text-[11px] font-black uppercase px-3 py-1 rounded-full shadow-lg">
+                      {resolvedTheme.countdownDiscount}
+                    </span>
+                  )}
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    {[{ v: countdownH, l: 'HRS' }, { v: countdownM, l: 'MIN' }, { v: countdownS, l: 'SEC' }].map((u) => (
+                      <div key={u.l} className="min-w-[58px] px-2 py-2 rounded-xl bg-slate-900/85 border border-slate-700/80 backdrop-blur-sm">
+                        <div className="text-lg font-black text-amber-400 tabular-nums leading-none">{String(u.v).padStart(2, '0')}</div>
+                        <div className="text-[9px] font-bold text-slate-400 tracking-widest mt-1">{u.l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              )}
+
+              {/* Gallery Section — themed from Theme Editor */}
+              {resolvedTheme.showGallery && resolvedTheme.galleryImages.length > 0 && (
+              <section className="space-y-3">
+                <h2 className="text-sm font-black text-slate-100 tracking-tight uppercase flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-400" />
+                  {resolvedTheme.galleryHeading}
+                </h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {resolvedTheme.galleryImages.map((img, i) => {
+                    const galleryImg = (
+                      <img src={img.url} alt={img.caption || `Gallery ${i + 1}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    );
+                    return img.link && img.link !== '#' ? (
+                      <a key={`gal-${i}`} href={img.link} target="_blank" rel="noreferrer" className="group relative rounded-2xl overflow-hidden border border-slate-800/80 aspect-square bg-slate-900">
+                        {galleryImg}
+                      </a>
+                    ) : (
+                      <div key={`gal-${i}`} className="group relative rounded-2xl overflow-hidden border border-slate-800/80 aspect-square bg-slate-900">
+                        {galleryImg}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+              )}
+
+              {/* Video Section — themed from Theme Editor */}
+              {resolvedTheme.showVideo && (resolvedTheme.videoFileUrl || resolvedTheme.videoUrl) && (
+              <section className="space-y-3">
+                {resolvedTheme.videoTitle && (
+                  <h2 className="text-sm font-black text-slate-100 tracking-tight uppercase flex items-center gap-2">
+                    <Play className="w-4 h-4 text-amber-400" />
+                    {resolvedTheme.videoTitle}
+                  </h2>
+                )}
+                <div className="rounded-2xl overflow-hidden border border-slate-800/80 aspect-video bg-slate-950">
+                  {resolvedTheme.videoFileUrl ? (
+                    <video
+                      src={resolvedTheme.videoFileUrl}
+                      className="w-full h-full object-cover"
+                      controls
+                      autoPlay={resolvedTheme.videoAutoplay}
+                      muted={resolvedTheme.videoAutoplay || resolvedTheme.videoMuted}
+                      loop
+                      playsInline
+                    />
+                  ) : (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${(resolvedTheme.videoUrl.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/) || [])[1] || 'dQw4w9WgXcQ'}?autoplay=${resolvedTheme.videoAutoplay ? 1 : 0}&mute=${(resolvedTheme.videoAutoplay || resolvedTheme.videoMuted) ? 1 : 0}`}
+                      className="w-full h-full"
+                      title={resolvedTheme.videoTitle || 'Store Video'}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  )}
+                </div>
+              </section>
+              )}
+
+              {/* Logo & Social Media Section — themed from Theme Editor */}
+              {resolvedTheme.showSocialBlock && (
+              <section className="rounded-2xl bg-slate-900/60 backdrop-blur-md border border-slate-800/80 p-5 space-y-3 text-center">
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-amber-400">{storefrontMerchant.storeName}</h3>
+                {resolvedTheme.socialTagline && (
+                  <p className="text-[11px] text-slate-400">{resolvedTheme.socialTagline}</p>
+                )}
+                <div className="flex items-center justify-center gap-3 pt-1">
+                  {resolvedTheme.showFacebook && resolvedTheme.facebookHandle && (
+                    <a href={`https://facebook.com/${resolvedTheme.facebookHandle.replace(/^@/, '')}`} target="_blank" rel="noreferrer" title="Facebook" className="p-2.5 rounded-full bg-[#1877F2]/15 text-[#4d9fff] border border-[#1877F2]/30 hover:scale-110 transition"><Facebook className="w-4 h-4" /></a>
+                  )}
+                  {resolvedTheme.showInstagram && resolvedTheme.instagramHandle && (
+                    <a href={`https://instagram.com/${resolvedTheme.instagramHandle.replace(/^@/, '')}`} target="_blank" rel="noreferrer" title="Instagram" className="p-2.5 rounded-full bg-pink-500/15 text-pink-400 border border-pink-500/30 hover:scale-110 transition"><Instagram className="w-4 h-4" /></a>
+                  )}
+                  {resolvedTheme.showWhatsapp && resolvedTheme.whatsappNumber && (
+                    <a href={`https://wa.me/${resolvedTheme.whatsappNumber.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" title="WhatsApp" className="p-2.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:scale-110 transition"><MessageCircle className="w-4 h-4" /></a>
+                  )}
+                  {resolvedTheme.showTikTok && resolvedTheme.tiktokHandle && (
+                    <a href={`https://tiktok.com/@${resolvedTheme.tiktokHandle.replace(/^@/, '')}`} target="_blank" rel="noreferrer" title="TikTok" className="p-2.5 rounded-full bg-slate-500/15 text-slate-200 border border-slate-500/30 hover:scale-110 transition"><Music className="w-4 h-4" /></a>
+                  )}
+                  {resolvedTheme.showYouTube && resolvedTheme.youtubeHandle && (
+                    <a href={`https://youtube.com/@${resolvedTheme.youtubeHandle.replace(/^@/, '')}`} target="_blank" rel="noreferrer" title="YouTube" className="p-2.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 hover:scale-110 transition"><Youtube className="w-4 h-4" /></a>
+                  )}
+                </div>
+              </section>
+              )}
 
               {/* Store Benefits Section (Luxury Glass Cards) */}
               <section className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-4 grid grid-cols-2 gap-3 text-center shadow-xl">
@@ -2633,13 +2887,38 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         </div>
       )}
 
-      {/* Store Footer */}
+      {/* Store Footer — themed from Theme Editor */}
       <footer className="bg-slate-950 text-slate-400 py-8 px-4 text-xs mt-6 border-t border-slate-800/80 space-y-6">
         <div className="space-y-3 text-center">
-          <h4 className="text-amber-400 text-base font-black tracking-wider uppercase">{storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}</h4>
+          <h4 className="text-amber-400 text-base font-black tracking-wider uppercase">
+            {resolvedTheme.footerLogoText || (storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD')}
+          </h4>
           <p className="text-[11px] leading-relaxed text-slate-400 max-w-xs mx-auto">
-            Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by ZID SAAS BD Engine.
+            {resolvedTheme.footerAboutText || "Bangladesh’s Premier Online Fashion & Lifestyle Destination. Powered by ZID SAAS BD Engine."}
           </p>
+          {resolvedTheme.footerLinks.length > 0 && (
+            <div className="pt-2">
+              <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-300 mb-2">{resolvedTheme.footerLinksTitle}</h5>
+              <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+                {resolvedTheme.footerLinks.map((linkLabel, i) => (
+                  <li key={`flink-${i}`} className="text-[11px] text-slate-400 hover:text-amber-400 transition cursor-pointer">{linkLabel}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(resolvedTheme.contactPhone || resolvedTheme.contactEmail || resolvedTheme.dhakaAddress) && (
+            <div className="pt-2 space-y-1">
+              {resolvedTheme.contactPhone && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-300"><Phone className="w-3 h-3 text-[#00D68F]" /> {resolvedTheme.contactPhone}</div>
+              )}
+              {resolvedTheme.contactEmail && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-300"><Globe className="w-3 h-3 text-[#00D68F]" /> {resolvedTheme.contactEmail}</div>
+              )}
+              {resolvedTheme.dhakaAddress && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-300"><MapPin className="w-3 h-3 text-[#00D68F]" /> {resolvedTheme.dhakaAddress}</div>
+              )}
+            </div>
+          )}
           <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-300 pt-1">
             <ShieldCheck className="w-4 h-4 text-[#00D68F]" />
             <span>Secure 256-bit SSL Checkout</span>
@@ -2647,7 +2926,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
         </div>
 
         <div className="pt-4 border-t border-slate-800/80 text-center text-[10px] text-slate-500">
-          © {new Date().getFullYear()} {storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD'}. All rights reserved.
+          © {new Date().getFullYear()} {resolvedTheme.footerLogoText || (storefrontMerchant.storeName === 'My Zid Store' ? 'SlateBD' : storefrontMerchant.storeName || 'SlateBD')}. All rights reserved.
         </div>
       </footer>
       </div>
