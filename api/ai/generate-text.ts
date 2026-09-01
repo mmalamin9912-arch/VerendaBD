@@ -13,12 +13,18 @@ type VercelResponse = {
   end: () => void;
 };
 
+import { ZID_AI_SYSTEM_INSTRUCTION } from '../../src/lib/aiService';
+
 /**
  * POST /api/ai/generate-text
  * Body: { prompt: string, systemInstruction?: string }
  *
  * Uses the Gemini API with GEMINI_API_KEY from server-side environment
  * variables (never exposed to the browser).
+ *
+ * The canonical Zid AI platform instruction (Sales Copilot + Platform Support
+ * Specialist + Bengali/English language matching) is ALWAYS applied. If the
+ * caller passes its own systemInstruction, it is appended as extra context.
  *
  * Responses:
  *  - 200 { text: string }
@@ -62,7 +68,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
     };
     if (systemInstruction) {
-      payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+      // Merge: platform instruction first, caller instruction as extra context.
+      payload.systemInstruction = { parts: [{ text: `${ZID_AI_SYSTEM_INSTRUCTION}\n\n## ADDITIONAL CONTEXT FROM THE CALLING FEATURE\n${systemInstruction}` }] };
+    } else {
+      payload.systemInstruction = { parts: [{ text: ZID_AI_SYSTEM_INSTRUCTION }] };
     }
 
     const providerRes = await fetch(url, {
