@@ -151,6 +151,41 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
               if (bySlug) themeRow = bySlug;
             }
 
+            // 1b. Fall back to domain lookup (custom domain hosting the storefront)
+            if (!themeRow) {
+              const hostSlug = (() => {
+                try {
+                  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+                  return host.replace(/^www\./, '').split('.')[0];
+                } catch (e) { return ''; }
+              })();
+              if (hostSlug && hostSlug !== effectiveSlug) {
+                const { data: byDomain } = await supabase
+                  .from('stores')
+                  .select(themeFields)
+                  .eq('store_slug', hostSlug)
+                  .maybeSingle();
+                if (byDomain) themeRow = byDomain;
+                else {
+                  const { data: byDomainCol } = await supabase
+                    .from('stores')
+                    .select(themeFields)
+                    .ilike('domain', window.location.hostname.replace(/^www\./, ''))
+                    .maybeSingle();
+                  if (byDomainCol) themeRow = byDomainCol;
+                }
+              }
+            }
+
+            // theme_config may be stored as a JSON string — normalize to an object
+            if (themeRow && themeRow.theme_config && typeof themeRow.theme_config === 'string') {
+              try { themeRow.theme_config = JSON.parse(themeRow.theme_config); }
+              catch (parseErr) {
+                console.warn('[TenantStorefrontView] theme_config JSON parse failed:', parseErr);
+                themeRow.theme_config = null;
+              }
+            }
+
             // 2. Fall back to email lookup in 'stores', then 'merchants'
             if (!themeRow && cleanEmail) {
               const { data: byEmail } = await supabase
@@ -2494,7 +2529,7 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
 
       {/* Mobile App Bottom Navigation & Sticky Action Bar (Fixed inside frame) */}
       {checkoutStep === 'catalog' && (
-        <div className="absolute bottom-0 left-0 right-0 z-40 bg-[#0f172a]/95 backdrop-blur-xl border-t border-slate-800/80 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#0f172a]/95 backdrop-blur-xl border-t border-slate-800/80 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
           {/* Quick Payment & Cart Fast Checkout Bar (Shows if items in cart) */}
           {cart.length > 0 && (
             <div className="px-3.5 py-2 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-b border-slate-800/80 flex items-center justify-between gap-2 animate-fade-in-up">
