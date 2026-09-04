@@ -106,7 +106,27 @@
   transition: opacity .5s ease, visibility .5s ease, transform .5s ease;
 }
 
-.zid-splash--exiting { animation: zid-splash-exit .5s ease forwards; pointer-events: none; }
+  .zid-splash--exiting { animation: zid-splash-exit .5s ease forwards; pointer-events: none; }
+
+/* Zid AI Assistant — pulse animation for trigger button ring */
+@keyframes zid-ai-pulse-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* Zid AI Assistant — typing dots animation */
+@keyframes zid-ai-dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+.zid-ai-dot {
+  animation: zid-ai-dot-bounce 1.4s ease-in-out infinite;
+}
+
+.zid-ai-trigger__badge {
+  animation: zid-ai-pulse-ring 2s ease-out infinite;
+}
 
 .zid-splash__ambient {
   position: absolute;

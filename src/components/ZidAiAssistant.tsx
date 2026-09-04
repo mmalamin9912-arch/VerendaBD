@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Send, MessageSquare, BarChart2, X, Circle } from 'lucide-react';
+import { Sparkles, Send, MessageSquare, BarChart2, X, Bot } from 'lucide-react';
 import { generateAiText, ZID_AI_SYSTEM_INSTRUCTION } from '../lib/aiService';
 
 interface ChatMessage {
@@ -91,51 +91,89 @@ export const ZidAiAssistant: React.FC = () => {
   };
 
   if (!isOpen) return (
-    <button onClick={() => setIsOpen(true)} aria-label="Open Zid AI Assistant" title="Open Zid AI Assistant" className="zid-ai-trigger fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-2xl border-amber-300/50 bg-[#151923] text-amber-300 shadow-[0_12px_35px_rgba(0,0,0,.4)] transition hover:-translate-y-1 hover:border-amber-200 hover:text-amber-200">
-      <span className="zid-ai-trigger__ring" aria-hidden="true" /><Sparkles className="relative z-10 h-6 w-6" />
+    <button onClick={() => setIsOpen(true)} aria-label="Open Zid AI Assistant" title="Open Zid AI Assistant" className="zid-ai-trigger group fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-400/30 bg-gradient-to-br from-[#1A2235] via-[#151923] to-[#0F1420] text-amber-300 shadow-[0_12px_35px_rgba(0,0,.55)] transition-all duration-300 hover:-translate-y-1 hover:scale-105 hover:border-amber-300/60 hover:text-amber-200 hover:shadow-amber-500/25">
+      {/* Pulse ring */}
+      <span className="absolute inset-0 rounded-2xl border border-amber-400/30 opacity-0 group-hover:opacity-100 animate-ping" aria-hidden="true" style={{ animationDuration: '2s' }} />
+      {/* Glow behind icon */}
+      <span className="absolute inset-2 rounded-xl bg-amber-400/10 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500" aria-hidden="true" />
+      <Sparkles className="relative z-10 h-7 w-7 drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]" />
+      <span className="zid-ai-trigger__badge absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 shadow-[0_8px_rgba(251,191,36,0.6)]" aria-hidden="true">
+        <Sparkles className="h-2.5 w-2.5 text-[#0F1420]" />
+      </span>
     </button>
   );
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-[#181B26] border border-[#2E3548] rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
-      <header className="relative flex items-center justify-between border-b border-slate-700/70 bg-[linear-gradient(135deg,#202838,#151b28)] px-5 py-4"><div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent" /><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border-amber-300/40 bg-amber-300/10 text-amber-300"><Sparkles className="h-5 w-5" /></div><div><h3 className="text-sm font-extrabold tracking-wide text-white">Zid AI Assistant</h3><p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400"><Circle className="h-2 w-2 fill-cyan-400 text-cyan-400" /> Sales copilot online</p></div></div><button onClick={() => setIsOpen(false)} aria-label="Close Zid AI Assistant" title="Close assistant" className="rounded-lg p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button></header>
-      <div className="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(14,165,233,.07),transparent_42%)] p-4">
+    <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-[#181B26] border border-amber-400/15 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden shadow-amber-500/5">
+      <header className="relative flex items-center justify-between border-b border-amber-400/15 bg-gradient-to-r from-[#0B0F1A] via-[#12172B] to-[#0B0F1A] px-5 py-4">
+        {/* Top accent line — Zid gold */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
+        {/* Header glow */}
+        <div className="absolute -top-10 left-1/2 h-20 w-3/4 -translate-x-1/2 rounded-full bg-amber-400/5 blur-2xl" aria-hidden="true" />
+        <div className="relative flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-400/30 bg-gradient-to-br from-amber-400/20 to-amber-500/5 text-amber-300 shadow-inner shadow-amber-400/10">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold tracking-wide text-white">Zid AI</h3>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+              </span>
+              Sales copilot online
+            </p>
+          </div>
+        </div>
+        <button onClick={() => setIsOpen(false)} aria-label="Close Zid AI Assistant" title="Close assistant" className="rounded-lg p-2 text-slate-400 transition hover:bg-white/10 hover:text-white">
+          <X className="h-5 w-5" />
+        </button>
+      </header>
+      <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-[#111827] to-[#0F172A] p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-600">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`max-w-[88%] whitespace-pre-wrap rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm ${m.role === 'user' ? 'ml-auto rounded-br-md border-amber-300/30 bg-gradient-to-br from-amber-400 to-amber-500 font-medium text-slate-950' : 'mr-auto rounded-bl-md border-slate-700 bg-gradient-to-br from-[#202838] to-[#18202d] text-slate-100'}`}
+            className={`max-w-[88%] whitespace-pre-wrap rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm ${
+              m.role === 'user'
+                ? 'ml-auto rounded-br-md border-amber-400/30 bg-gradient-to-br from-amber-500 to-amber-600 font-semibold text-white shadow-lg shadow-amber-500/25'
+                : 'mr-auto rounded-bl-md border-amber-400/20 bg-gradient-to-br from-[#1E293B] to-[#18202D] text-slate-100 shadow-lg shadow-black/20'
+            }`}
           >
             {m.content}
           </div>
         ))}
         {isThinking && (
-          <div className="mr-auto flex items-center gap-1 rounded-2xl rounded-bl-md border-slate-700 bg-[#202838] px-4 py-4" aria-label="Zid AI is typing">
-            <span className="zid-ai-dot" /><span className="zid-ai-dot zid-ai-dot--2" /><span className="zid-ai-dot zid-ai-dot--3" />
+          <div className="mr-auto flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-amber-400/20 bg-gradient-to-br from-[#1E293B] to-[#18202D] px-4 py-3.5 shadow-lg shadow-black/20" aria-label="Zid AI is typing">
+            <span className="zid-ai-dot h-2 w-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="zid-ai-dot h-2 w-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="zid-ai-dot h-2 w-2 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         )}
       </div>
-      <footer className="border-t border-slate-700/70 bg-[#171d29] p-4">
+      <footer className="border-t border-amber-400/15 bg-gradient-to-r from-[#0B0F1A] via-[#12172B] to-[#0B0F1A] p-4">
         <div className="mb-3 flex gap-2">
           <button
             onClick={() => quickAsk('Summarize my sales performance and give me growth tips / আমার বিক্রয় পরিসংখ্যান ও গ্রোথ টিপস দিন')}
-            className="rounded-lg border-slate-600 bg-slate-800/70 p-2 text-slate-300 transition hover:border-cyan-400/60 hover:text-cyan-300"
+            className="flex items-center gap-1.5 rounded-lg border border-amber-400/20 bg-slate-800/50 px-3 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/40 hover:bg-slate-700/50 hover:text-amber-300"
             title="Growth insights"
           >
-            <BarChart2 className="w-4 h-4" />
+            <BarChart2 className="h-3.5 w-3.5" />
+            <span>Growth</span>
           </button>
           <button
             onClick={() => quickAsk('My plan upgrade is still pending. Why? / আমার প্ল্যান আপগ্রেড এখনো পেন্ডিং কেন?')}
-            className="rounded-lg border-slate-600 bg-slate-800/70 p-2 text-slate-300 transition hover:border-cyan-400/60 hover:text-cyan-300"
+            className="flex items-center gap-1.5 rounded-lg border border-amber-400/20 bg-slate-800/50 px-3 py-1.5 text-xs text-slate-300 transition hover:border-amber-400/40 hover:bg-slate-700/50 hover:text-amber-300"
             title="Plan / subscription support"
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span>Plan</span>
           </button>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border-slate-600 bg-[#0f141e] p-1.5 focus-within:border-amber-300/70">
+        <div className="flex items-center gap-2 rounded-xl border border-amber-400/20 bg-[#0F172A] p-1.5 shadow-inner shadow-black/20 transition-all duration-200 focus-within:border-amber-400/50 focus-within:shadow-amber-400/10">
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void sendQuery(input); }}
-            className="flex-1 bg-[#181B26] border border-[#3A435E] rounded-xl px-4 py-2 text-sm text-white outline-none"
+            className="flex-1 bg-transparent px-3 py-2 text-sm text-white placeholder-slate-500 outline-none transition placeholder:text-slate-500"
             placeholder="Ask Zid AI anything..."
             aria-label="Ask Zid AI"
           />
@@ -144,12 +182,12 @@ export const ZidAiAssistant: React.FC = () => {
             disabled={isThinking || !input.trim()}
             aria-label="Send message"
             title="Send message"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-500/25 transition-all duration-200 hover:from-amber-400 hover:to-amber-500 hover:shadow-amber-400/30 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Send className="w-4 h-4" />
+            <Send className="h-4 w-4" />
           </button>
         </div>
       </footer>
-    </section>
+    </div>
   );
 };
