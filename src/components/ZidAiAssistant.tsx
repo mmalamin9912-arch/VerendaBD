@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Send, MessageSquare, BarChart2, X } from 'lucide-react';
+import { Sparkles, Send, MessageSquare, BarChart2, X, Circle } from 'lucide-react';
 import { generateAiText, ZID_AI_SYSTEM_INSTRUCTION } from '../lib/aiService';
 
 interface ChatMessage {
@@ -91,65 +91,65 @@ export const ZidAiAssistant: React.FC = () => {
   };
 
   if (!isOpen) return (
-    <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 bg-indigo-600 p-4 rounded-full shadow-2xl text-white cursor-pointer z-50">
-      <Cpu className="w-6 h-6" />
+    <button onClick={() => setIsOpen(true)} aria-label="Open Zid AI Assistant" title="Open Zid AI Assistant" className="zid-ai-trigger fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-2xl border-amber-300/50 bg-[#151923] text-amber-300 shadow-[0_12px_35px_rgba(0,0,0,.4)] transition hover:-translate-y-1 hover:border-amber-200 hover:text-amber-200">
+      <span className="zid-ai-trigger__ring" aria-hidden="true" /><Sparkles className="relative z-10 h-6 w-6" />
     </button>
   );
   return (
     <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-[#181B26] border border-[#2E3548] rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
-      <div className="p-4 border-b border-[#2E3548] flex justify-between items-center bg-[#202533]">
-        <h3 className="font-bold text-white flex items-center gap-2"><Cpu className="w-5 h-5 text-indigo-400" /> Zid AI Assistant</h3>
-        <button onClick={() => setIsOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <header className="relative flex items-center justify-between border-b border-slate-700/70 bg-[linear-gradient(135deg,#202838,#151b28)] px-5 py-4"><div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent" /><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl border-amber-300/40 bg-amber-300/10 text-amber-300"><Sparkles className="h-5 w-5" /></div><div><h3 className="text-sm font-extrabold tracking-wide text-white">Zid AI Assistant</h3><p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400"><Circle className="h-2 w-2 fill-cyan-400 text-cyan-400" /> Sales copilot online</p></div></div><button onClick={() => setIsOpen(false)} aria-label="Close Zid AI Assistant" title="Close assistant" className="rounded-lg p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button></header>
+      <div className="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(14,165,233,.07),transparent_42%)] p-4">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`p-3 rounded-xl text-sm whitespace-pre-wrap max-w-[85%] ${m.role === 'user' ? 'bg-indigo-600 text-white ml-auto' : 'bg-[#202533] text-slate-200 mr-auto'}`}
+            className={`max-w-[88%] whitespace-pre-wrap rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm ${m.role === 'user' ? 'ml-auto rounded-br-md border-amber-300/30 bg-gradient-to-br from-amber-400 to-amber-500 font-medium text-slate-950' : 'mr-auto rounded-bl-md border-slate-700 bg-gradient-to-br from-[#202838] to-[#18202d] text-slate-100'}`}
           >
             {m.content}
           </div>
         ))}
         {isThinking && (
-          <div className="p-3 rounded-xl text-sm bg-[#202533] text-slate-400 mr-auto max-w-[85%] animate-pulse">
-            Zid AI is thinking… / ভাবছি…
+          <div className="mr-auto flex items-center gap-1 rounded-2xl rounded-bl-md border-slate-700 bg-[#202838] px-4 py-4" aria-label="Zid AI is typing">
+            <span className="zid-ai-dot" /><span className="zid-ai-dot zid-ai-dot--2" /><span className="zid-ai-dot zid-ai-dot--3" />
           </div>
         )}
       </div>
-      <div className="p-4 border-t border-[#2E3548] bg-[#202533]">
-        <div className="flex gap-2 mb-3">
+      <footer className="border-t border-slate-700/70 bg-[#171d29] p-4">
+        <div className="mb-3 flex gap-2">
           <button
             onClick={() => quickAsk('Summarize my sales performance and give me growth tips / আমার বিক্রয় পরিসংখ্যান ও গ্রোথ টিপস দিন')}
-            className="bg-[#2E3548] text-white p-2 rounded-lg cursor-pointer"
+            className="rounded-lg border-slate-600 bg-slate-800/70 p-2 text-slate-300 transition hover:border-cyan-400/60 hover:text-cyan-300"
             title="Growth insights"
           >
             <BarChart2 className="w-4 h-4" />
           </button>
           <button
             onClick={() => quickAsk('My plan upgrade is still pending. Why? / আমার প্ল্যান আপগ্রেড এখনো পেন্ডিং কেন?')}
-            className="bg-[#2E3548] text-white p-2 rounded-lg cursor-pointer"
+            className="rounded-lg border-slate-600 bg-slate-800/70 p-2 text-slate-300 transition hover:border-cyan-400/60 hover:text-cyan-300"
             title="Plan / subscription support"
           >
             <MessageSquare className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 rounded-xl border-slate-600 bg-[#0f141e] p-1.5 focus-within:border-amber-300/70">
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void sendQuery(input); }}
             className="flex-1 bg-[#181B26] border border-[#3A435E] rounded-xl px-4 py-2 text-sm text-white outline-none"
-            placeholder="Ask Zid AI... / জিজ্ঞাসা করুন..."
+            placeholder="Ask Zid AI anything..."
+            aria-label="Ask Zid AI"
           />
           <button
             onClick={() => void sendQuery(input)}
-            disabled={isThinking}
-            className="bg-indigo-600 p-2 rounded-xl text-white disabled:opacity-50 cursor-pointer"
+            disabled={isThinking || !input.trim()}
+            aria-label="Send message"
+            title="Send message"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-      </div>
-    </div>
+      </footer>
+    </section>
   );
 };

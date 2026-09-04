@@ -1047,7 +1047,7 @@ export default function App() {
         bankAccounts={targetBankAccounts}
         mobileBanking={targetMobileBanking}
         themes={targetThemes}
-        onPlaceOrder={(newOrder) => {
+        onPlaceOrder={async (newOrder) => {
           try {
             // Persist order details back to that store's custom record
             const key = `ZID_MERCHANT_STORE_DATA_${storeSlug}`;
@@ -1060,6 +1060,27 @@ export default function App() {
             // Append to current logged-in orders view if active
             if (merchant?.storeSlug === storeSlug) {
               setOrders(prev => [newOrder, ...prev]);
+            }
+            // Insert into Supabase orders table
+            try {
+              const { supabase } = await import('./lib/supabase');
+              if (supabase) {
+                await supabase.from('orders').insert({
+                  store_id: storeSlug,
+                  order_number: newOrder.orderNumber?.replace('#', '') || newOrder.id,
+                  customer_name: newOrder.customerName,
+                  customer_phone: newOrder.customerPhone,
+                  shipping_address: `${newOrder.address || ''}, ${newOrder.customerCity || ''}`,
+                  items: JSON.stringify(newOrder.items),
+                  total_amount: newOrder.totalBDT,
+                  payment_method: newOrder.paymentMethod,
+                  payment_status: newOrder.paymentStatus,
+                  status: 'New',
+                  created_at: new Date().toISOString(),
+                });
+              }
+            } catch (e) {
+              console.warn('Supabase order insert failed:', e);
             }
           } catch (e) {
             console.error('Error recording order to database:', e);

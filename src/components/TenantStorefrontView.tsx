@@ -944,6 +944,8 @@ export const TenantStorefrontView: React.FC<TenantStorefrontViewProps> = ({
       courierName: 'Steadfast Courier',
       trackingCode: 'SF-PENDING-' + Math.floor(1000 + Math.random() * 9000),
       createdAt: new Date().toLocaleString(),
+      storeSlug: effectiveStoreSlug,
+      merchantId: (merchant as any)?.id || '',
       items,
     };
 

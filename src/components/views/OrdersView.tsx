@@ -1,16 +1,17 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Order, OrderItem } from '../../types';
-import { 
-  ShoppingBag, 
-  Search, 
-  Filter, 
-  Truck, 
-  CheckCircle2, 
-  Send, 
-  PhoneCall, 
-  Plus, 
-  ChevronDown, 
-  ChevronUp, 
+import { supabase } from '../../lib/supabase';
+import {
+  ShoppingBag,
+  Search,
+  Filter,
+  Truck,
+  CheckCircle2,
+  Send,
+  PhoneCall,
+  Plus,
+  ChevronDown,
+  ChevronUp,
   X,
   AlertCircle,
   Download,
@@ -86,16 +87,16 @@ interface OrdersViewProps {
 
 export type OrderSubMenu = 'all' | 'manual' | 'abandoned';
 
-export type StatusTab = 
-  | 'All' 
-  | 'New' 
-  | 'Preparing' 
-  | 'Ready' 
-  | 'In delivery' 
-  | 'Completed' 
-  | 'Cancelled' 
-  | 'Processing reverse' 
-  | 'Partially Reversed' 
+export type StatusTab =
+  | 'All'
+  | 'New'
+  | 'Preparing'
+  | 'Ready'
+  | 'In delivery'
+  | 'Completed'
+  | 'Cancelled'
+  | 'Processing reverse'
+  | 'Partially Reversed'
   | 'Reversed';
 
 const STATUS_TABS: StatusTab[] = [
@@ -116,6 +117,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onUpdateOrders,
   merchantId,
 }) => {
+  const channelRef = useRef<any>(null);
   // Live polling effect for orders sync from Supabase
   useEffect(() => {
     if (!merchantId) return;
@@ -134,9 +136,42 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     const timer = setInterval(fetchLiveOrders, 4000);
     return () => clearInterval(timer);
   }, [merchantId]);
+
+  // Realtime Supabase subscription for orders live sync
+  useEffect(() => {
+    if (!merchantId) return;
+    if (!supabase) return;
+    channelRef.current = supabase
+      .channel('orders-realtime')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `store_id=eq.${merchantId}` },
+        () => {
+          // Refetch latest orders whenever a new order is inserted
+          const refetch = async () => {
+            try {
+              const res = await fetch(`/api/orders/${merchantId}`);
+              const data = await res.json();
+              if (Array.isArray(data)) {
+                onUpdateOrders(data);
+              }
+            } catch (err) {
+              console.warn('Error refetching orders after realtime event:', err);
+            }
+          };
+          refetch();
+        }
+      )
+      .subscribe();
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [merchantId, onUpdateOrders]);
   // Sub-menu state
   const [subMenu, setSubMenu] = useState<OrderSubMenu>('all');
-  
+
   // Active Status Tab state
   const [statusTab, setStatusTab] = useState<StatusTab>('All');
 
@@ -404,13 +439,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   const handleSelectRow = (id: string) => {
-    setSelectedOrderIds(prev => 
+    setSelectedOrderIds(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
 
   const toggleExpandRow = (id: string) => {
-    setExpandedOrderIds(prev => 
+    setExpandedOrderIds(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
@@ -519,8 +554,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const handleExportDetailedCSV = (ordersToExport: Order[]) => {
     const headers = [
-      'Order #', 'Customer Name', 'Phone', 'Address', 'City', 'Delivery Zone', 
-      'Item Name', 'Variant', 'Quantity', 'Unit Price BDT', 'Total Item BDT', 
+      'Order #', 'Customer Name', 'Phone', 'Address', 'City', 'Delivery Zone',
+      'Item Name', 'Variant', 'Quantity', 'Unit Price BDT', 'Total Item BDT',
       'Payment Method', 'Payment Status', 'Order Status', 'Courier', 'Created At'
     ];
     const rows: string[][] = [];
@@ -909,7 +944,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                 className="w-full bg-[#181B26] border border-[#2E3548] rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:border-[#00D68F] focus:outline-none transition"
               />
               {searchQuery && (
-                <button 
+                <button
                   onClick={() => setSearchQuery('')}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
                 >
@@ -1009,7 +1044,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   </button>
 
                   {isActionsDropdownOpen && (
-                    <div 
+                    <div
                       className="absolute right-0 mt-2 w-72 bg-[#1D212E] border border-[#2E3548] rounded-xl shadow-2xl z-50 py-1 divide-y divide-[#2E3548] text-xs"
                     >
                       <div className="py-1">
@@ -1174,8 +1209,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                 <span>{ord.orderNumber}</span>
                               </div>
                               <span className={`inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
-                                sourceName === 'Store' 
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                sourceName === 'Store'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                   : sourceName === 'Manual' || sourceName === 'POS'
                                   ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                                   : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
@@ -1371,9 +1406,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                                  </div>
 
                                                  <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                                   <div 
-                                                     className={`h-full transition-all duration-500 ${fc.risk_level === 'low' ? 'bg-emerald-500' : fc.risk_level === 'medium' ? 'bg-amber-500' : 'bg-rose-500'}`} 
-                                                     style={{ width: `${fc.success_rate}%` }} 
+                                                   <div
+                                                     className={`h-full transition-all duration-500 ${fc.risk_level === 'low' ? 'bg-emerald-500' : fc.risk_level === 'medium' ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                                     style={{ width: `${fc.success_rate}%` }}
                                                    />
                                                  </div>
 
