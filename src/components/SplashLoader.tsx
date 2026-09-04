@@ -4,27 +4,35 @@ interface SplashLoaderProps {
   visible?: boolean;
 }
 
-const MINIMUM_DISPLAY_TIME = 1200;
+const MINIMUM_DISPLAY_TIME = 5500;
+const EXIT_DURATION = 500;
 
 export const SplashLoader: React.FC<SplashLoaderProps> = ({ visible = true }) => {
   const [mounted, setMounted] = React.useState(visible);
+  const [ready, setReady] = React.useState(false);
   const [exiting, setExiting] = React.useState(false);
   const startedAt = React.useRef(Date.now());
 
   React.useEffect(() => {
-    const handleAppReady = () => setExiting(true);
+    const handleAppReady = () => setReady(true);
     window.addEventListener('zid-app-ready', handleAppReady);
     return () => window.removeEventListener('zid-app-ready', handleAppReady);
   }, []);
 
   React.useEffect(() => {
-    if (!visible) setExiting(true);
+    if (!visible) setReady(true);
   }, [visible]);
 
   React.useEffect(() => {
-    if (!exiting) return;
+    if (!ready) return;
     const remaining = Math.max(0, MINIMUM_DISPLAY_TIME - (Date.now() - startedAt.current));
-    const timer = window.setTimeout(() => setMounted(false), remaining + 500);
+    const timer = window.setTimeout(() => setExiting(true), remaining);
+    return () => window.clearTimeout(timer);
+  }, [ready]);
+
+  React.useEffect(() => {
+    if (!exiting) return;
+    const timer = window.setTimeout(() => setMounted(false), EXIT_DURATION);
     return () => window.clearTimeout(timer);
   }, [exiting]);
 
