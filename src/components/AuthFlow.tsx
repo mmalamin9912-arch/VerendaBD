@@ -30,7 +30,11 @@ import {
 import { sendWhatsAppOtp, verifyWhatsAppOtp, formatFullPhoneNumber, normalizePhone } from '../lib/whatsappOtpService';
 import { PhoneVerificationInput } from './PhoneVerificationInput';
 import { getPlanDurationInDays, calculatePlanTimestamps } from '../utils/subscriptionUtils';
-import { resolveMerchantSubscription, syncMerchantSubscription } from '../lib/subscriptionService';
+import {
+  resolveMerchantSubscription,
+  fetchMerchantSubscriptionFromSupabase,
+  syncMerchantSubscription
+} from '../lib/subscriptionService';
 import { safeParseJson } from '../lib/safeFetch';
 
 interface AuthFlowProps {
@@ -186,6 +190,12 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
         const cleanEmail = session.user.email?.toLowerCase() || '';
+        void fetchMerchantSubscriptionFromSupabase({
+          userId: session.user.id,
+          email: cleanEmail
+        }).then((storeProfile) => {
+          if (storeProfile) finishLogin({ ...storeProfile, email: storeProfile.email || cleanEmail });
+        });
 
         const registeredList = getRegisteredUsers();
         const existingUser = registeredList.find((u) => u.email.toLowerCase() === cleanEmail);
@@ -401,6 +411,26 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
 
     setIsLoading(false);
     setErrorMsg('No account found with this email. Please click "Create account" to sign up.');
+  };
+
+  const handleGoogleSignIn = async () => {
+    setErrorMsg('');
+    if (!supabase) {
+      setErrorMsg('Supabase is not configured. Please check your environment variables.');
+      return;
+    }
+
+    setIsLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) {
+      setIsLoading(false);
+      setErrorMsg(error.message || 'Google sign-in failed. Please try again.');
+    }
   };
 
   const handleGoogleAuthSubmit = async (e: React.FormEvent) => {
@@ -992,10 +1022,7 @@ export const AuthFlow: React.FC<AuthFlowProps> = ({ onLoginSuccess, defaultMerch
                 {/* Google Login Button */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setErrorMsg('');
-                    setIsGoogleModalOpen(true);
-                  }}
+                  onClick={handleGoogleSignIn}
                   className="w-full py-3 bg-[#161923] hover:bg-[#202533] border border-[#3A435E] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2.5 transition cursor-pointer shadow-md"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">

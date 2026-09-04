@@ -133,19 +133,42 @@ export function resolveMerchantSubscription(
  * Fetches merchant profile and active subscription details from Supabase with fallback to backend APIs
  */
 export async function fetchMerchantSubscriptionFromSupabase(
-  identifier: { userId?: string; email?: string; slug?: string }
+  identifier: { userId?: string; email?: string; phone?: string; slug?: string }
 ): Promise<MerchantProfile | null> {
   const cleanEmail = identifier.email ? identifier.email.trim().toLowerCase() : '';
   const cleanSlug = identifier.slug ? identifier.slug.trim().toLowerCase() : '';
+  const cleanPhone = identifier.phone ? identifier.phone.trim() : '';
   const userId = identifier.userId ? identifier.userId.trim() : '';
 
   let dbMerchant: any = null;
   let dbSubscription: any = null;
 
-  // 1. Direct Supabase Query
+  // Stores are the canonical tenant record. Try every supported ownership/contact
+  // column independently because older projects may only have a subset of them.
+  if (supabase) {
+    const storeQueries: Array<{ column: string; value: string }> = [
+      ...(userId ? [{ column: 'user_id', value: userId }, { column: 'auth_user_id', value: userId }] : []),
+      ...(cleanEmail ? [{ column: 'email', value: cleanEmail }] : []),
+      ...(cleanPhone ? [{ column: 'phone_number', value: cleanPhone }, { column: 'phone', value: cleanPhone }] : [])
+    ];
+    for (const query of storeQueries) {
+      try {
+        const { data } = await supabase.from('stores').select('*').eq(query.column, query.value).maybeSingle();
+        if (data) {
+          dbMerchant = data;
+          break;
+        }
+      } catch (error) {
+        // A missing legacy column/table should not prevent the next lookup strategy.
+        console.warn(`[SubscriptionService] Store lookup by ${query.column} skipped:`, error);
+      }
+    }
+  }
+
+  // 1. Direct Supabase Query (legacy merchants table fallback)
   if (supabase) {
     try {
-      if (userId) {
+      if (!dbMerchant && userId) {
         const { data: mData } = await supabase
           .from('merchants')
           .select('*')

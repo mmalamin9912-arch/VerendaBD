@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationTab, ProductSubTab, CustomerSubTab, StoreSubTab, MerchantProfile, BankAccount, MobileBankingConfig, CodConfig, PaymentGatewayConfig, CourierService, Order, Product, Customer, AdminPaymentGatewayConfig, SubscriptionRequest, ThemeConfig, ThemePurchaseRequest, SubscriptionPlan, PlatformTheme, SupportTicket, PlatformAddon, AuditLog, PlatformSecuritySettings, BroadcastMessage, PlatformAutomationSettings, AdminTeamMember, AdminRolePermission } from './types';
 
-import { 
-  initialMerchant, 
+import {
+  initialMerchant,
   initialAllMerchants,
-  initialBankAccounts, 
-  initialMobileBanking, 
-  initialCodConfig, 
+  initialBankAccounts,
+  initialMobileBanking,
+  initialCodConfig,
   initialPaymentGateway,
-  initialCouriers, 
-  initialOrders, 
+  initialCouriers,
+  initialOrders,
   initialCustomers,
   subscriptionPlans,
   initialThemes,
@@ -56,11 +56,11 @@ import { ChannelsView } from './components/views/ChannelsView';
 import { SettingsView } from './components/views/SettingsView';
 
 import { calculatePlanTimestamps, getPlanDurationInDays } from './utils/subscriptionUtils';
-import { 
-  resolveMerchantSubscription, 
-  fetchMerchantSubscriptionFromSupabase, 
+import {
+  resolveMerchantSubscription,
+  fetchMerchantSubscriptionFromSupabase,
   syncMerchantSubscription,
-  subscribeToMerchantSubscription 
+  subscribeToMerchantSubscription
 } from './lib/subscriptionService';
 import { Menu, ShieldAlert, Clock, ArrowUpRight } from 'lucide-react';
 
@@ -229,19 +229,8 @@ export default function App() {
     try {
       let resolved: MerchantProfile | null = null;
 
-      if (userEmail) {
-        resolved = await fetchMerchantSubscriptionFromSupabase({ email: userEmail });
-      }
-
-      if (!resolved && supabase && userId) {
-        try {
-          const { data } = await supabase.from('merchants').select('*').eq('auth_user_id', userId).maybeSingle();
-          if (data) {
-            resolved = resolveMerchantSubscription(data);
-          }
-        } catch (e) {
-          console.warn('Error querying Supabase by auth ID:', e);
-        }
+      if (userId || userEmail) {
+        resolved = await fetchMerchantSubscriptionFromSupabase({ userId, email: userEmail });
       }
 
       if (resolved) {
@@ -264,8 +253,8 @@ export default function App() {
   const isPaidPlan = !!merchant?.subscriptionPlan && merchant.subscriptionPlan !== 'free_trial' && merchant.subscriptionPlan !== 'trial';
   const trialEndsAtDate = merchant?.trialEndsAt ? new Date(merchant.trialEndsAt) : null;
   const now = new Date();
-  const trialDaysRemaining = trialEndsAtDate 
-    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))) 
+  const trialDaysRemaining = trialEndsAtDate
+    ? Math.max(0, Math.ceil((trialEndsAtDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
     : (merchant?.trialDaysRemaining ?? 0);
   const isTrialExpired = !isPaidPlan && trialDaysRemaining <= 0;
   const isTrialActive = !isPaidPlan && trialDaysRemaining > 0;
@@ -363,14 +352,14 @@ export default function App() {
       }
     };
     loadCategories();
-      
+
     // Customers
     safeFetch(`/api/customers/${merchantId}`).then(data => {
       if (isMounted && Array.isArray(data) && data.length > 0) {
         setCustomers(data);
       }
     });
-      
+
     // Orders
     safeFetch(`/api/orders/${merchantId}`).then(data => {
       if (isMounted && Array.isArray(data) && data.length > 0) {
@@ -444,7 +433,7 @@ export default function App() {
     }
     return initialBankAccounts;
   });
-  
+
   const [mobileBanking, setMobileBanking] = useState<MobileBankingConfig[]>(() => {
     try {
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
@@ -509,7 +498,7 @@ export default function App() {
 
   const [couriers, setCouriers] = useState<CourierService[]>(initialCouriers);
   const [products, setProducts] = useState<Product[]>([]);
-  
+
   const [customers, setCustomers] = useState<Customer[]>(() => {
     try {
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
@@ -519,7 +508,7 @@ export default function App() {
     }
     return [];
   });
-  
+
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
@@ -529,7 +518,7 @@ export default function App() {
     }
     return [];
   });
-  
+
   const [themes, setThemes] = useState<ThemeConfig[]>(() => {
     try {
       const saved = localStorage.getItem('ZID_MERCHANT_STORE_DATA');
@@ -560,7 +549,7 @@ export default function App() {
           }
           safeRemoveItem(oldKey);
         }
-        
+
         // Update the ref to the new slug
         prevSlugRef.current = newSlug;
       }
@@ -894,7 +883,7 @@ export default function App() {
     setMerchant(userProfile);
     setIsAuthenticated(true);
     setShowLanding(false);
-    
+
     // Explicit Dashboard Navigation
     const slug = userProfile.storeSlug || 'my-store';
     window.history.pushState({}, '', `/dashboard/${slug}`);
@@ -957,7 +946,7 @@ export default function App() {
 
   const handleConfirmSubscription = async (planId: string, paymentMethod: string, txId: string) => {
     const plan = subscriptionPlans.find(p => p.id === planId) || subscriptionPlans[1];
-    
+
     // Calculate exact start and expiry timestamps dynamically based on chosen plan
     const { plan_started_at, expires_at, expiryDate, durationDays } = calculatePlanTimestamps(planId, new Date());
     const expiryDateStr = expiryDate;
@@ -990,7 +979,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to update subscription in DB', e);
     }
-    
+
     alert(`Subscription request submitted successfully! Your Transaction ID (${txId}) is pending Super Admin verification.`);
   };
 
@@ -1019,7 +1008,7 @@ export default function App() {
   if (currentPath.startsWith('/store/') || currentPath.startsWith('/e/')) {
     const isE = currentPath.startsWith('/e/');
     const storeSlug = currentPath.replace(isE ? '/e/' : '/store/', '').split('/')[0];
-    
+
     // Retrieve direct custom tenant store configurations from database
     let targetMerchant = merchant;
     let targetProducts = products;
@@ -1078,11 +1067,11 @@ export default function App() {
     );
   }
 
-  const isSuperAdminRoute = 
-    currentPath === '/admin' || 
-    currentPath === '/super-admin' || 
-    currentPath === '/admin-login' || 
-    currentPath === '/super-admin-gateway' || 
+  const isSuperAdminRoute =
+    currentPath === '/admin' ||
+    currentPath === '/super-admin' ||
+    currentPath === '/admin-login' ||
+    currentPath === '/super-admin-gateway' ||
     activeTab === 'super_admin_portal';
 
   if (isSuperAdminRoute) {
@@ -1280,8 +1269,8 @@ export default function App() {
       {/* Global Platform Announcement */}
       {platformAnnouncement.isActive && (
         <div className={`py-1.5 px-4 text-center text-[10px] font-black uppercase tracking-[0.1em] shadow-sm relative z-[100] ${
-          platformAnnouncement.type === 'urgent' ? 'bg-red-600 text-white' : 
-          platformAnnouncement.type === 'warning' ? 'bg-orange-500 text-slate-950' : 
+          platformAnnouncement.type === 'urgent' ? 'bg-red-600 text-white' :
+          platformAnnouncement.type === 'warning' ? 'bg-orange-500 text-slate-950' :
           'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950'
         }`}>
           {platformAnnouncement.message}
@@ -1323,7 +1312,7 @@ export default function App() {
                 আপনার ফ্রি ট্রায়ালের আর <span className="text-white font-black px-1.5 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/30">{trialDaysRemaining} দিন</span> বাকি আছে। এখনই প্ল্যান বেছে নিন।
               </p>
             </div>
-            <button 
+            <button
               onClick={() => setIsSubscriptionModalOpen(true)}
               className="hidden md:flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-indigo-400 hover:text-white transition-colors"
             >
@@ -1333,7 +1322,7 @@ export default function App() {
           </div>
         </div>
       )}
-      
+
       <div className="flex-1 flex overflow-hidden">
         {/* Navigation Sidebar */}
         <Sidebar
@@ -1416,11 +1405,11 @@ export default function App() {
             )}
 
             {activeTab === 'marketing' && (
-              <MarketingView 
-                merchant={merchant} 
-                platformSettings={platformSettings} 
+              <MarketingView
+                merchant={merchant}
+                platformSettings={platformSettings}
                 adminPaymentConfig={adminPaymentConfig}
-                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)} 
+                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
               />
             )}
 
@@ -1475,8 +1464,8 @@ export default function App() {
             )}
 
             {activeTab === 'growth' && (
-              <GrowthView 
-                merchant={merchant} 
+              <GrowthView
+                merchant={merchant}
                 onSwitchToBilling={() => setActiveTab('billing')}
               />
             )}
